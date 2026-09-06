@@ -861,4 +861,25 @@ abstract final class AppStrings {
   static const eventStationStatsGuests = 'Guests';
   static const eventStationStatsProcessed = 'Processed';
   static const eventStationStatsDigital = 'WhatsApped';
+  static const eventStationImportFromCard = 'Import from SD / folder';
+  static const eventStationImportHint =
+      'Import in batches of about 20–30 minutes of shooting, not the whole event at once.';
+  static const eventStationImportTrayTitle = 'Card import';
+  static const eventStationImportAssign = 'Import selected as guests';
+  static const eventStationImportDiscard = 'Discard selected';
+  static const eventStationImportClearTray = 'Clear remaining';
+  static const eventStationImportNoneSelected =
+      'Select one or more photos to import or discard.';
+  static const eventStationImportUnavailable =
+      'Photo import is not available on this station.';
+  static const eventStationImportEmptyPick = 'No supported photos were selected.';
+  static const eventStationImportFailed =
+      'Could not import photos from the card.';
+  static const eventStationImportMissingSession =
+      'Import created a session without an id.';
+  static const eventStationImportReading = 'Reading photos';
+  static const eventStationImportUploading = 'Importing';
+  static const eventStationPickLook = 'Pick your look';
+  static const eventStationPoweredBy = 'Photobooth powered by';
+  static const eventStationPoweredByBrand = 'FotoZen AI';
 }

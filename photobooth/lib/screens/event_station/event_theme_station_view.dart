@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../models/event_info_model.dart';
 import '../../models/event_station_models.dart';
 import '../../services/event_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
+import '../../utils/event_station_chrome.dart';
 import '../../views/widgets/app_scaffold.dart';
-import '../../views/widgets/theme_card.dart';
+import 'event_station_chrome_view_widgets.dart';
 import 'event_station_view_widgets.dart';
 import 'event_theme_station_viewmodel.dart';
 
@@ -34,7 +36,8 @@ class EventThemeStationScreen extends StatelessWidget {
             child: const Text(AppStrings.eventStationChangeRole),
           ),
         ],
-        child: Consumer<EventThemeStationViewModel>(
+        child: EventStationBoundShell(
+          child: Consumer<EventThemeStationViewModel>(
           builder: (context, vm, _) {
             if (vm.hasClaimedJob) {
               return _ClaimedThemeBody(viewModel: vm);
@@ -117,6 +120,7 @@ class EventThemeStationScreen extends StatelessWidget {
             );
           },
         ),
+        ),
       ),
     );
   }
@@ -130,6 +134,9 @@ class _ClaimedThemeBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final preview = viewModel.claimed?.previewUrls ?? const [];
+    final skin =
+        EventStationChromeScope.maybeOf(context)?.chrome.skin ??
+            const EventSkinChrome();
     return Column(
       children: [
         Padding(
@@ -140,6 +147,18 @@ class _ClaimedThemeBody extends StatelessWidget {
           ),
         ),
         EventStationImageCarousel(urls: preview),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Text(
+            AppStrings.eventStationPickLook,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.w800,
+              color: Color(kEventLookSelectedBorder),
+            ),
+          ),
+        ),
         if (viewModel.looks.isEmpty)
           const Padding(
             padding: EdgeInsets.all(24),
@@ -151,16 +170,18 @@ class _ClaimedThemeBody extends StatelessWidget {
               padding: const EdgeInsets.all(16),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
-                childAspectRatio: 0.7,
+                childAspectRatio: 1.35,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
               ),
               itemCount: viewModel.looks.length,
               itemBuilder: (context, i) {
                 final theme = viewModel.looks[i];
-                return ThemeCard(
+                return EventStationLookTile(
                   theme: theme,
-                  isSelected: theme.id == viewModel.selectedThemeId,
+                  skin: skin,
+                  index: i,
+                  selected: theme.id == viewModel.selectedThemeId,
                   onTap: () => viewModel.selectTheme(theme.id),
                 );
               },

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../models/event_info_model.dart';
 import '../../services/event_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
@@ -8,6 +7,7 @@ import '../../utils/event_station_role.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/app_scaffold.dart';
 import '../splash/bootstrap_route_args.dart';
+import 'event_station_chrome_view_widgets.dart';
 
 class EventStationPickerScreen extends StatelessWidget {
   const EventStationPickerScreen({super.key, EventManager? eventManager})
@@ -42,101 +42,55 @@ class EventStationPickerScreen extends StatelessWidget {
         title: AppStrings.eventStationTitle,
         showBackButton: true,
         onBackPressed: () => _leaveToKioskSettings(context),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: FutureBuilder<EventInfoModel?>(
-            future: (_eventManager ?? EventManager()).readBoundEvent(),
-            builder: (context, snapshot) {
-              final event = snapshot.data;
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (event != null) ...[
-                    _EventSkinBanner(event: event),
-                    const SizedBox(height: 16),
-                  ],
-                  _StationChoice(
-                    title: AppStrings.eventStationCapture,
-                    subtitle: AppStrings.eventStationCaptureHint,
-                    onTap: () => _pick(
-                      context,
-                      EventStationRole.capture,
-                      AppConstants.kRouteEventCaptureStation,
-                    ),
+        child: EventStationBoundShell(
+          eventManager: _eventManager,
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _StationChoice(
+                  title: AppStrings.eventStationCapture,
+                  subtitle: AppStrings.eventStationCaptureHint,
+                  onTap: () => _pick(
+                    context,
+                    EventStationRole.capture,
+                    AppConstants.kRouteEventCaptureStation,
                   ),
-                  const SizedBox(height: 16),
-                  _StationChoice(
-                    title: AppStrings.eventStationTheme,
-                    subtitle: AppStrings.eventStationThemeHint,
-                    onTap: () => _pick(
-                      context,
-                      EventStationRole.theme,
-                      AppConstants.kRouteEventThemeStation,
-                    ),
+                ),
+                const SizedBox(height: 16),
+                _StationChoice(
+                  title: AppStrings.eventStationTheme,
+                  subtitle: AppStrings.eventStationThemeHint,
+                  onTap: () => _pick(
+                    context,
+                    EventStationRole.theme,
+                    AppConstants.kRouteEventThemeStation,
                   ),
-                  const SizedBox(height: 16),
-                  _StationChoice(
-                    title: AppStrings.eventStationPrint,
-                    subtitle: AppStrings.eventStationPrintHint,
-                    onTap: () => _pick(
-                      context,
-                      EventStationRole.print,
-                      AppConstants.kRouteEventPrintStation,
-                    ),
+                ),
+                const SizedBox(height: 16),
+                _StationChoice(
+                  title: AppStrings.eventStationPrint,
+                  subtitle: AppStrings.eventStationPrintHint,
+                  onTap: () => _pick(
+                    context,
+                    EventStationRole.print,
+                    AppConstants.kRouteEventPrintStation,
                   ),
-                  const Spacer(),
-                  Text(
-                    'Printer, camera, and copies come from this kiosk.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: colors.secondaryTextColor),
-                  ),
-                ],
-              );
-            },
+                ),
+                const Spacer(),
+                Text(
+                  'Printer, camera, and copies come from this kiosk.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: colors.secondaryTextColor),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
-}
-
-class _EventSkinBanner extends StatelessWidget {
-  const _EventSkinBanner({required this.event});
-
-  final EventInfoModel event;
-
-  @override
-  Widget build(BuildContext context) {
-    final skin = event.chrome.skin;
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        gradient: LinearGradient(
-          colors: [
-            _colorFromHex(skin.bannerFrom, 0xE3A65C),
-            _colorFromHex(skin.bannerTo, 0x6E5391),
-          ],
-        ),
-      ),
-      child: Text(
-        event.name?.trim().isNotEmpty == true
-            ? event.name!
-            : event.code,
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          color: _colorFromHex(skin.ink, 0xFFFFFF),
-          fontSize: 22,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
-}
-
-Color _colorFromHex(String hex, int fallback) {
-  final n = parseRgbHex(hex);
-  return Color(0xFF000000 | (n ?? fallback));
 }
 
 class _StationChoice extends StatelessWidget {

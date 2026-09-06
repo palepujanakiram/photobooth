@@ -9,6 +9,7 @@ import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../views/widgets/app_scaffold.dart';
 import 'event_print_station_viewmodel.dart';
+import 'event_station_chrome_view_widgets.dart';
 import 'event_station_view_widgets.dart';
 
 class EventPrintStationScreen extends StatelessWidget {
@@ -47,7 +48,8 @@ class EventPrintStationScreen extends StatelessWidget {
             child: const Text(AppStrings.eventStationChangeRole),
           ),
         ],
-        child: Consumer<EventPrintStationViewModel>(
+        child: EventStationBoundShell(
+          child: Consumer<EventPrintStationViewModel>(
           builder: (context, vm, _) {
             return Padding(
               padding: const EdgeInsets.all(16),
@@ -121,6 +123,7 @@ class EventPrintStationScreen extends StatelessWidget {
               ),
             );
           },
+        ),
         ),
       ),
     );

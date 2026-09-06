@@ -83,9 +83,11 @@ void main() {
       'id': 'e6',
       'code': 'GALA',
       'outputMode': 'DIGITAL_ONLY',
+      'description': 'Launch night',
       'skin': {
         'id': 'corporate-navy',
         'name': 'Corporate navy',
+        'subtitle': 'Deep blue, clean type',
         'bannerFrom': '1B3A5F',
         'bannerTo': '#0E7490',
         'ink': '#FFFFFF',
@@ -94,7 +96,10 @@ void main() {
     expect(m.outputMode, 'DIGITAL_ONLY');
     expect(m.chrome.skin.id, 'corporate-navy');
     expect(m.chrome.skin.bannerFrom, '#1B3A5F');
+    expect(m.chrome.skin.subtitle, 'Deep blue, clean type');
+    expect(m.description, 'Launch night');
     expect(m.toJson()['skin'], isA<Map>());
+    expect(m.toJson()['description'], 'Launch night');
 
     final fallback = EventInfoModel.fromJson({
       'id': 'e7',
@@ -114,6 +119,7 @@ void main() {
     expect(emptySkin.id, 'wedding-gold');
     expect(emptySkin.name, 'Wedding gold');
     expect(emptySkin.bannerFrom, '#E3A65C');
+    expect(emptySkin.subtitle, 'Warm peach to purple');
 
     final printOnly = EventChrome.fromJson({
       'outputMode': 'PHYSICAL_PRINT',
@@ -121,6 +127,13 @@ void main() {
     });
     expect(printOnly.outputMode, 'PHYSICAL_PRINT');
     expect(printOnly.skin.id, 'wedding-gold');
+
+    final tagged = EventChrome.fromJson({
+      'tagline': 'Garden party',
+      'outputMode': 'BOTH',
+    });
+    expect(tagged.tagline, 'Garden party');
+    expect(EventChrome.fromJson({'description': '  '}).tagline, isNull);
   });
 
   test('parseRgbHex reads 6-digit colors', () {
