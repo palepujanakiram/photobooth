@@ -148,6 +148,7 @@ class FotoFlashbackStripPreview extends StatelessWidget {
               filterId: filterId,
               frameId: frameId,
               overlayUrl: isOccasionFrameId(frameId) ? frameOverlayUrl : null,
+              photoHole: occasionSinglePhotoHole(frameSlots),
               imagesAreGraded: imagesAreGraded,
               placements: placements,
               scribbles: scribbles,
@@ -920,12 +921,14 @@ class _LookPreviewPhoto extends StatefulWidget {
     required this.dataUrl,
     required this.fit,
     required this.cacheWidth,
+    this.alignment = Alignment.center,
     this.jpegBytes,
   });
 
   final Uint8List? jpegBytes;
   final String dataUrl;
   final BoxFit fit;
+  final Alignment alignment;
   final int? cacheWidth;
 
   @override
@@ -961,6 +964,7 @@ class _LookPreviewPhotoState extends State<_LookPreviewPhoto> {
     return Image.memory(
       bytes,
       fit: widget.fit,
+      alignment: widget.alignment,
       width: double.infinity,
       height: double.infinity,
       gaplessPlayback: true,
@@ -996,6 +1000,7 @@ class _Single6x4Preview extends StatelessWidget {
     required this.filterId,
     required this.frameId,
     this.overlayUrl,
+    this.photoHole,
     required this.imagesAreGraded,
     required this.placements,
     required this.scribbles,
@@ -1015,6 +1020,7 @@ class _Single6x4Preview extends StatelessWidget {
   final String filterId;
   final String frameId;
   final String? overlayUrl;
+  final StripTemplateSlot? photoHole;
   final bool imagesAreGraded;
   final List<StripStickerPlacement> placements;
   final List<StripScribbleStroke> scribbles;
@@ -1035,9 +1041,33 @@ class _Single6x4Preview extends StatelessWidget {
     return Colors.white;
   }
 
+  Widget _singleClassicPhotoWell({
+    required bool hasOverlay,
+    required double margin,
+    required Widget photoLayer,
+  }) {
+    final well = ColoredBox(
+      color: const Color(0xFF121212),
+      child: photoLayer,
+    );
+    if (!hasOverlay) {
+      return Padding(padding: EdgeInsets.all(margin), child: well);
+    }
+    final hole = photoHole ?? defaultOccasionSinglePhotoHole;
+    return Positioned(
+      left: hole.left * width,
+      top: hole.top * height,
+      width: hole.width * width,
+      height: hole.height * height,
+      child: well,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final margin = width * 0.027; // ~48/1800
+    final overlay = overlayUrl?.trim() ?? '';
+    final hasOverlay = overlay.isNotEmpty;
     final cacheW = flashbackLookPreviewCacheWidth(
       layoutWidth: width,
       devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
@@ -1049,6 +1079,8 @@ class _Single6x4Preview extends StatelessWidget {
             jpegBytes: jpegBytes,
             dataUrl: imageDataUrl,
             fit: BoxFit.cover,
+            alignment:
+                hasOverlay ? Alignment.topCenter : Alignment.center,
             cacheWidth: cacheW,
           );
     final photoLayer = !hasPhoto || imagesAreGraded
@@ -1058,9 +1090,6 @@ class _Single6x4Preview extends StatelessWidget {
             child: photo,
           );
 
-    final overlay = overlayUrl?.trim() ?? '';
-    final hasOverlay = overlay.isNotEmpty;
-    final photoPad = hasOverlay ? 0.0 : margin;
     return Container(
       key: ValueKey<String>('single6x4_$frameId'),
       width: width,
@@ -1069,13 +1098,10 @@ class _Single6x4Preview extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Padding(
-            padding: EdgeInsets.all(photoPad),
-            child: ColoredBox(
-              // Dark well so a slow decode never reads as an empty white card.
-              color: const Color(0xFF121212),
-              child: photoLayer,
-            ),
+          _singleClassicPhotoWell(
+            hasOverlay: hasOverlay,
+            margin: margin,
+            photoLayer: photoLayer,
           ),
           if (frameId == 'filmstrip' && !hasOverlay)
             CustomPaint(

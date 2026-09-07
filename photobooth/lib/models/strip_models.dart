@@ -145,6 +145,20 @@ List<StripTemplateSlot> defaultOccasionStripSlots(int shotCount) {
   ];
 }
 
+/// Fallback 4×6 photo window when the catalog omits the overlay hole.
+const StripTemplateSlot defaultOccasionSinglePhotoHole = StripTemplateSlot(
+  left: 0.075,
+  top: 0.175,
+  width: 0.85,
+  height: 0.60,
+);
+
+/// Catalog hole for Classic 1-shot occasion overlay, else [defaultOccasionSinglePhotoHole].
+StripTemplateSlot occasionSinglePhotoHole(List<StripTemplateSlot> slots) {
+  if (slots.length == 1) return slots.first;
+  return defaultOccasionSinglePhotoHole;
+}
+
 const List<String> kStripStickerIds = [
   'none',
   'hearts',

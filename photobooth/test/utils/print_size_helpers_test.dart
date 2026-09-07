@@ -1,3 +1,5 @@
+import 'dart:ui' show Size;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/screens/photo_generate/photo_generate_viewmodel.dart';
 import 'package:photobooth/screens/theme_selection/theme_model.dart';
@@ -21,6 +23,71 @@ void main() {
         closeTo(4 / 6, 0.001),
       );
       expect(printSelectionThumbAspectRatio(null), closeTo(4 / 6, 0.001));
+    });
+  });
+
+  group('fitPrintSelectionTile', () {
+    test('fits a portrait 4x6 inside the viewport', () {
+      final size = fitPrintSelectionTile(
+        maxWidth: 1400,
+        maxHeight: 700,
+        printAspectWidthOverHeight: 4 / 6,
+      );
+      expect(size.height, lessThanOrEqualTo(700));
+      expect(size.width, lessThanOrEqualTo(1400));
+      expect(size.width, closeTo((size.height - 42) * (4 / 6), 0.5));
+    });
+
+    test('fits a landscape 6x4 when width is the constraint', () {
+      final size = fitPrintSelectionTile(
+        maxWidth: 400,
+        maxHeight: 800,
+        printAspectWidthOverHeight: 6 / 4,
+        captionBand: 40,
+      );
+      expect(size.width, 400);
+      expect(size.height, closeTo(400 / (6 / 4) + 40, 0.5));
+    });
+
+    test('returns zero for empty constraints', () {
+      expect(
+        fitPrintSelectionTile(
+          maxWidth: 0,
+          maxHeight: 100,
+          printAspectWidthOverHeight: 4 / 6,
+        ),
+        Size.zero,
+      );
+      expect(
+        fitPrintSelectionTile(
+          maxWidth: 100,
+          maxHeight: double.nan,
+          printAspectWidthOverHeight: 4 / 6,
+        ),
+        Size.zero,
+      );
+    });
+
+    test('clamps tile height when the caption band exceeds max height', () {
+      final size = fitPrintSelectionTile(
+        maxWidth: 300,
+        maxHeight: 20,
+        printAspectWidthOverHeight: 4 / 6,
+        captionBand: 40,
+      );
+      expect(size.height, 20);
+      expect(size.width, greaterThan(0));
+    });
+
+    test('falls back when aspect or caption band is invalid', () {
+      final size = fitPrintSelectionTile(
+        maxWidth: 300,
+        maxHeight: 200,
+        printAspectWidthOverHeight: 0,
+        captionBand: -4,
+      );
+      expect(size.width, greaterThan(0));
+      expect(size.height, lessThanOrEqualTo(200));
     });
   });
 

@@ -459,6 +459,24 @@ void main() {
     );
     expect(defaultOccasionStripSlots(3), hasLength(3));
     expect(defaultOccasionStripSlots(4), hasLength(4));
+    expect(
+      occasionSinglePhotoHole(const <StripTemplateSlot>[]),
+      defaultOccasionSinglePhotoHole,
+    );
+    final catalogHole = occasionSinglePhotoHole(const [
+      StripTemplateSlot(left: 0.1, top: 0.2, width: 0.8, height: 0.5),
+    ]);
+    expect(catalogHole.left, 0.1);
+    expect(catalogHole.top, 0.2);
+    expect(catalogHole.width, 0.8);
+    expect(catalogHole.height, 0.5);
+    expect(
+      occasionSinglePhotoHole(const [
+        StripTemplateSlot(left: 0.1, top: 0.1, width: 0.2, height: 0.2),
+        StripTemplateSlot(left: 0.1, top: 0.4, width: 0.2, height: 0.2),
+      ]),
+      defaultOccasionSinglePhotoHole,
+    );
   });
 
   test('preferredClassicFrameId picks occasion variants over classic', () {

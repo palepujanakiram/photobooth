@@ -1,3 +1,5 @@
+import 'dart:ui' show Size;
+
 import '../screens/photo_generate/photo_generate_viewmodel.dart';
 import 'constants.dart';
 import 'print_orientation.dart';
@@ -19,6 +21,35 @@ double printSelectionThumbAspectRatio(String? printSize) {
     return 4 / 6;
   }
   return 4 / 6;
+}
+
+/// Caption row under the print thumb on [PrintSelectionScreen].
+const double kPrintSelectionCaptionBand = 42;
+
+/// Tile size that keeps a single print (image + caption) fully on screen.
+Size fitPrintSelectionTile({
+  required double maxWidth,
+  required double maxHeight,
+  required double printAspectWidthOverHeight,
+  double captionBand = kPrintSelectionCaptionBand,
+}) {
+  final maxW = maxWidth.isFinite && maxWidth > 0 ? maxWidth : 0.0;
+  final maxH = maxHeight.isFinite && maxHeight > 0 ? maxHeight : 0.0;
+  if (maxW <= 0 || maxH <= 0) return Size.zero;
+  final aspect = printAspectWidthOverHeight > 0
+      ? printAspectWidthOverHeight
+      : 4 / 6;
+  final band = captionBand < 0 ? 0.0 : captionBand;
+  var imageH = maxH - band;
+  if (imageH < 1) imageH = maxH;
+  var imageW = imageH * aspect;
+  if (imageW > maxW) {
+    imageW = maxW;
+    imageH = imageW / aspect;
+  }
+  final tileH = imageH + band;
+  if (tileH <= maxH) return Size(imageW, tileH);
+  return Size(imageW, maxH);
 }
 
 /// True when [printSize] is the Classic dual-strip cutter token.
