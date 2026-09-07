@@ -40,12 +40,37 @@ List<StripPhotoCellRect> computeStripPhotoCellRects({
   required double stripHeight,
   StripWysiwygLayout layout = StripWysiwygLayout.defaults,
   int shotCount = kStripShotCount,
+  List<StripTemplateSlot>? templateSlots,
 }) {
   final n = shotCount < 1 ? kStripShotCount : shotCount;
+  if (templateSlots != null && templateSlots.length == n) {
+    return [
+      for (final slot in templateSlots)
+        StripPhotoCellRect(
+          left: slot.left * stripWidth,
+          top: slot.top * stripHeight,
+          width: slot.width * stripWidth,
+          height: slot.height * stripHeight,
+        ),
+    ];
+  }
   if (frameId == 'filmstrip') {
     return _filmstripCells(stripWidth, stripHeight, layout, n);
   }
   return _classicStripCells(stripWidth, stripHeight, layout, n);
+}
+
+/// Overlay PNG + slotted photos when the catalog has a 6×2 template.
+List<StripTemplateSlot>? resolveStripPreviewTemplateSlots({
+  required String frameId,
+  required int shotCount,
+  List<StripTemplateSlot> catalogSlots = const [],
+  String? overlayUrl,
+}) {
+  final overlay = overlayUrl?.trim() ?? '';
+  if (overlay.isEmpty || !isStripTemplateFrame(frameId)) return null;
+  if (catalogSlots.length == shotCount) return catalogSlots;
+  return defaultOccasionStripSlots(shotCount);
 }
 
 List<StripPhotoCellRect> _classicStripCells(

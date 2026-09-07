@@ -340,6 +340,7 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                           filterId: viewModel.selectedFilterId,
                           frameId: viewModel.selectedFrameId,
                           frameOverlayUrl: viewModel.selectedFrame?.overlayUrl,
+                          frameSlots: viewModel.selectedFrame?.slots ?? const [],
                           frameCaption: viewModel.selectedFrame?.caption,
                           stickerId: viewModel.selectedStickerId,
                           placements: viewModel.stickerPlacements,
@@ -498,6 +499,7 @@ class _LookPickerBody extends StatelessWidget {
     required this.filterId,
     required this.frameId,
     this.frameOverlayUrl,
+    this.frameSlots = const [],
     this.frameCaption,
     required this.stickerId,
     required this.placements,
@@ -521,6 +523,7 @@ class _LookPickerBody extends StatelessWidget {
   final String filterId;
   final String frameId;
   final String? frameOverlayUrl;
+  final List<StripTemplateSlot> frameSlots;
   final String? frameCaption;
   final String stickerId;
   final List<StripStickerPlacement> placements;
@@ -576,6 +579,7 @@ class _LookPickerBody extends StatelessWidget {
                 filterId: filterId,
                 frameId: frameId,
                 frameOverlayUrl: frameOverlayUrl,
+                frameSlots: frameSlots,
                 frameCaption: frameCaption,
                 stickerId: stickerId,
                 placements: placements,

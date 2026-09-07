@@ -74,6 +74,77 @@ bool isOccasionFrameId(String frameId) =>
 bool isStrip3TemplateFrame(String frameId) =>
     frameId.startsWith('f3:') && frameId.length > 3;
 
+/// Normalized photo window on a 600×1800 Classic 6×2 overlay.
+class StripTemplateSlot {
+  const StripTemplateSlot({
+    required this.left,
+    required this.top,
+    required this.width,
+    required this.height,
+    this.rotDeg = 0,
+  });
+
+  final double left;
+  final double top;
+  final double width;
+  final double height;
+  final double rotDeg;
+
+  static StripTemplateSlot? tryParse(dynamic raw) {
+    if (raw is! Map) return null;
+    final map = Map<dynamic, dynamic>.from(raw);
+    double? numOrNull(dynamic value) =>
+        value is num ? value.toDouble() : null;
+    final left = numOrNull(map['left']);
+    final top = numOrNull(map['top']);
+    final width = numOrNull(map['width']);
+    final height = numOrNull(map['height']);
+    if (left == null || top == null || width == null || height == null) {
+      return null;
+    }
+    if (width < 0.08 || height < 0.08) return null;
+    final rot = numOrNull(map['rotDeg']) ?? 0;
+    return StripTemplateSlot(
+      left: left.clamp(0.0, 1.0),
+      top: top.clamp(0.0, 1.0),
+      width: width.clamp(0.08, 1.0),
+      height: height.clamp(0.08, 1.0),
+      rotDeg: rot.clamp(-25.0, 25.0),
+    );
+  }
+}
+
+/// Catalog `slots` for a 6×2 overlay; empty when missing or malformed.
+List<StripTemplateSlot> parseStripTemplateSlots(dynamic raw) {
+  if (raw is! List) return const [];
+  final out = <StripTemplateSlot>[];
+  for (final item in raw) {
+    final slot = StripTemplateSlot.tryParse(item);
+    if (slot == null) return const [];
+    out.add(slot);
+  }
+  return out;
+}
+
+/// Header/footer room for branded 6×2 occasion overlays (matches zenai).
+List<StripTemplateSlot> defaultOccasionStripSlots(int shotCount) {
+  const left = 0.08;
+  const width = 0.84;
+  if (shotCount == kStripShotCountThree) {
+    return const [
+      StripTemplateSlot(left: left, top: 0.16, width: width, height: 0.21),
+      StripTemplateSlot(left: left, top: 0.385, width: width, height: 0.21),
+      StripTemplateSlot(left: left, top: 0.61, width: width, height: 0.21),
+    ];
+  }
+  return const [
+    StripTemplateSlot(left: left, top: 0.16, width: width, height: 0.155),
+    StripTemplateSlot(left: left, top: 0.325, width: width, height: 0.155),
+    StripTemplateSlot(left: left, top: 0.49, width: width, height: 0.155),
+    StripTemplateSlot(left: left, top: 0.655, width: width, height: 0.155),
+  ];
+}
+
 const List<String> kStripStickerIds = [
   'none',
   'hearts',
@@ -254,6 +325,7 @@ class StripFrame {
     this.caption,
     this.logoUrl,
     this.shotCount,
+    this.slots = const [],
   });
 
   final String id;
@@ -269,6 +341,7 @@ class StripFrame {
   /// `1` (6×4), `3` or `4` (6×2). Null for builtins shown on every shot count
   /// except sheet layouts (those use [isStripSheetLayout]).
   final int? shotCount;
+  final List<StripTemplateSlot> slots;
 
   bool get isTemplate => kind == 'template' || isStripTemplateFrame(id);
 
@@ -284,6 +357,7 @@ class StripFrame {
       caption: JsonParseHelpers.stringOrNull(json['caption']),
       logoUrl: JsonParseHelpers.stringOrNull(json['logoUrl']),
       shotCount: JsonParseHelpers.intOrNull(json['shotCount']),
+      slots: parseStripTemplateSlots(json['slots']),
     );
   }
 }

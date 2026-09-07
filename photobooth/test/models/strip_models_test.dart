@@ -405,6 +405,62 @@ void main() {
     expect(isStrip3TemplateFrame('f3:'), isFalse);
   });
 
+  test('StripFrame parses 6x2 template slots', () {
+    final frame = StripFrame.fromJson({
+      'id': 'fr:frame-uuid',
+      'name': 'DPS 6×2',
+      'description': 'Classic strip',
+      'kind': 'template',
+      'overlayUrl': 'https://example.com/6x2.png',
+      'shotCount': 4,
+      'slots': [
+        {'left': 0.08, 'top': 0.16, 'width': 0.84, 'height': 0.155},
+        {'left': 0.08, 'top': 0.325, 'width': 0.84, 'height': 0.155},
+        {'left': 0.08, 'top': 0.49, 'width': 0.84, 'height': 0.155},
+        {
+          'left': 0.08,
+          'top': 0.655,
+          'width': 0.84,
+          'height': 0.155,
+          'rotDeg': 0,
+        },
+      ],
+    });
+    expect(frame.slots, hasLength(4));
+    expect(frame.slots.first.left, 0.08);
+    expect(frame.slots.first.rotDeg, 0);
+    expect(parseStripTemplateSlots(null), isEmpty);
+    expect(parseStripTemplateSlots('nope'), isEmpty);
+    expect(
+      parseStripTemplateSlots([
+        {'left': 0.1},
+      ]),
+      isEmpty,
+    );
+    expect(StripTemplateSlot.tryParse(null), isNull);
+    expect(
+      StripTemplateSlot.tryParse({
+        'left': 0.1,
+        'top': 0.1,
+        'width': 0.01,
+        'height': 0.2,
+      }),
+      isNull,
+    );
+    expect(
+      StripTemplateSlot.tryParse({
+        'left': 0.1,
+        'top': 0.1,
+        'width': 0.2,
+        'height': 0.2,
+        'rotDeg': 40,
+      })?.rotDeg,
+      25,
+    );
+    expect(defaultOccasionStripSlots(3), hasLength(3));
+    expect(defaultOccasionStripSlots(4), hasLength(4));
+  });
+
   test('preferredClassicFrameId picks occasion variants over classic', () {
     const frames = [
       StripFrame(id: 'classic', name: 'Classic', description: 'White'),

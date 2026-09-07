@@ -114,4 +114,66 @@ void main() {
       );
     });
   });
+
+  group('template overlay slots', () {
+    test('places photos in catalog windows', () {
+      const slots = [
+        StripTemplateSlot(left: 0.1, top: 0.2, width: 0.8, height: 0.15),
+        StripTemplateSlot(left: 0.1, top: 0.4, width: 0.8, height: 0.15),
+        StripTemplateSlot(left: 0.1, top: 0.6, width: 0.8, height: 0.15),
+      ];
+      final cells = computeStripPhotoCellRects(
+        frameId: 'f3:frame',
+        stripWidth: stripW,
+        stripHeight: stripH,
+        shotCount: 3,
+        templateSlots: slots,
+      );
+      expect(cells, hasLength(3));
+      expect(cells.first.left, closeTo(60, 0.01));
+      expect(cells.first.top, closeTo(360, 0.01));
+      expect(cells.first.width, closeTo(480, 0.01));
+      expect(cells.first.height, closeTo(270, 0.01));
+    });
+
+    test('resolveStripPreviewTemplateSlots uses catalog then defaults', () {
+      expect(
+        resolveStripPreviewTemplateSlots(
+          frameId: 'classic',
+          shotCount: 4,
+          overlayUrl: 'https://example.com/x.png',
+        ),
+        isNull,
+      );
+      expect(
+        resolveStripPreviewTemplateSlots(
+          frameId: 'fr:x',
+          shotCount: 4,
+          overlayUrl: '',
+        ),
+        isNull,
+      );
+      final catalog = [
+        const StripTemplateSlot(left: 0.1, top: 0.2, width: 0.8, height: 0.15),
+        const StripTemplateSlot(left: 0.1, top: 0.4, width: 0.8, height: 0.15),
+        const StripTemplateSlot(left: 0.1, top: 0.6, width: 0.8, height: 0.15),
+        const StripTemplateSlot(left: 0.1, top: 0.8, width: 0.8, height: 0.15),
+      ];
+      expect(
+        resolveStripPreviewTemplateSlots(
+          frameId: 'fr:x',
+          shotCount: 4,
+          catalogSlots: catalog,
+          overlayUrl: 'https://example.com/x.png',
+        ),
+        catalog,
+      );
+      final fallback = resolveStripPreviewTemplateSlots(
+        frameId: 'f3:x',
+        shotCount: 3,
+        overlayUrl: 'https://example.com/x.png',
+      );
+      expect(fallback, hasLength(3));
+    });
+  });
 }

@@ -24,6 +24,7 @@ class FotoFlashbackStripPreview extends StatelessWidget {
     required this.filterId,
     this.frameId = kDefaultStripFrameId,
     this.frameOverlayUrl,
+    this.frameSlots = const [],
     this.frameCaption,
     this.stickerId = kDefaultStripStickerId,
     this.placements = const [],
@@ -50,8 +51,9 @@ class FotoFlashbackStripPreview extends StatelessWidget {
   final String filterId;
   final String frameId;
 
-  /// Admin scrapbook template overlay (https PNG) for live preview.
+  /// Occasion / scrapbook overlay PNG for live preview.
   final String? frameOverlayUrl;
+  final List<StripTemplateSlot> frameSlots;
   final String? frameCaption;
 
   /// When true, [imageDataUrls] are already Sharp-graded — skip ColorFilter.
@@ -253,6 +255,7 @@ class FotoFlashbackStripPreview extends StatelessWidget {
             filterId: filterId,
             frameId: frameId,
             frameOverlayUrl: frameOverlayUrl,
+            frameSlots: frameSlots,
             frameCaption: frameCaption,
             stickerId: stickerId,
             imagesAreGraded: imagesAreGraded,
@@ -343,6 +346,7 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
     required this.width,
     required this.height,
     this.frameOverlayUrl,
+    this.frameSlots = const [],
     this.frameCaption,
     this.imagesAreGraded = false,
     this.layout,
@@ -358,6 +362,7 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
   final String filterId;
   final String frameId;
   final String? frameOverlayUrl;
+  final List<StripTemplateSlot> frameSlots;
   final String? frameCaption;
   final String stickerId;
   final List<StripStickerPlacement> placements;
@@ -388,12 +393,20 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
       imageDataUrls: imageDataUrls,
       imageJpegBytes: imageJpegBytes,
     );
+    final templateSlots = resolveStripPreviewTemplateSlots(
+      frameId: frameId,
+      shotCount: shotCount,
+      catalogSlots: frameSlots,
+      overlayUrl: frameOverlayUrl,
+    );
+    final hasOverlay = templateSlots != null;
     final cells = computeStripPhotoCellRects(
       frameId: frameId,
       stripWidth: width,
       stripHeight: height,
       layout: wysiwyg,
       shotCount: shotCount,
+      templateSlots: templateSlots,
     );
     final borderPad = stripChromeBorderPad(
       frameId: frameId,
@@ -428,7 +441,7 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
       key: ValueKey<String>('strip_chrome_$frameId'),
       width: width,
       height: height,
-      color: chrome.fill,
+      color: hasOverlay ? Colors.white : chrome.fill,
       child: Stack(
         clipBehavior: Clip.hardEdge,
         children: [
@@ -438,20 +451,20 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
                   colorFilter: stripPreviewColorFilter(filterId),
                   child: photoStack,
                 ),
-          StripChromeOverlay(
-            look: chrome,
-            width: width,
-            height: height,
-            borderPad: borderPad,
-          ),
-          if (frameOverlayUrl != null && frameOverlayUrl!.isNotEmpty)
+          if (!hasOverlay)
+            StripChromeOverlay(
+              look: chrome,
+              width: width,
+              height: height,
+              borderPad: borderPad,
+            ),
+          if (hasOverlay)
             Positioned.fill(
               child: IgnorePointer(
-                child: Image.network(
-                  frameOverlayUrl!,
+                child: CachedNetworkImage(
+                  imageUrl: frameOverlayUrl!.trim(),
                   fit: BoxFit.fill,
-                  cacheWidth: cacheW,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  filterQuality: FilterQuality.high,
                 ),
               ),
             ),
