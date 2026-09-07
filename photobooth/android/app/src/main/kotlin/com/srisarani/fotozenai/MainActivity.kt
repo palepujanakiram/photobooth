@@ -8,6 +8,10 @@ import com.srisarani.fotozenai.canon.CanonSidecarService
 import com.srisarani.fotozenai.canon.CanonSidecarStatusMethodChannel
 import com.srisarani.fotozenai.canon.CanonUsbPermissionManager
 import com.srisarani.fotozenai.canoncapture.CanonCameraStack
+import com.srisarani.fotozenai.eventpipeline.EventCardDetectChannel
+import com.srisarani.fotozenai.eventpipeline.EventFrameCompositor
+import com.srisarani.fotozenai.eventpipeline.EventImageDownscaler
+import com.srisarani.fotozenai.eventpipeline.EventStorageMethodChannel
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 
@@ -46,6 +50,10 @@ class MainActivity : FlutterFragmentActivity() {
         DnpUsbMethodChannel.register(flutterEngine, this)
         ReceiptUsbMethodChannel.register(flutterEngine, this)
         SelphyMethodChannel.register(flutterEngine, this)
+        EventStorageMethodChannel.register(flutterEngine, this)
+        EventImageDownscaler.register(flutterEngine, this)
+        EventCardDetectChannel.register(flutterEngine, this)
+        EventFrameCompositor.register(flutterEngine, this)
         // Both channels register regardless: Dart may query either one's status, and a
         // channel with no camera behind it answers "not available" rather than hanging.
         CanonSidecarStatusMethodChannel.register(flutterEngine, this)

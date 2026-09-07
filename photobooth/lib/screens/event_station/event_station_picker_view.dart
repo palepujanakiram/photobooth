@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/event_manager.dart';
+import '../../services/event_pipeline/event_pipeline_config.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/event_station_role.dart';
@@ -78,6 +79,13 @@ class EventStationPickerScreen extends StatelessWidget {
                     AppConstants.kRouteEventPrintStation,
                   ),
                 ),
+                _SdImportChoice(
+                  onTap: () => _pick(
+                    context,
+                    EventStationRole.sdImport,
+                    AppConstants.kRouteEventIngestStation,
+                  ),
+                ),
                 const Spacer(),
                 Text(
                   'Printer, camera, and copies come from this kiosk.',
@@ -89,6 +97,36 @@ class EventStationPickerScreen extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// SD import card, shown only when the local pipeline is switched on.
+///
+/// Gated because the whole station is meaningless without the pipeline: with it
+/// off there is no ledger to import into and every other screen is server-backed.
+class _SdImportChoice extends StatelessWidget {
+  const _SdImportChoice({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<bool>(
+      future: EventPipelineConfig()
+          .resolve()
+          .then((settings) => settings.pipelineEnabled),
+      builder: (context, snapshot) {
+        if (snapshot.data != true) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(top: 16),
+          child: _StationChoice(
+            title: AppStrings.eventStationSdImport,
+            subtitle: AppStrings.eventStationSdImportHint,
+            onTap: onTap,
+          ),
+        );
+      },
     );
   }
 }

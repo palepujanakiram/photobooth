@@ -1,6 +1,7 @@
 // Named-route table for MaterialApp (extracted from main for Sonar complexity).
 import 'package:flutter/material.dart';
 
+import 'screens/event_pipeline/event_ingest_view.dart';
 import 'screens/event_station/event_capture_station_view.dart';
 import 'screens/event_station/event_print_station_view.dart';
 import 'screens/event_station/event_station_picker_view.dart';
@@ -89,6 +90,8 @@ Map<String, WidgetBuilder> buildAppRoutes() {
         const EventThemeStationScreen(),
     AppConstants.kRouteEventPrintStation: (context) =>
         const EventPrintStationScreen(),
+    AppConstants.kRouteEventIngestStation: (context) =>
+        const EventIngestScreen(),
     AppConstants.kRouteWebView: (context) => WebViewScreen.fromRouteSettings(
           ModalRoute.of(context)?.settings,
         ),

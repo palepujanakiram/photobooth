@@ -415,6 +415,7 @@ class AppConstants {
   static const String kRouteEventCaptureStation = '/event-station/capture';
   static const String kRouteEventThemeStation = '/event-station/theme';
   static const String kRouteEventPrintStation = '/event-station/print';
+  static const String kRouteEventIngestStation = '/event-station/import';
 
   // Error Messages
   static const String kErrorCameraPermission = 'Camera permission denied';

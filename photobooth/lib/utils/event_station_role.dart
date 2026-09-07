@@ -6,7 +6,10 @@ class EventStationRole {
   static const theme = 'theme';
   static const print = 'print';
 
-  static const values = <String>[capture, theme, print];
+  /// Local-first SD card import. Only offered when the event pipeline is on.
+  static const sdImport = 'sd-import';
+
+  static const values = <String>[capture, theme, print, sdImport];
 
   static bool isValid(String? role) => role != null && values.contains(role);
 
@@ -23,20 +26,43 @@ enum EventPostSplashRoute {
   capture,
   theme,
   print,
+  sdImport,
   needsInternet,
 }
 
+/// Whether a station role still needs WAN to be usable.
+///
+/// Without the local pipeline every station is server-brokered: Capture creates
+/// sessions, Theme polls the board, Print downloads job images. With it on, each
+/// has local behaviour and an offline event boots straight to its station.
+bool stationRequiresWan({
+  required String? stationRole,
+  required bool pipelineEnabled,
+}) {
+  final role = EventStationRole.tryParse(stationRole);
+  if (role == null) return false;
+  return !pipelineEnabled;
+}
+
 /// After splash bind: event stations vs guest terms.
+///
+/// [pipelineEnabled] defaults to false so the behaviour with the pipeline off is
+/// byte-identical to before it existed — that is the regression guard.
 EventPostSplashRoute resolveEventPostSplashRoute({
   required String? eventCode,
   required String? stationRole,
   bool wanAvailable = true,
+  bool pipelineEnabled = false,
 }) {
   if (eventCode == null || eventCode.trim().isEmpty) {
     return EventPostSplashRoute.terms;
   }
   final role = EventStationRole.tryParse(stationRole);
-  if (role != null && !wanAvailable) {
+  if (!wanAvailable &&
+      stationRequiresWan(
+        stationRole: stationRole,
+        pipelineEnabled: pipelineEnabled,
+      )) {
     return EventPostSplashRoute.needsInternet;
   }
   switch (role) {
@@ -46,6 +72,8 @@ EventPostSplashRoute resolveEventPostSplashRoute({
       return EventPostSplashRoute.theme;
     case EventStationRole.print:
       return EventPostSplashRoute.print;
+    case EventStationRole.sdImport:
+      return EventPostSplashRoute.sdImport;
     default:
       return EventPostSplashRoute.stationPicker;
   }
@@ -59,6 +87,8 @@ String eventPostSplashRouteName(EventPostSplashRoute route) {
       return AppConstants.kRouteEventThemeStation;
     case EventPostSplashRoute.print:
       return AppConstants.kRouteEventPrintStation;
+    case EventPostSplashRoute.sdImport:
+      return AppConstants.kRouteEventIngestStation;
     case EventPostSplashRoute.stationPicker:
       return AppConstants.kRouteEventStation;
     case EventPostSplashRoute.terms:

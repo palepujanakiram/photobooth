@@ -47,6 +47,9 @@ dependencies:
   # File Operations
   path_provider: ^2.1.1
   path: ^1.8.3
+  # Event pipeline ingest dedupe (sha1 over sampled bytes). Already resolved
+  # transitively; declared so the direct import is legitimate.
+  crypto: ^3.0.3
 
   # Permissions
   permission_handler: ^12.0.1

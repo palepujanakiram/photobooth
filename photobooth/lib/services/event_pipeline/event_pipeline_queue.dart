@@ -1,0 +1,339 @@
+import 'dart:convert';
+
+import 'package:sqflite/sqflite.dart';
+
+import '../../models/event_pipeline/pipeline_job.dart';
+import 'event_pipeline_db.dart';
+
+/// Open/failed/done tallies for one job kind.
+class PipelineJobCounts {
+  const PipelineJobCounts({
+    this.pending = 0,
+    this.claimed = 0,
+    this.paused = 0,
+    this.done = 0,
+    this.failed = 0,
+    this.cancelled = 0,
+  });
+
+  final int pending;
+  final int claimed;
+  final int paused;
+  final int done;
+  final int failed;
+  final int cancelled;
+
+  int get open => pending + claimed + paused;
+  int get total => open + done + failed + cancelled;
+
+  factory PipelineJobCounts.fromStatusMap(Map<String, int> byStatus) {
+    return PipelineJobCounts(
+      pending: byStatus[PipelineJobStatus.pending] ?? 0,
+      claimed: byStatus[PipelineJobStatus.claimed] ?? 0,
+      paused: byStatus[PipelineJobStatus.paused] ?? 0,
+      done: byStatus[PipelineJobStatus.done] ?? 0,
+      failed: byStatus[PipelineJobStatus.failed] ?? 0,
+      cancelled: byStatus[PipelineJobStatus.cancelled] ?? 0,
+    );
+  }
+}
+
+/// Durable work queue over `evp_pipeline_jobs`.
+class EventPipelineQueue {
+  EventPipelineQueue({
+    required EventPipelineDb db,
+    int Function()? nowMs,
+    String Function()? newId,
+  })  : _db = db.database,
+        _nowMs = nowMs ?? _defaultNowMs,
+        _newId = newId ?? _defaultNewId;
+
+  final Database _db;
+  final int Function() _nowMs;
+  final String Function() _newId;
+
+  static int _defaultNowMs() => DateTime.now().millisecondsSinceEpoch;
+  static int _idCounter = 0;
+  static String _defaultNewId() =>
+      'pj-${DateTime.now().microsecondsSinceEpoch}-${_idCounter++}';
+
+  /// Enqueues a job, or returns the existing one for `(kind, mediaId)`.
+  ///
+  /// Idempotent by unique index, so a retried enqueue after a crash mid-advance
+  /// cannot create a duplicate. A previously **cancelled or failed** job for the
+  /// same pair is revived instead — that is what makes an operator retry work
+  /// without a second row appearing.
+  Future<PipelineJob> enqueue({
+    required String kind,
+    required String mediaId,
+    String? eventId,
+    Map<String, dynamic> payload = const <String, dynamic>{},
+  }) async {
+    final existing = await findFor(kind: kind, mediaId: mediaId);
+    if (existing != null) {
+      if (existing.isOpen) return existing;
+      return _revive(existing, payload: payload);
+    }
+
+    final now = _nowMs();
+    final job = PipelineJob(
+      id: _newId(),
+      kind: kind,
+      mediaId: mediaId,
+      eventId: eventId,
+      payload: payload,
+      status: PipelineJobStatus.pending,
+      createdAtMs: now,
+      updatedAtMs: now,
+    );
+    try {
+      await _db.insert('evp_pipeline_jobs', job.toRow());
+      return job;
+    } on DatabaseException catch (e) {
+      if (!e.isUniqueConstraintError()) rethrow;
+      final winner = await findFor(kind: kind, mediaId: mediaId);
+      if (winner == null) rethrow;
+      return winner;
+    }
+  }
+
+  Future<PipelineJob> _revive(
+    PipelineJob job, {
+    required Map<String, dynamic> payload,
+  }) async {
+    final now = _nowMs();
+    await _db.update(
+      'evp_pipeline_jobs',
+      <String, Object?>{
+        'status': PipelineJobStatus.pending,
+        'attempts': 0,
+        'next_attempt_at_ms': 0,
+        'last_error': null,
+        'payload_json': jsonEncode(payload),
+        'updated_at_ms': now,
+      },
+      where: 'id = ?',
+      whereArgs: [job.id],
+    );
+    return (await findById(job.id))!;
+  }
+
+  /// Claims up to [limit] jobs of [kind] that are due.
+  ///
+  /// Paused jobs are skipped without consuming attempts — a printer out of
+  /// ribbon must not exhaust the retry budget and fail a whole event.
+  Future<List<PipelineJob>> claimReady(String kind, {int limit = 4}) async {
+    final now = _nowMs();
+    final rows = await _db.query(
+      'evp_pipeline_jobs',
+      where: 'kind = ? AND status = ? AND next_attempt_at_ms <= ?',
+      whereArgs: [kind, PipelineJobStatus.pending, now],
+      orderBy: 'created_at_ms ASC',
+      limit: limit,
+    );
+    final claimed = <PipelineJob>[];
+    for (final row in rows) {
+      final job = PipelineJob.fromRow(row);
+      final n = await _db.update(
+        'evp_pipeline_jobs',
+        <String, Object?>{
+          'status': PipelineJobStatus.claimed,
+          'updated_at_ms': now,
+        },
+        // Re-check status so two drains racing cannot both claim the same job.
+        where: 'id = ? AND status = ?',
+        whereArgs: [job.id, PipelineJobStatus.pending],
+      );
+      if (n == 1) claimed.add(job);
+    }
+    return claimed;
+  }
+
+  Future<void> markDone(String id) async {
+    await _db.update(
+      'evp_pipeline_jobs',
+      <String, Object?>{
+        'status': PipelineJobStatus.done,
+        'last_error': null,
+        'updated_at_ms': _nowMs(),
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Records a failure and schedules the retry.
+  ///
+  /// A non-retryable error fails immediately; a retryable one backs off until
+  /// [PipelineBackoff.maxAttempts] is reached. Returns the resulting status.
+  Future<String> markFailed(
+    String id, {
+    required String error,
+    bool retryable = true,
+  }) async {
+    final job = await findById(id);
+    if (job == null) return PipelineJobStatus.failed;
+    final attempts = job.attempts + 1;
+    final now = _nowMs();
+    final exhausted = !retryable || PipelineBackoff.isExhausted(attempts);
+    final status =
+        exhausted ? PipelineJobStatus.failed : PipelineJobStatus.pending;
+    await _db.update(
+      'evp_pipeline_jobs',
+      <String, Object?>{
+        'status': status,
+        'attempts': attempts,
+        'next_attempt_at_ms':
+            exhausted ? 0 : PipelineBackoff.nextAttemptAt(now, attempts),
+        'last_error': error,
+        'updated_at_ms': now,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    return status;
+  }
+
+  /// Returns a claimed job to the queue **without** counting an attempt.
+  ///
+  /// For a precondition that is not the job's fault — an AI job whose media item
+  /// has no `remote_session_id` yet. Such items must wait, not burn retries.
+  Future<void> deferJob(String id, {Duration delay = const Duration(minutes: 1)}) async {
+    final now = _nowMs();
+    await _db.update(
+      'evp_pipeline_jobs',
+      <String, Object?>{
+        'status': PipelineJobStatus.pending,
+        'next_attempt_at_ms': now + delay.inMilliseconds,
+        'updated_at_ms': now,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Holds every open job of [kind] — e.g. the printer needs new media.
+  Future<int> pauseKind(String kind, {String? reason}) async {
+    return _db.update(
+      'evp_pipeline_jobs',
+      <String, Object?>{
+        'status': PipelineJobStatus.paused,
+        if (reason != null) 'last_error': reason,
+        'updated_at_ms': _nowMs(),
+      },
+      where: 'kind = ? AND status IN (?, ?)',
+      whereArgs: [kind, PipelineJobStatus.pending, PipelineJobStatus.claimed],
+    );
+  }
+
+  /// Releases a paused kind, clearing the backoff so work resumes immediately.
+  Future<int> resumeKind(String kind) async {
+    return _db.update(
+      'evp_pipeline_jobs',
+      <String, Object?>{
+        'status': PipelineJobStatus.pending,
+        'next_attempt_at_ms': 0,
+        'last_error': null,
+        'updated_at_ms': _nowMs(),
+      },
+      where: 'kind = ? AND status = ?',
+      whereArgs: [kind, PipelineJobStatus.paused],
+    );
+  }
+
+  /// Withdraws open jobs, e.g. the `ai` job of an item the operator skipped.
+  Future<int> cancelFor({required String kind, required String mediaId}) async {
+    return _db.update(
+      'evp_pipeline_jobs',
+      <String, Object?>{
+        'status': PipelineJobStatus.cancelled,
+        'updated_at_ms': _nowMs(),
+      },
+      where: 'kind = ? AND media_id = ? AND status IN (?, ?, ?)',
+      whereArgs: [
+        kind,
+        mediaId,
+        PipelineJobStatus.pending,
+        PipelineJobStatus.claimed,
+        PipelineJobStatus.paused,
+      ],
+    );
+  }
+
+  /// Requeues failed jobs of [kind] — the console's retry button.
+  Future<int> retryFailed(String kind) async {
+    return _db.update(
+      'evp_pipeline_jobs',
+      <String, Object?>{
+        'status': PipelineJobStatus.pending,
+        'attempts': 0,
+        'next_attempt_at_ms': 0,
+        'last_error': null,
+        'updated_at_ms': _nowMs(),
+      },
+      where: 'kind = ? AND status = ?',
+      whereArgs: [kind, PipelineJobStatus.failed],
+    );
+  }
+
+  // -------------------------------------------------------------------- reads
+
+  Future<PipelineJob?> findById(String id) async {
+    final rows = await _db.query(
+      'evp_pipeline_jobs',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return PipelineJob.fromRow(rows.first);
+  }
+
+  Future<PipelineJob?> findFor({
+    required String kind,
+    required String mediaId,
+  }) async {
+    final rows = await _db.query(
+      'evp_pipeline_jobs',
+      where: 'kind = ? AND media_id = ?',
+      whereArgs: [kind, mediaId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return PipelineJob.fromRow(rows.first);
+  }
+
+  Future<List<PipelineJob>> listByStatus(String kind, String status) async {
+    final rows = await _db.query(
+      'evp_pipeline_jobs',
+      where: 'kind = ? AND status = ?',
+      whereArgs: [kind, status],
+      orderBy: 'created_at_ms ASC',
+    );
+    return [for (final r in rows) PipelineJob.fromRow(r)];
+  }
+
+  Future<PipelineJobCounts> counts(String kind) async {
+    final rows = await _db.rawQuery(
+      'SELECT status, COUNT(*) AS n FROM evp_pipeline_jobs '
+      'WHERE kind = ? GROUP BY status',
+      [kind],
+    );
+    return PipelineJobCounts.fromStatusMap({
+      for (final r in rows)
+        (r['status'] ?? '').toString(): (r['n'] as int?) ?? 0,
+    });
+  }
+
+  /// True when at least one job of [kind] is waiting on a pause.
+  Future<bool> isKindPaused(String kind) async {
+    final rows = await _db.query(
+      'evp_pipeline_jobs',
+      columns: ['id'],
+      where: 'kind = ? AND status = ?',
+      whereArgs: [kind, PipelineJobStatus.paused],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
+}

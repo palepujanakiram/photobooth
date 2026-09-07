@@ -18,6 +18,7 @@ import '../../services/client_identification.dart';
 import '../../services/customer_session_lifecycle.dart';
 import '../../services/kiosk_manager.dart';
 import '../../services/event_manager.dart';
+import '../../services/event_pipeline/event_pipeline_config.dart';
 import '../../services/kiosk_device_status_service.dart';
 import '../../services/kiosk_outbox_worker.dart';
 import '../../services/local_kiosk_models.dart';
@@ -437,10 +438,17 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     final eventCode = await _event.getEventCode();
     final role = await _event.getStationRole();
     if (!mounted) return;
+    // Resolved rather than read from the sync snapshot: at first boot nothing
+    // has called resolve() yet, and defaulting to "off" would send an offline
+    // event's station to needsInternet.
+    final pipelineEnabled =
+        (await EventPipelineConfig().resolve()).pipelineEnabled;
+    if (!mounted) return;
     final dest = resolveEventPostSplashRoute(
       eventCode: eventCode,
       stationRole: role,
       wanAvailable: wanAvailable,
+      pipelineEnabled: pipelineEnabled,
     );
     if (dest == EventPostSplashRoute.needsInternet) {
       setState(() {
