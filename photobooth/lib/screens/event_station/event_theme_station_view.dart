@@ -7,8 +7,10 @@ import '../../services/event_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/event_station_chrome.dart';
+import '../../utils/event_station_timing.dart';
 import '../../views/widgets/app_scaffold.dart';
 import 'event_station_chrome_view_widgets.dart';
+import 'event_station_queue_view_widgets.dart';
 import 'event_station_view_widgets.dart';
 import 'event_theme_station_viewmodel.dart';
 
@@ -20,6 +22,31 @@ class EventThemeStationScreen extends StatelessWidget {
     if (!context.mounted) return;
     await Navigator.of(context)
         .pushReplacementNamed(AppConstants.kRouteEventStation);
+  }
+
+  Future<void> _confirmDrop(
+    BuildContext context,
+    EventThemeStationViewModel vm,
+    EventThemeStationJob job,
+  ) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text(AppStrings.eventStationDropConfirmTitle),
+        content: const Text(AppStrings.eventStationDropConfirmBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text(AppStrings.cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(AppStrings.eventStationDropOff),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) await vm.skipJob(job.id);
   }
 
   @override
@@ -52,6 +79,8 @@ class EventThemeStationScreen extends StatelessWidget {
                   EventStationStatusTabs(
                     selected: vm.statusFilter,
                     onSelected: vm.setStatusFilter,
+                    includeAll: true,
+                    allCount: vm.allJobs.length,
                     pendingCount: stationStatusCount(
                       vm.allJobs,
                       'PENDING',
@@ -83,25 +112,21 @@ class EventThemeStationScreen extends StatelessWidget {
                         ? const Center(
                             child: Text(AppStrings.eventStationEmptyTheme),
                           )
-                        : GridView.builder(
-                            gridDelegate:
-                                const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 3,
-                              childAspectRatio: 0.72,
-                              crossAxisSpacing: 8,
-                              mainAxisSpacing: 8,
-                            ),
+                        : ListView.builder(
                             itemCount: vm.filteredJobs.length,
                             itemBuilder: (context, i) {
                               final job = vm.filteredJobs[i];
-                              final url = job.previewUrls.isEmpty
-                                  ? ''
-                                  : job.previewUrls.first;
-                              return EventStationPhotoTile(
-                                imageUrl: url,
-                                status: job.status,
-                                onTap: job.status == 'PENDING' && !vm.isBusy
+                              return EventThemeQueueTile(
+                                job: job,
+                                busy: vm.isBusy,
+                                onStyle: job.status == 'PENDING'
                                     ? () => vm.claimJob(job.id)
+                                    : null,
+                                onDrop: job.canSkip
+                                    ? () => _confirmDrop(context, vm, job)
+                                    : null,
+                                onRetry: job.canRetry
+                                    ? () => vm.retryJob(job.id)
                                     : null,
                               );
                             },
@@ -196,6 +221,53 @@ class _ClaimedThemeBody extends StatelessWidget {
             child: const Text(AppStrings.eventStationAssignTheme),
           ),
         ),
+      ],
+    );
+  }
+}
+
+class EventThemeQueueTile extends StatelessWidget {
+  const EventThemeQueueTile({
+    super.key,
+    required this.job,
+    required this.busy,
+    this.onStyle,
+    this.onDrop,
+    this.onRetry,
+  });
+
+  final EventThemeStationJob job;
+  final bool busy;
+  final VoidCallback? onStyle;
+  final VoidCallback? onDrop;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = job.previewUrls.isEmpty ? '' : job.previewUrls.first;
+    return EventStationQueueRow(
+      imageUrl: url,
+      cacheId: job.sessionId,
+      statusLabel: eventStationDisplayStatus(job.status, job.times),
+      timingLabel: eventStationRowTiming(job.times),
+      failed: job.times.isFailed,
+      onTap: busy ? null : onStyle,
+      actions: [
+        if (onStyle != null)
+          TextButton(
+            onPressed: busy ? null : onStyle,
+            child: const Text(AppStrings.eventStationStyleThis),
+          ),
+        if (onRetry != null)
+          TextButton(
+            onPressed: busy ? null : onRetry,
+            child: const Text(AppStrings.eventStationReprocess),
+          ),
+        if (onDrop != null)
+          TextButton(
+            onPressed: busy ? null : onDrop,
+            child: const Text(AppStrings.eventStationDropOff),
+          ),
       ],
     );
   }

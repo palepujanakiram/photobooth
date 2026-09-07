@@ -87,7 +87,8 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
       final resolvedUrl = SecureImageUrl.absolutize(widget.imageUrl);
       final securedUrl = SecureImageUrl.withSessionId(resolvedUrl);
 
-      if (ProtectedImageLoader.isProtectedUrl(resolvedUrl)) {
+      // Web cannot send kiosk auth headers via Image.network.
+      if (kIsWeb && ProtectedImageLoader.isProtectedUrl(resolvedUrl)) {
         final bytes = await ProtectedImageLoader.instance.fetchBytes(
           resolvedUrl,
         );
@@ -110,6 +111,22 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
         cacheKey: widget.cacheKey,
       );
       if (await _tryUseCachedFile(cachedFile)) {
+        return;
+      }
+
+      if (ProtectedImageLoader.isProtectedUrl(resolvedUrl)) {
+        final file = await _cacheService.cacheImage(
+          securedUrl,
+          cacheKey: widget.cacheKey,
+        );
+        if (await _tryUseCachedFile(file)) {
+          return;
+        }
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+        });
         return;
       }
 

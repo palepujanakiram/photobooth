@@ -20,10 +20,12 @@ Future<bool> syncClassicPhotosEnabled({
     final KioskInfoModel? info = await api.fetchKioskByCode(code);
     if (info != null) {
       await kiosk.setClassicPhotosEnabled(info.classicPhotosEnabled);
+      await kiosk.setAiPhotosEnabled(info.aiPhotosEnabled);
       await kiosk.setClassicShotModes(info.classicShotModes);
       await kiosk.setOperatingModeOffline(info.isOperatingModeOffline);
       AppLogger.debug(
         'Classic photos enabled synced from API: ${info.classicPhotosEnabled} '
+        'aiPhotosEnabled=${info.aiPhotosEnabled} '
         'shotModes=${info.classicShotModes} '
         'operatingMode=${info.operatingMode} (kiosk=$code)',
       );

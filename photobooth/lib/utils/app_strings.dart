@@ -850,6 +850,13 @@ abstract final class AppStrings {
   static const eventStationStatusPending = 'PENDING';
   static const eventStationStatusClaimed = 'CLAIMED';
   static const eventStationStatusDone = 'DONE';
+  static const eventStationStatusAll = 'ALL';
+  static const eventStationDropOff = 'Drop';
+  static const eventStationReprocess = 'Retry';
+  static const eventStationDropConfirmTitle = 'Drop this photo?';
+  static const eventStationDropConfirmBody =
+      'It will leave the Theme queue and will not use an AI run.';
+  static const eventStationStyleThis = 'Style';
   static const eventStationStyleNext = 'Style next guest';
   static const eventStationEmptyCaptures = 'No captured photos yet.';
   static const eventStationEmptyTheme = 'No photos in this status.';

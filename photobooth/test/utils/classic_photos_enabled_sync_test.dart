@@ -14,6 +14,7 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     await KioskManager().clearClassicPhotosEnabled();
+    await KioskManager().clearAiPhotosEnabled();
     await KioskManager().clearOperatingModeOffline();
     await KioskManager().clearKioskCode();
     KioskManager.resetClassicPhotosCacheForTests();
@@ -79,12 +80,14 @@ void main() {
         'id': 'k1',
         'code': 'FOTO',
         'classicPhotosEnabled': true,
+        'aiPhotosEnabled': false,
         'operatingMode': 'offline',
       }),
     );
 
     await syncClassicPhotosEnabled(api: api, kiosk: km);
     expect(await km.isOperatingModeOffline(), isTrue);
+    expect(await km.isAiPhotosEnabled(), isFalse);
   });
 
   test('syncClassicPhotosEnabled falls back to cache when API throws', () async {

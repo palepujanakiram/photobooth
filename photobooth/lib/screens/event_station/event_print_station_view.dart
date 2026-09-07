@@ -7,9 +7,11 @@ import '../../services/event_manager.dart';
 import '../../services/print_service.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
+import '../../utils/event_station_timing.dart';
 import '../../views/widgets/app_scaffold.dart';
 import 'event_print_station_viewmodel.dart';
 import 'event_station_chrome_view_widgets.dart';
+import 'event_station_queue_view_widgets.dart';
 import 'event_station_view_widgets.dart';
 
 class EventPrintStationScreen extends StatelessWidget {
@@ -61,6 +63,8 @@ class EventPrintStationScreen extends StatelessWidget {
                   EventStationStatusTabs(
                     selected: vm.statusFilter,
                     onSelected: vm.setStatusFilter,
+                    includeAll: true,
+                    allCount: vm.allJobs.length,
                     pendingCount: stationStatusCount(
                       vm.allJobs,
                       'PENDING',
@@ -92,21 +96,19 @@ class EventPrintStationScreen extends StatelessWidget {
                         ? const Center(
                             child: Text(AppStrings.eventStationEmptyPrint),
                           )
-                        : GridView.builder(
-                            gridDelegate:
-                                const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 2,
-                              childAspectRatio: 0.68,
-                              crossAxisSpacing: 8,
-                              mainAxisSpacing: 8,
-                            ),
+                        : ListView.builder(
                             itemCount: vm.filteredJobs.length,
                             itemBuilder: (context, i) {
                               final job = vm.filteredJobs[i];
-                              return EventStationPhotoTile(
-                                imageUrl: job.imageUrl,
-                                status: job.status,
-                                footer: _PrintTileActions(viewModel: vm, job: job),
+                              return EventPrintQueueTile(
+                                job: job,
+                                busy: vm.isBusy,
+                                onPrint: job.status == 'PENDING'
+                                    ? () => vm.printJob(job)
+                                    : null,
+                                onReprint: job.canReissue
+                                    ? () => vm.reissueJob(job)
+                                    : null,
                               );
                             },
                           ),
@@ -130,26 +132,40 @@ class EventPrintStationScreen extends StatelessWidget {
   }
 }
 
-class _PrintTileActions extends StatelessWidget {
-  const _PrintTileActions({required this.viewModel, required this.job});
+class EventPrintQueueTile extends StatelessWidget {
+  const EventPrintQueueTile({
+    super.key,
+    required this.job,
+    required this.busy,
+    this.onPrint,
+    this.onReprint,
+  });
 
-  final EventPrintStationViewModel viewModel;
   final EventPrintStationJob job;
+  final bool busy;
+  final VoidCallback? onPrint;
+  final VoidCallback? onReprint;
 
   @override
   Widget build(BuildContext context) {
-    if (job.canReissue) {
-      return TextButton(
-        onPressed: viewModel.isBusy ? null : () => viewModel.reissueJob(job),
-        child: const Text(AppStrings.eventStationReprint),
-      );
-    }
-    if (job.status == 'PENDING') {
-      return TextButton(
-        onPressed: viewModel.isBusy ? null : () => viewModel.printJob(job),
-        child: const Text(AppStrings.eventStationPrintNow),
-      );
-    }
-    return const SizedBox.shrink();
+    return EventStationQueueRow(
+      imageUrl: job.imageUrl,
+      cacheId: job.id,
+      statusLabel: eventStationDisplayStatus(job.status, job.times),
+      timingLabel: eventStationRowTiming(job.times),
+      failed: job.times.isFailed,
+      actions: [
+        if (onPrint != null)
+          TextButton(
+            onPressed: busy ? null : onPrint,
+            child: const Text(AppStrings.eventStationPrintNow),
+          ),
+        if (onReprint != null)
+          TextButton(
+            onPressed: busy ? null : onReprint,
+            child: const Text(AppStrings.eventStationReprint),
+          ),
+      ],
+    );
   }
 }

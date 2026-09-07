@@ -9,6 +9,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     await KioskManager().clearPaymentEnabledOverride();
     await KioskManager().clearClassicPhotosEnabled();
+    await KioskManager().clearAiPhotosEnabled();
     await KioskManager().clearOperatingModeOffline();
     await KioskManager().clearKioskCode();
     KioskManager.resetPaymentOverrideCacheForTests();
@@ -51,6 +52,23 @@ void main() {
     await km.clearClassicPhotosEnabled();
     KioskManager.resetClassicPhotosCacheForTests();
     expect(await km.isClassicPhotosEnabled(), isTrue);
+  });
+
+  test('AI photos defaults true and persists', () async {
+    final km = KioskManager();
+    expect(await km.isAiPhotosEnabled(), isTrue);
+    await km.setAiPhotosEnabled(false);
+    expect(await km.isAiPhotosEnabled(), isFalse);
+    KioskManager.resetClassicPhotosCacheForTests();
+    expect(await km.isAiPhotosEnabled(), isFalse);
+    await km.clearAiPhotosEnabled();
+    KioskManager.resetClassicPhotosCacheForTests();
+    expect(await km.isAiPhotosEnabled(), isTrue);
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('kiosk_ai_photos_enabled', false);
+    KioskManager.resetClassicPhotosCacheForTests();
+    expect(await km.isAiPhotosEnabled(), isFalse);
   });
 
   test('operating mode defaults online and persists offline', () async {

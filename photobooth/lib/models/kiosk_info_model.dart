@@ -12,6 +12,10 @@ class KioskInfoModel {
   /// Defaults to true when the API omits the field.
   final bool classicPhotosEnabled;
 
+  /// When false, kiosk hides FotoZen AI and stays on Classic.
+  /// Defaults to true when the API omits the field.
+  final bool aiPhotosEnabled;
+
   /// Classic shot counts offered on the experience screen (1, 3, and/or 4).
   final List<int> classicShotModes;
 
@@ -38,6 +42,7 @@ class KioskInfoModel {
     this.accountId,
     this.paymentEnabled,
     this.classicPhotosEnabled = true,
+    this.aiPhotosEnabled = true,
     this.classicShotModes = const [1, 3, 4],
     this.initialPrice,
     this.additionalPrintPrice,
@@ -65,7 +70,9 @@ class KioskInfoModel {
     final rawClassic =
         json['classicPhotosEnabled'] ?? json['classic_photos_enabled'];
     // Missing/null → enabled (legacy kiosks / older API builds).
-    final classicEnabled = _parseClassicPhotosEnabled(rawClassic);
+    final classicEnabled = _parseEnabledDefaultTrue(rawClassic);
+    final rawAi = json['aiPhotosEnabled'] ?? json['ai_photos_enabled'];
+    final aiEnabled = _parseEnabledDefaultTrue(rawAi);
     final modes = _parseClassicShotModes(
       json['classicShotModes'] ?? json['classic_shot_modes'],
     );
@@ -78,6 +85,7 @@ class KioskInfoModel {
       accountId: json['accountId']?.toString(),
       paymentEnabled: payment,
       classicPhotosEnabled: classicEnabled,
+      aiPhotosEnabled: aiEnabled,
       classicShotModes: modes,
       initialPrice: parsePrice(json['initialPrice']),
       additionalPrintPrice: parsePrice(json['additionalPrintPrice']),
@@ -99,6 +107,7 @@ class KioskInfoModel {
         if (accountId != null) 'accountId': accountId,
         if (paymentEnabled != null) 'paymentEnabled': paymentEnabled,
         'classicPhotosEnabled': classicPhotosEnabled,
+        'aiPhotosEnabled': aiPhotosEnabled,
         'classicShotModes': classicShotModes,
         if (initialPrice != null) 'initialPrice': initialPrice,
         if (additionalPrintPrice != null)
@@ -109,7 +118,7 @@ class KioskInfoModel {
       };
 
   /// Accepts bool, 0/1, and common string flags from admin/API payloads.
-  static bool _parseClassicPhotosEnabled(dynamic raw) {
+  static bool _parseEnabledDefaultTrue(dynamic raw) {
     if (raw == null) return true;
     if (raw is bool) return raw;
     if (raw is num) return raw != 0;

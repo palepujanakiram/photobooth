@@ -135,6 +135,7 @@ void main() {
       accountId: 'a1',
       paymentEnabled: false,
       classicPhotosEnabled: false,
+      aiPhotosEnabled: false,
       initialPrice: 100,
       additionalPrintPrice: 50,
       regenerationPrice: 75,
@@ -149,6 +150,7 @@ void main() {
     expect(again.accountId, original.accountId);
     expect(again.paymentEnabled, original.paymentEnabled);
     expect(again.classicPhotosEnabled, original.classicPhotosEnabled);
+    expect(again.aiPhotosEnabled, original.aiPhotosEnabled);
     expect(again.initialPrice, original.initialPrice);
     expect(again.additionalPrintPrice, original.additionalPrintPrice);
     expect(again.regenerationPrice, original.regenerationPrice);
@@ -179,6 +181,29 @@ void main() {
       'classicShotModes': [1, 3.2, '4', 'nope'],
     });
     expect(m.classicShotModes, [1, 3, 4]);
+  });
+
+  test('KioskInfoModel aiPhotosEnabled defaults true and parses false', () {
+    expect(
+      KioskInfoModel.fromJson({'id': 'k1', 'code': 'ABC'}).aiPhotosEnabled,
+      isTrue,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'aiPhotosEnabled': false,
+      }).aiPhotosEnabled,
+      isFalse,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'ai_photos_enabled': 'off',
+      }).aiPhotosEnabled,
+      isFalse,
+    );
   });
 
   test('KioskInfoModel classicPhotosEnabled defaults and parses false', () {
