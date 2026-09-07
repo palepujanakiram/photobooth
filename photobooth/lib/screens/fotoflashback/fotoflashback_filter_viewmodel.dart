@@ -220,13 +220,12 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
 
   List<StripFilter> get filters => _catalog?.filters ?? const [];
 
-  /// Sheet layouts have exactly four hardcoded slots — hide them whenever this
-  /// session did not shoot four (Classic 1-shot 6×4 and the 3-shot strip).
+  /// Sheet layouts need four cells. Occasion 6×2 templates are filtered to
+  /// the matching shot count (`fr:` / `st:` = 4, `f3:` = 3, `ai:` = 1).
   List<StripFrame> get frames {
     final all = _catalog?.frames ?? const <StripFrame>[];
-    if (supportsSheetLayouts) return all;
     return all
-        .where((f) => !isStripSheetLayout(f.id))
+        .where((f) => classicFrameVisibleForShotCount(f, shotCount))
         .toList(growable: false);
   }
   List<StripSticker> get stickers => _catalog?.stickers ?? const [];
@@ -466,10 +465,12 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
           !filters.any((f) => f.id == _selectedFilterId)) {
         _selectedFilterId = filters.first.id;
       }
-      if (frames.isNotEmpty &&
-          (!frames.any((f) => f.id == _selectedFrameId) ||
-              (!supportsSheetLayouts && isStripSheetLayout(_selectedFrameId)))) {
-        _selectedFrameId = frames.first.id;
+      if (frames.isNotEmpty) {
+        _selectedFrameId = preferredClassicFrameId(
+          frames: frames,
+          shotCount: shotCount,
+          selectedId: _selectedFrameId,
+        );
       }
       if (stickers.isNotEmpty &&
           !stickers.any((s) => s.id == _selectedStickerId) &&
@@ -697,7 +698,9 @@ if (graded.length == _expectedCaptureCount) {
   }
 
   void selectFrame(String frameId) {
-    if (!supportsSheetLayouts && isStripSheetLayout(frameId)) return;
+    if (!classicFrameIdVisibleForShotCount(frameId, shotCount)) {
+      return;
+    }
     if (frameId == _selectedFrameId) return;
     final wasSheet = isStripSheetLayout(_selectedFrameId);
     final nowSheet = isStripSheetLayout(frameId);

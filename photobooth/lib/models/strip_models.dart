@@ -60,8 +60,19 @@ const List<String> kStripSheetLayoutIds = [
 bool isStripSheetLayout(String frameId) =>
     kStripSheetLayoutIds.contains(frameId);
 
-/// Admin scrapbook templates use catalog ids `st:<uuid>`.
-bool isStripTemplateFrame(String frameId) => frameId.startsWith('st:');
+/// Admin scrapbook templates (`st:`), occasion 4-shot 6×2 (`fr:`), 3-shot (`f3:`).
+bool isStripTemplateFrame(String frameId) =>
+    frameId.startsWith('st:') ||
+    frameId.startsWith('fr:') ||
+    frameId.startsWith('f3:');
+
+/// Occasion-frame Classic 1-shot using the same AI overlay PNG (`ai:`).
+bool isOccasionFrameId(String frameId) =>
+    frameId.startsWith('ai:') && frameId.length > 3;
+
+/// Classic 3-shot 6×2 occasion variant (`f3:`).
+bool isStrip3TemplateFrame(String frameId) =>
+    frameId.startsWith('f3:') && frameId.length > 3;
 
 const List<String> kStripStickerIds = [
   'none',
@@ -242,19 +253,26 @@ class StripFrame {
     this.overlayUrl,
     this.caption,
     this.logoUrl,
+    this.shotCount,
   });
 
   final String id;
   final String name;
   final String description;
 
-  /// `template` for admin scrapbook strips; null/builtin otherwise.
+  /// `template` for admin scrapbook strips; `occasion` for 1-shot AI overlay.
   final String? kind;
   final String? overlayUrl;
   final String? caption;
   final String? logoUrl;
 
+  /// `1` (6×4), `3` or `4` (6×2). Null for builtins shown on every shot count
+  /// except sheet layouts (those use [isStripSheetLayout]).
+  final int? shotCount;
+
   bool get isTemplate => kind == 'template' || isStripTemplateFrame(id);
+
+  bool get isOccasion => kind == 'occasion' || isOccasionFrameId(id);
 
   factory StripFrame.fromJson(Map<String, dynamic> json) {
     return StripFrame(
@@ -265,8 +283,73 @@ class StripFrame {
       overlayUrl: JsonParseHelpers.stringOrNull(json['overlayUrl']),
       caption: JsonParseHelpers.stringOrNull(json['caption']),
       logoUrl: JsonParseHelpers.stringOrNull(json['logoUrl']),
+      shotCount: JsonParseHelpers.intOrNull(json['shotCount']),
     );
   }
+}
+
+/// Shot count this catalog frame is for, inferred from id when [StripFrame.shotCount]
+/// is omitted. Null means a builtin valid on every Classic shot count except
+/// sheet layouts (those always require four shots).
+int? classicFrameCatalogShotCount(StripFrame frame) {
+  if (frame.shotCount == 1 ||
+      frame.shotCount == kStripShotCountThree ||
+      frame.shotCount == kStripShotCount) {
+    return frame.shotCount;
+  }
+  if (isOccasionFrameId(frame.id)) return 1;
+  if (isStrip3TemplateFrame(frame.id)) return kStripShotCountThree;
+  if (isStripTemplateFrame(frame.id) || isStripSheetLayout(frame.id)) {
+    return kStripShotCount;
+  }
+  return null;
+}
+
+bool classicFrameIdVisibleForShotCount(String frameId, int shotCount) {
+  return classicFrameVisibleForShotCount(
+    StripFrame(id: frameId, name: frameId, description: ''),
+    shotCount,
+  );
+}
+
+bool classicFrameVisibleForShotCount(StripFrame frame, int shotCount) {
+  final catalog = classicFrameCatalogShotCount(frame);
+  if (catalog == null) return true;
+  return catalog == shotCount;
+}
+
+/// Occasion / 6×2 variant matching [shotCount], if the catalog includes one.
+String? preferredOccasionFrameId(Iterable<StripFrame> frames, int shotCount) {
+  for (final frame in frames) {
+    if (!classicFrameVisibleForShotCount(frame, shotCount)) continue;
+    if (shotCount == 1 && isOccasionFrameId(frame.id)) return frame.id;
+    if (shotCount == kStripShotCountThree && isStrip3TemplateFrame(frame.id)) {
+      return frame.id;
+    }
+    if (shotCount == kStripShotCount &&
+        frame.id.startsWith('fr:') &&
+        frame.id.length > 3) {
+      return frame.id;
+    }
+  }
+  return null;
+}
+
+/// Keep the current pick when it is still valid; otherwise first occasion
+/// variant for this shot count, else the first visible frame.
+String preferredClassicFrameId({
+  required Iterable<StripFrame> frames,
+  required int shotCount,
+  required String selectedId,
+}) {
+  final visible = frames
+      .where((f) => classicFrameVisibleForShotCount(f, shotCount))
+      .toList(growable: false);
+  if (visible.isEmpty) return selectedId;
+  final selectedOk = visible.any((f) => f.id == selectedId);
+  if (selectedOk && selectedId != kDefaultStripFrameId) return selectedId;
+  return preferredOccasionFrameId(visible, shotCount) ??
+      (selectedOk ? selectedId : visible.first.id);
 }
 
 /// Sticker pack option from `GET /api/strip/filters`.

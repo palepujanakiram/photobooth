@@ -145,6 +145,7 @@ class FotoFlashbackStripPreview extends StatelessWidget {
                   imageJpegBytes.isNotEmpty ? imageJpegBytes.first : null,
               filterId: filterId,
               frameId: frameId,
+              overlayUrl: isOccasionFrameId(frameId) ? frameOverlayUrl : null,
               imagesAreGraded: imagesAreGraded,
               placements: placements,
               scribbles: scribbles,
@@ -981,6 +982,7 @@ class _Single6x4Preview extends StatelessWidget {
     required this.imageDataUrl,
     required this.filterId,
     required this.frameId,
+    this.overlayUrl,
     required this.imagesAreGraded,
     required this.placements,
     required this.scribbles,
@@ -999,6 +1001,7 @@ class _Single6x4Preview extends StatelessWidget {
   final Uint8List? jpegBytes;
   final String filterId;
   final String frameId;
+  final String? overlayUrl;
   final bool imagesAreGraded;
   final List<StripStickerPlacement> placements;
   final List<StripScribbleStroke> scribbles;
@@ -1012,6 +1015,9 @@ class _Single6x4Preview extends StatelessWidget {
   final VoidCallback? onScribbleEnd;
 
   Color get _matte {
+    if (overlayUrl != null && overlayUrl!.trim().isNotEmpty) {
+      return const Color(0xFF121212);
+    }
     if (frameId == 'noir') return const Color(0xFF111111);
     return Colors.white;
   }
@@ -1039,6 +1045,9 @@ class _Single6x4Preview extends StatelessWidget {
             child: photo,
           );
 
+    final overlay = overlayUrl?.trim() ?? '';
+    final hasOverlay = overlay.isNotEmpty;
+    final photoPad = hasOverlay ? 0.0 : margin;
     return Container(
       key: ValueKey<String>('single6x4_$frameId'),
       width: width,
@@ -1048,16 +1057,26 @@ class _Single6x4Preview extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           Padding(
-            padding: EdgeInsets.all(margin),
+            padding: EdgeInsets.all(photoPad),
             child: ColoredBox(
               // Dark well so a slow decode never reads as an empty white card.
               color: const Color(0xFF121212),
               child: photoLayer,
             ),
           ),
-          if (frameId == 'filmstrip')
+          if (frameId == 'filmstrip' && !hasOverlay)
             CustomPaint(
               painter: _SingleFilmstripSprocketPainter(margin: margin),
+            ),
+          if (hasOverlay)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CachedNetworkImage(
+                  imageUrl: overlay,
+                  fit: BoxFit.fill,
+                  filterQuality: FilterQuality.high,
+                ),
+              ),
             ),
           if (placements.isNotEmpty)
             for (final p in placements)

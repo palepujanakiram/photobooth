@@ -356,4 +356,177 @@ void main() {
     expect(frame.caption, 'Date night');
     expect(isStripSheetLayout(frame.id), isFalse);
   });
+
+  test('StripFrame treats occasion-frame 6x2 ids as templates', () {
+    final frame = StripFrame.fromJson({
+      'id': 'fr:frame-uuid',
+      'name': 'DPS 6×2',
+      'description': 'Classic strip',
+      'kind': 'template',
+      'overlayUrl': 'https://example.com/6x2.png',
+    });
+    expect(frame.isTemplate, isTrue);
+    expect(isStripTemplateFrame(frame.id), isTrue);
+    expect(isStripTemplateFrame('classic'), isFalse);
+    expect(isStripSheetLayout(frame.id), isFalse);
+  });
+
+  test('StripFrame treats 3-shot 6x2 and 1-shot occasion ids', () {
+    final three = StripFrame.fromJson({
+      'id': 'f3:frame-uuid',
+      'name': 'DPS 3-shot 6×2',
+      'description': 'Classic strip',
+      'kind': 'template',
+      'overlayUrl': 'https://example.com/6x2-3.png',
+      'shotCount': 3,
+    });
+    expect(three.isTemplate, isTrue);
+    expect(isStrip3TemplateFrame(three.id), isTrue);
+    expect(isStripTemplateFrame(three.id), isTrue);
+    expect(three.shotCount, 3);
+    expect(classicFrameCatalogShotCount(three), 3);
+    expect(classicFrameVisibleForShotCount(three, 3), isTrue);
+    expect(classicFrameVisibleForShotCount(three, 4), isFalse);
+
+    final one = StripFrame.fromJson({
+      'id': 'ai:frame-uuid',
+      'name': 'DPS',
+      'description': 'AI overlay',
+      'kind': 'occasion',
+      'overlayUrl': 'https://example.com/ai.png',
+      'shotCount': 1,
+    });
+    expect(one.isOccasion, isTrue);
+    expect(isOccasionFrameId(one.id), isTrue);
+    expect(isStripTemplateFrame(one.id), isFalse);
+    expect(classicFrameVisibleForShotCount(one, 1), isTrue);
+    expect(classicFrameVisibleForShotCount(one, 4), isFalse);
+    expect(isOccasionFrameId('ai:'), isFalse);
+    expect(isStrip3TemplateFrame('f3:'), isFalse);
+  });
+
+  test('preferredClassicFrameId picks occasion variants over classic', () {
+    const frames = [
+      StripFrame(id: 'classic', name: 'Classic', description: 'White'),
+      StripFrame(id: 'noir', name: 'Noir', description: 'Black'),
+      StripFrame(
+        id: 'ai:f1',
+        name: 'DPS',
+        description: 'AI',
+        kind: 'occasion',
+        shotCount: 1,
+      ),
+      StripFrame(
+        id: 'f3:f1',
+        name: 'DPS 3',
+        description: '3-shot',
+        kind: 'template',
+        shotCount: 3,
+      ),
+      StripFrame(
+        id: 'fr:f1',
+        name: 'DPS 6×2',
+        description: '4-shot',
+        kind: 'template',
+        shotCount: 4,
+      ),
+      StripFrame(id: 'grid_2x2', name: '2×2', description: 'Sheet'),
+    ];
+    expect(
+      preferredClassicFrameId(
+        frames: frames,
+        shotCount: 1,
+        selectedId: kDefaultStripFrameId,
+      ),
+      'ai:f1',
+    );
+    expect(
+      preferredClassicFrameId(
+        frames: frames,
+        shotCount: 3,
+        selectedId: kDefaultStripFrameId,
+      ),
+      'f3:f1',
+    );
+    expect(
+      preferredClassicFrameId(
+        frames: frames,
+        shotCount: 4,
+        selectedId: kDefaultStripFrameId,
+      ),
+      'fr:f1',
+    );
+    expect(
+      preferredClassicFrameId(
+        frames: frames,
+        shotCount: 1,
+        selectedId: 'noir',
+      ),
+      'noir',
+    );
+    expect(preferredOccasionFrameId(frames, 1), 'ai:f1');
+    expect(preferredOccasionFrameId(const <StripFrame>[], 4), isNull);
+    expect(
+      preferredClassicFrameId(
+        frames: const <StripFrame>[],
+        shotCount: 4,
+        selectedId: 'classic',
+      ),
+      'classic',
+    );
+    expect(
+      preferredClassicFrameId(
+        frames: const [
+          StripFrame(id: 'classic', name: 'Classic', description: 'White'),
+        ],
+        shotCount: 4,
+        selectedId: kDefaultStripFrameId,
+      ),
+      'classic',
+    );
+    expect(
+      preferredClassicFrameId(
+        frames: const [
+          StripFrame(id: 'classic', name: 'Classic', description: 'White'),
+        ],
+        shotCount: 4,
+        selectedId: 'missing',
+      ),
+      'classic',
+    );
+    expect(
+      classicFrameCatalogShotCount(
+        const StripFrame(id: 'ai:x', name: 'A', description: ''),
+      ),
+      1,
+    );
+    expect(
+      classicFrameCatalogShotCount(
+        const StripFrame(id: 'f3:x', name: 'A', description: ''),
+      ),
+      3,
+    );
+    expect(
+      classicFrameCatalogShotCount(
+        const StripFrame(id: 'fr:x', name: 'A', description: ''),
+      ),
+      4,
+    );
+    expect(
+      classicFrameCatalogShotCount(
+        const StripFrame(id: 'grid_2x2', name: 'A', description: ''),
+      ),
+      4,
+    );
+    expect(
+      classicFrameCatalogShotCount(
+        const StripFrame(id: 'classic', name: 'A', description: '', shotCount: 2),
+      ),
+      isNull,
+    );
+    expect(classicFrameIdVisibleForShotCount('grid_2x2', 1), isFalse);
+    expect(classicFrameIdVisibleForShotCount('classic', 1), isTrue);
+    expect(classicFrameIdVisibleForShotCount('st:tpl', 4), isTrue);
+    expect(classicFrameIdVisibleForShotCount('st:tpl', 3), isFalse);
+  });
 }

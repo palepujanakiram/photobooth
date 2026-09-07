@@ -972,6 +972,49 @@ void main() {
     expect(vm.stickerPlacements, hasLength(1));
   });
 
+  test('FotoFlashbackFilterViewModel filters occasion frames by shot count',
+      () async {
+    final api = _TemplateFramesFakeApi();
+    final three = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(3, 'data:image/jpeg;base64,/9j/4AAQ'),
+      apiService: api,
+    );
+    await three.loadFilters();
+    expect(three.supportsSheetLayouts, isFalse);
+    expect(three.frames.any((f) => f.id.startsWith('st:')), isFalse);
+    expect(three.frames.any((f) => f.id.startsWith('fr:')), isFalse);
+    expect(three.frames.any((f) => f.id.startsWith('ai:')), isFalse);
+    expect(three.frames.any((f) => f.id == 'f3:frame-1'), isTrue);
+    expect(three.selectedFrameId, 'f3:frame-1');
+    three.selectFrame('fr:frame-1');
+    expect(three.selectedFrameId, isNot('fr:frame-1'));
+
+    final four = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
+      apiService: api,
+    );
+    await four.loadFilters();
+    expect(four.frames.any((f) => f.id == 'fr:frame-1'), isTrue);
+    expect(four.frames.any((f) => f.id.startsWith('f3:')), isFalse);
+    expect(four.selectedFrameId, 'fr:frame-1');
+    four.selectFrame('fr:frame-1');
+    expect(four.selectedFrameId, 'fr:frame-1');
+
+    final one = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: const ['data:image/jpeg;base64,/9j/4AAQ'],
+      apiService: api,
+    );
+    await one.loadFilters();
+    expect(one.frames.any((f) => f.id == 'ai:frame-1'), isTrue);
+    expect(one.frames.any((f) => f.id.startsWith('fr:')), isFalse);
+    expect(one.selectedFrameId, 'ai:frame-1');
+    one.selectFrame('f3:frame-1');
+    expect(one.selectedFrameId, isNot('f3:frame-1'));
+  });
+
   test('FotoFlashbackFilterViewModel refreshPreviewGrade no-ops off strip count',
       () async {
     final single = FotoFlashbackFilterViewModel(
@@ -1835,6 +1878,61 @@ class _SheetFramesFakeApi extends _StripFakeApi {
       'layout': {
         'grid2x2': {'title': 'Together', 'subtitle': 'Moments'},
       },
+    });
+  }
+}
+
+class _TemplateFramesFakeApi extends _StripFakeApi {
+  @override
+  Future<StripFiltersCatalog> fetchStripFilters() async {
+    return StripFiltersCatalog.fromJson({
+      'brand': 'FotoFlashback',
+      'shotCount': 4,
+      'filters': [
+        {
+          'id': 'classic_warm',
+          'name': 'Classic Warm',
+          'description': 'Warm',
+          'cssFilter': 'none',
+        },
+      ],
+      'frames': [
+        {'id': 'classic', 'name': 'Classic', 'description': 'White'},
+        {
+          'id': 'st:tpl-1',
+          'name': 'Date night',
+          'description': 'Scrapbook',
+          'kind': 'template',
+          'overlayUrl': 'https://example.com/st.png',
+        },
+        {
+          'id': 'fr:frame-1',
+          'name': 'DPS 6×2',
+          'description': 'Occasion strip',
+          'kind': 'template',
+          'overlayUrl': 'https://example.com/fr.png',
+          'shotCount': 4,
+        },
+        {
+          'id': 'f3:frame-1',
+          'name': 'DPS 3-shot 6×2',
+          'description': 'Occasion 3-shot strip',
+          'kind': 'template',
+          'overlayUrl': 'https://example.com/f3.png',
+          'shotCount': 3,
+        },
+        {
+          'id': 'ai:frame-1',
+          'name': 'DPS',
+          'description': 'AI overlay',
+          'kind': 'occasion',
+          'overlayUrl': 'https://example.com/ai.png',
+          'shotCount': 1,
+        },
+      ],
+      'stickers': [
+        {'id': 'none', 'name': 'None', 'description': 'None'},
+      ],
     });
   }
 }
