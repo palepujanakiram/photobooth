@@ -136,6 +136,29 @@ void main() {
     expect(EventChrome.fromJson({'description': '  '}).tagline, isNull);
   });
 
+  test('fromCache requires a matching valid event map', () {
+    expect(EventInfoModel.fromCache('nope', expectedCode: 'GALA'), isNull);
+    expect(EventInfoModel.fromCache({'id': '', 'code': 'GALA'}, expectedCode: 'GALA'), isNull);
+    expect(
+      EventInfoModel.fromCache(
+        {'id': 'e1', 'code': 'PARTY'},
+        expectedCode: 'GALA',
+      ),
+      isNull,
+    );
+    final ok = EventInfoModel.fromCache(
+      {
+        'id': 'e1',
+        'code': 'gala-01',
+        'name': 'Priya & Arjun',
+        'skin': {'id': 'wedding-gold'},
+      },
+      expectedCode: 'GALA-01',
+    );
+    expect(ok?.name, 'Priya & Arjun');
+    expect(ok?.chrome.skin.id, 'wedding-gold');
+  });
+
   test('parseRgbHex reads 6-digit colors', () {
     expect(parseRgbHex('#E3A65C'), 0xE3A65C);
     expect(parseRgbHex('0E7490'), 0x0E7490);

@@ -2,12 +2,19 @@ import 'package:flutter/material.dart';
 
 import '../../models/event_info_model.dart';
 import '../../screens/theme_selection/theme_model.dart';
+import '../../services/api_service.dart';
 import '../../services/event_manager.dart';
+import '../../services/kiosk_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/event_station_chrome.dart';
 import '../../utils/theme_image_urls.dart';
 import '../../views/widgets/cached_network_image.dart';
+
+Future<EventInfoModel?> fetchBoundEventLive(String code) async {
+  final kiosk = await KioskManager().getKioskCode();
+  return ApiService().fetchEventByCode(code, kioskCode: kiosk);
+}
 
 class EventStationChromeScope extends InheritedWidget {
   const EventStationChromeScope({
@@ -38,15 +45,20 @@ class EventStationBoundShell extends StatelessWidget {
     super.key,
     required this.child,
     this.eventManager,
+    this.fetchBoundEvent,
   });
 
   final Widget child;
   final EventManager? eventManager;
+  final Future<EventInfoModel?> Function(String code)? fetchBoundEvent;
 
   @override
   Widget build(BuildContext context) {
+    final em = eventManager ?? EventManager();
     return FutureBuilder<EventInfoModel?>(
-      future: (eventManager ?? EventManager()).readBoundEvent(),
+      future: em.hydrateBoundEvent(
+        fetchLive: fetchBoundEvent ?? fetchBoundEventLive,
+      ),
       builder: (context, snapshot) {
         return EventStationChromeFrame(event: snapshot.data, child: child);
       },
@@ -68,21 +80,27 @@ class EventStationChromeFrame extends StatelessWidget {
   Widget build(BuildContext context) {
     final bound = event;
     if (bound == null || !bound.isValid) return child;
+    final wash = Color(
+      eventChromeBannerFromArgb(bound.chrome.skin),
+    ).withValues(alpha: 0.08);
     return EventStationChromeScope(
       event: bound,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: EventStationBrandingHeader(event: bound),
-          ),
-          Expanded(child: child),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: EventStationPoweredByFooter(),
-          ),
-        ],
+      child: ColoredBox(
+        color: wash,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: EventStationBrandingHeader(event: bound),
+            ),
+            Expanded(child: child),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: EventStationPoweredByFooter(),
+            ),
+          ],
+        ),
       ),
     );
   }

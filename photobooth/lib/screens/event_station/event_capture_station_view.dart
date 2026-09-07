@@ -9,7 +9,6 @@ import '../../utils/constants.dart';
 import '../../utils/event_bulk_import.dart';
 import '../../views/widgets/app_scaffold.dart';
 import '../../views/widgets/app_snackbar.dart';
-import '../../views/widgets/cached_network_image.dart';
 import 'event_capture_station_view_widgets.dart';
 import 'event_capture_station_viewmodel.dart';
 import 'event_station_chrome_view_widgets.dart';
@@ -78,8 +77,10 @@ class EventCaptureStationScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   EventStationStatsBar(stats: vm.stats, delivery: vm.delivery),
-                  const SizedBox(height: 12),
-                  EventStationImageCarousel(urls: vm.carouselUrls),
+                  if (vm.carouselUrls.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    EventStationImageCarousel(urls: vm.carouselUrls),
+                  ],
                   const SizedBox(height: 12),
                   EventStationStatusTabs(
                     selected: vm.statusFilter,
@@ -101,25 +102,7 @@ class EventCaptureStationScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  if (vm.hasImportTray) ...[
-                    Expanded(child: EventCaptureImportTray(viewModel: vm)),
-                    const SizedBox(height: 8),
-                  ],
-                  Expanded(
-                    child: vm.filteredCaptures.isEmpty
-                        ? const Center(
-                            child: Text(AppStrings.eventStationEmptyCaptures),
-                          )
-                        : ListView.separated(
-                            itemCount: vm.filteredCaptures.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(height: 8),
-                            itemBuilder: (context, i) {
-                              final item = vm.filteredCaptures[i];
-                              return _CaptureTile(item: item);
-                            },
-                          ),
-                  ),
+                  Expanded(child: EventCaptureStationPane(viewModel: vm)),
                   if (vm.hasError)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
@@ -140,31 +123,6 @@ class EventCaptureStationScreen extends StatelessWidget {
         ),
         ),
       ),
-    );
-  }
-}
-
-class _CaptureTile extends StatelessWidget {
-  const _CaptureTile({required this.item});
-
-  final EventCaptureStationItem item;
-
-  @override
-  Widget build(BuildContext context) {
-    final thumb = item.previewUrls.isEmpty ? null : item.previewUrls.first;
-    return ListTile(
-      leading: thumb == null
-          ? null
-          : SizedBox(
-              width: 56,
-              height: 56,
-              child: CachedNetworkImage(
-                imageUrl: thumb,
-                fit: BoxFit.cover,
-              ),
-            ),
-      title: Text(item.status),
-      subtitle: Text(item.sessionId),
     );
   }
 }

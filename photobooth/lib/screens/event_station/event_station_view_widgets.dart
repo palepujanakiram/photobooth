@@ -154,10 +154,7 @@ class _EventStationImageCarouselState extends State<EventStationImageCarousel> {
   @override
   Widget build(BuildContext context) {
     if (widget.urls.isEmpty) {
-      return const SizedBox(
-        height: 180,
-        child: Center(child: Text(AppStrings.eventStationEmptyCaptures)),
-      );
+      return const SizedBox.shrink();
     }
     return Column(
       children: [

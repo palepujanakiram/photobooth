@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/models/event_info_model.dart';
 import 'package:photobooth/screens/splash/app_splash_event_helpers.dart';
+import 'package:photobooth/services/catalog_disk_cache.dart';
 import 'package:photobooth/services/event_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -95,6 +96,23 @@ void main() {
         catalog: EventInfoCatalog(themeCount: 2),
       ),
     );
+    final err = await bindSplashEventCode(
+      eventManager: mgr,
+      fetchEvent: (_, __) async => null,
+      eventCode: 'wed',
+      kioskCode: 'K1',
+    );
+    expect(err, isNull);
+    expect(await mgr.getEventCode(), 'WED');
+  });
+
+  test('offline resume when only the event code is stored', () async {
+    final mgr = EventManager(
+      diskCache: CatalogDiskCache(
+        resolveDirectory: () async => throw StateError('no disk'),
+      ),
+    );
+    await mgr.setEventCode('WED');
     final err = await bindSplashEventCode(
       eventManager: mgr,
       fetchEvent: (_, __) async => null,

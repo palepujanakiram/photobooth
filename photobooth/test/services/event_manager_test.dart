@@ -149,4 +149,114 @@ void main() {
     EventManager.resetCacheForTests();
     expect(await em.readBoundEvent(), isNull);
   });
+
+  test('readBoundEvent uses prefs when disk cache is unavailable', () async {
+    final em = EventManager(
+      diskCache: CatalogDiskCache(
+        resolveDirectory: () async => throw StateError('no disk'),
+      ),
+    );
+    await em.setEventCode('GALA-01');
+    expect(await em.readBoundEvent(), isNull);
+
+    await em.cacheVerifyResult(
+      const EventInfoModel(
+        id: 'e1',
+        code: 'GALA-01',
+        name: 'Priya & Arjun',
+        photoMode: 'BOTH',
+        chrome: EventChrome(
+          tagline: 'Wedding celebration',
+          skin: EventSkinChrome(id: 'wedding-gold'),
+        ),
+      ),
+    );
+    EventManager.resetCacheForTests();
+    final bound = await em.readBoundEvent();
+    expect(bound?.name, 'Priya & Arjun');
+    expect(bound?.chrome.skin.id, 'wedding-gold');
+    expect(bound?.description, 'Wedding celebration');
+
+    await em.setEventCode('OTHER');
+    expect(await em.readBoundEvent(), isNull);
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('event_bound_json', '{');
+    await em.setEventCode('GALA-01');
+    EventManager.resetCacheForTests();
+    expect(await em.readBoundEvent(), isNull);
+
+    await prefs.setString('event_bound_json', '   ');
+    EventManager.resetCacheForTests();
+    expect(await em.readBoundEvent(), isNull);
+  });
+
+  test('hydrateBoundEvent uses cache and does not fetch', () async {
+    final em = EventManager(
+      diskCache: CatalogDiskCache(
+        resolveDirectory: () async => throw StateError('no disk'),
+      ),
+    );
+    await em.cacheVerifyResult(
+      const EventInfoModel(id: 'e1', code: 'PARTY', photoMode: 'BOTH'),
+    );
+    var fetched = 0;
+    final bound = await em.hydrateBoundEvent(
+      fetchLive: (code) async {
+        fetched += 1;
+        return null;
+      },
+    );
+    expect(fetched, 0);
+    expect(bound?.code, 'PARTY');
+  });
+
+  test('hydrateBoundEvent fetches when prefs have only the code', () async {
+    final em = EventManager(
+      diskCache: CatalogDiskCache(
+        resolveDirectory: () async => throw StateError('no disk'),
+      ),
+    );
+    expect(await em.hydrateBoundEvent(), isNull);
+    await em.setEventCode('GALA-01');
+    expect(await em.hydrateBoundEvent(), isNull);
+
+    var fetchedCode = '';
+    final bound = await em.hydrateBoundEvent(
+      fetchLive: (code) async {
+        fetchedCode = code;
+        return const EventInfoModel(
+          id: 'e1',
+          code: 'GALA-01',
+          name: 'Priya & Arjun',
+          chrome: EventChrome(skin: EventSkinChrome(id: 'wedding-gold')),
+        );
+      },
+    );
+    expect(fetchedCode, 'GALA-01');
+    expect(bound?.name, 'Priya & Arjun');
+    expect((await em.readBoundEvent())?.chrome.skin.id, 'wedding-gold');
+  });
+
+  test('hydrateBoundEvent ignores failed or invalid live fetches', () async {
+    final em = EventManager(
+      diskCache: CatalogDiskCache(
+        resolveDirectory: () async => throw StateError('no disk'),
+      ),
+    );
+    await em.setEventCode('GALA-01');
+    expect(await em.hydrateBoundEvent(fetchLive: (_) async => null), isNull);
+    expect(
+      await em.hydrateBoundEvent(
+        fetchLive: (_) async => throw StateError('net'),
+      ),
+      isNull,
+    );
+    expect(
+      await em.hydrateBoundEvent(
+        fetchLive: (_) async => const EventInfoModel(id: '', code: 'GALA-01'),
+      ),
+      isNull,
+    );
+  });
 }

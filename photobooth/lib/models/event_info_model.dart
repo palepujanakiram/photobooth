@@ -127,6 +127,17 @@ class EventInfoModel {
 
   bool get isValid => id.trim().isNotEmpty && code.trim().isNotEmpty;
 
+  /// Reconstruct a bound event from disk or SharedPreferences JSON.
+  static EventInfoModel? fromCache(Object? raw, {required String expectedCode}) {
+    if (raw is! Map) return null;
+    final event = EventInfoModel.fromJson(Map<String, dynamic>.from(raw));
+    if (!event.isValid) return null;
+    if (event.code.trim().toUpperCase() != expectedCode.trim().toUpperCase()) {
+      return null;
+    }
+    return event;
+  }
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'code': code,

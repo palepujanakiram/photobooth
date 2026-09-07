@@ -1,8 +1,32 @@
 import 'package:flutter/material.dart';
 
+import '../../models/event_station_models.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/event_bulk_import.dart';
+import '../../views/widgets/cached_network_image.dart';
 import 'event_capture_station_viewmodel.dart';
+
+class EventCaptureStationPane extends StatelessWidget {
+  const EventCaptureStationPane({super.key, required this.viewModel});
+
+  final EventCaptureStationViewModel viewModel;
+
+  @override
+  Widget build(BuildContext context) {
+    if (viewModel.hasImportTray) {
+      return EventCaptureImportTray(viewModel: viewModel);
+    }
+    final items = viewModel.filteredCaptures;
+    if (items.isEmpty) {
+      return const Center(child: Text(AppStrings.eventStationEmptyCaptures));
+    }
+    return ListView.separated(
+      itemCount: items.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (context, i) => _CaptureTile(item: items[i]),
+    );
+  }
+}
 
 class EventCaptureImportTray extends StatelessWidget {
   const EventCaptureImportTray({super.key, required this.viewModel});
@@ -143,6 +167,31 @@ class _ImportThumb extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _CaptureTile extends StatelessWidget {
+  const _CaptureTile({required this.item});
+
+  final EventCaptureStationItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final thumb = item.previewUrls.isEmpty ? null : item.previewUrls.first;
+    return ListTile(
+      leading: thumb == null
+          ? null
+          : SizedBox(
+              width: 56,
+              height: 56,
+              child: CachedNetworkImage(
+                imageUrl: thumb,
+                fit: BoxFit.cover,
+              ),
+            ),
+      title: Text(item.status),
+      subtitle: Text(item.sessionId),
     );
   }
 }
