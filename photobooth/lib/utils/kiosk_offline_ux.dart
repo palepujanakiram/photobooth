@@ -61,9 +61,10 @@ abstract final class KioskOfflineUx {
 
   /// Compose on-device instead of Fly `composeStrip`.
   ///
-  /// Online compose timeouts stay failures (existing UX). Network, 5xx, and
-  /// 4xx (rejected body / unknown session / missing theme) fall back to a
-  /// baked look so Continue still prints.
+  /// Timeouts are not treated as WAN-down here (the ViewModel may still bake
+  /// locally after a compose timeout). Network, 5xx, and 4xx (rejected body /
+  /// unknown session / missing theme) fall back to a baked look so Continue
+  /// still prints.
   static bool shouldUseLocalStripLook({
     required bool sessionOffline,
     Object? error,

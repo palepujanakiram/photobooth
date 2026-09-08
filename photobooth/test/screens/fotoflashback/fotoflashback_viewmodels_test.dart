@@ -56,6 +56,8 @@ void main() {
   setUp(() {
     ClassicStripScrubCoordinator.instance.resetForTests();
     SessionManager().clearSession();
+    FotoFlashbackFilterViewModel.composePrepareJoinTimeoutForTest =
+        const Duration(seconds: 2);
     FotoFlashbackFilterViewModel.composeWarmJoinTimeoutForTest =
         const Duration(seconds: 45);
     debugGuestMediaFetchBytes = (_) async {
@@ -66,6 +68,8 @@ void main() {
   tearDown(() {
     ClassicStripScrubCoordinator.instance.resetForTests();
     SessionManager().clearSession();
+    FotoFlashbackFilterViewModel.composePrepareJoinTimeoutForTest =
+        const Duration(seconds: 2);
     FotoFlashbackFilterViewModel.composeWarmJoinTimeoutForTest =
         const Duration(seconds: 45);
     debugGuestMediaFetchBytes = null;
@@ -1475,7 +1479,9 @@ void main() {
       );
       late GeneratedImage? image;
       unawaited(vm.compose().then((v) => image = v));
-      async.elapse(const Duration(seconds: 45));
+      async.elapse(
+        FotoFlashbackFilterViewModel.composePrepareJoinTimeoutForTest,
+      );
       async.flushMicrotasks();
       // After prepare timeout, composeStrip still runs (skipBake for 4-shot).
       async.elapse(const Duration(milliseconds: 10));
@@ -1492,7 +1498,7 @@ void main() {
       final api = _HangingComposeOnlyFakeApi();
       final vm = FotoFlashbackFilterViewModel(
         theme: stripTheme,
-        imageDataUrls: List.filled(4, 'data:image/jpeg;base64,shot'),
+        imageDataUrls: List.filled(4, 'data:image/jpeg;base64,@@@'),
         apiService: api,
         overlayCleanupAlreadyDone: true,
         overlayCleanupBuildGate: false,

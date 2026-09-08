@@ -30,6 +30,11 @@ import '../theme_selection/theme_model.dart';
 
 /// Loads strip looks and composes the dual strip (Gemini AF polish on shots).
 class FotoFlashbackFilterViewModel extends ChangeNotifier {
+  /// Join in-flight Gemini polish on Continue. Keep this short so
+  /// "Building your strip" is not blocked for [composeWarmJoinTimeoutForTest].
+  @visibleForTesting
+  static Duration composePrepareJoinTimeoutForTest = const Duration(seconds: 2);
+
   /// Shorten warm-join wait in unit tests (production: 45s).
   @visibleForTesting
   static Duration composeWarmJoinTimeoutForTest = const Duration(seconds: 45);
@@ -989,9 +994,9 @@ if (graded.length == _expectedCaptureCount) {
       // Join the first look-screen polish so print matches preview. Do not
       // start a second Gemini pass on Continue (felt like the CTA vanished).
       await preparePreview().timeout(
-        composeWarmJoinTimeoutForTest,
+        composePrepareJoinTimeoutForTest,
         onTimeout: () {
-          AppLogger.warning('Classic preparePreview timed out on compose');
+          AppLogger.warning('Classic preparePreview skipped on compose');
         },
       );
     }
@@ -1079,6 +1084,10 @@ if (graded.length == _expectedCaptureCount) {
         error: e,
         stackTrace: st,
       );
+      // Timeouts are not WAN-down, but Continue should still print if the
+      // on-device sheet can bake from the stills already on disk.
+      final local = await _completeLocalLook();
+      if (local != null) return local;
       _errorMessage = AppStrings.flashbackComposeFailed;
       return null;
     } on ApiException catch (e) {
