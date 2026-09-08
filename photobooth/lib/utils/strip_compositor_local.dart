@@ -177,7 +177,8 @@ Uint8List _composeLocalStripSheetIsolate(_LocalStripIsolateInput input) {
   );
 }
 
-/// Test hook for cell resize. Production Classic cells cover-fill the slot.
+/// Test hook for cell resize. Classic 1-shot chrome contain-fits; strip
+/// cells cover-fill.
 @visibleForTesting
 img.Image? prepareLocalStripCellForTest(
   Uint8List bytes,
@@ -221,11 +222,17 @@ Uint8List composeLocalStripSheetJpegForTest({
     if (overlay != null) {
       _drawOccasionSingle(sheet, sourceBytes.single, matrix, overlay);
     } else {
+      final hole = resolveClassicSinglePhotoHole(
+        hasOverlay: false,
+        landscape: landscape,
+      );
       _drawSourceIntoCell(
         sheet,
         sourceBytes.single,
         matrix,
-        _CellRect(0, 0, width, height),
+        _normalizedCell(width, height, hole, 0, 0),
+        contain: true,
+        letterbox: background,
       );
     }
   } else if (overlay != null) {
@@ -287,7 +294,10 @@ void _drawOccasionSingle(
     _normalizedCell(
       sheet.width,
       sheet.height,
-      occasionSinglePhotoHole(overlay.slots),
+      occasionSinglePhotoHole(
+        overlay.slots,
+        landscape: sheet.width > sheet.height,
+      ),
       0,
       0,
     ),

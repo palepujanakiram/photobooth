@@ -484,6 +484,10 @@ void main() {
       defaultOccasionSinglePhotoHole,
     );
     expect(
+      occasionSinglePhotoHole(const <StripTemplateSlot>[], landscape: true),
+      defaultClassicLandscapePhotoHole,
+    );
+    expect(
       classicOccasionOverlayUrl(
         overlayUrl: 'https://cdn/p.png',
         landscapeOverlayUrl: 'https://cdn/l.png',
@@ -541,7 +545,7 @@ void main() {
         landscape: true,
         hasLandscapeOverlay: true,
       ),
-      isEmpty,
+      const [defaultClassicLandscapePhotoHole],
     );
     final catalogHole = occasionSinglePhotoHole(const [
       StripTemplateSlot(left: 0.1, top: 0.2, width: 0.8, height: 0.5),
@@ -550,6 +554,24 @@ void main() {
     expect(catalogHole.top, 0.2);
     expect(catalogHole.width, 0.8);
     expect(catalogHole.height, 0.5);
+    expect(
+      resolveClassicSinglePhotoHole(
+        hasOverlay: false,
+        landscape: true,
+      ),
+      defaultClassicLandscapePhotoHole,
+    );
+    expect(
+      resolveClassicSinglePhotoHole(
+        hasOverlay: false,
+        landscape: false,
+      ).left,
+      kClassicSingleMatteRatio,
+    );
+    expect(
+      classicBuiltInSinglePhotoHole(landscape: false),
+      isNull,
+    );
     expect(
       const StripTemplateSlot(
         left: 0.1,

@@ -509,6 +509,49 @@ void main() {
     expect(coverTall!.height, 40);
   });
 
+  test('Classic 1-shot contain-fits a landscape capture on 4x6', () {
+    final jpeg = composeLocalStripSheetJpegForTest(
+      sourceBytes: [_solidJpeg(20, 200, 20, width: 80, height: 20)],
+      filterId: 'clean',
+      frameId: 'classic',
+      single: true,
+    );
+    final decoded = img.decodeJpg(jpeg)!;
+    expect(decoded.width, kLocalStripSheetWidth);
+    expect(decoded.height, kLocalStripSheetHeight);
+    final margin =
+        (kLocalStripSheetWidth * kClassicSingleMatteRatio).round();
+    final above = decoded.getPixel(kLocalStripSheetWidth ~/ 2, margin + 8);
+    expect(above.r, greaterThan(240));
+    final plate = decoded.getPixel(
+      kLocalStripSheetWidth ~/ 2,
+      kLocalStripSheetHeight ~/ 2,
+    );
+    expect(plate.g, greaterThan(150));
+  });
+
+  test('Classic 1-shot landscape keeps chrome in the matte around the photo', () {
+    final jpeg = composeLocalStripSheetJpegForTest(
+      sourceBytes: [_solidJpeg(20, 200, 20, width: 80, height: 20)],
+      filterId: 'clean',
+      frameId: 'classic',
+      single: true,
+      landscape: true,
+    );
+    final decoded = img.decodeJpg(jpeg)!;
+    expect(decoded.width, kLocalStripSheetHeight);
+    expect(decoded.height, kLocalStripSheetWidth);
+    final hole = defaultClassicLandscapePhotoHole;
+    final matteY = (hole.top * decoded.height * 0.4).round();
+    final matte = decoded.getPixel(decoded.width ~/ 2, matteY);
+    expect(matte.r, greaterThan(240));
+    final photo = decoded.getPixel(
+      (hole.left * decoded.width + hole.width * decoded.width / 2).round(),
+      (hole.top * decoded.height + hole.height * decoded.height / 2).round(),
+    );
+    expect(photo.g, greaterThan(150));
+  });
+
   test('landscape plates cover-fill 3-shot and 4-shot classic cells', () {
     for (final shotCount in [kStripShotCountThree, kStripShotCount]) {
       _expectLandscapeCoverInClassicCells(shotCount);

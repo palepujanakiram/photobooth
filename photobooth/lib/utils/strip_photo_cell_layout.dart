@@ -22,13 +22,18 @@ class StripPhotoCellRect {
 
 /// Whether a strip cell letterboxes the capture instead of filling the window.
 ///
-/// Always false: Classic 1/3/4-shot and sheet layouts cover-fill the slot.
-/// [frameId] and [shotCount] stay in the signature so preview/print share one hook.
+/// Classic 1-shot chrome (no occasion overlay) contain-fits so a landscape
+/// webcam still is not side-cropped into 4×6. Multi-shot and occasion holes
+/// still cover-fill their designed windows.
 bool stripPhotoCellUsesContainFit(
   String frameId, {
   int shotCount = kStripShotCount,
 }) {
-  return frameId.isEmpty && shotCount < 0;
+  if (shotCount != 1) return false;
+  if (isOccasionFrameId(frameId) || isStripTemplateFrame(frameId)) {
+    return false;
+  }
+  return true;
 }
 
 /// Letterbox well behind contain-fit cells (matches print chrome fill).

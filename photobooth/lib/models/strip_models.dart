@@ -22,6 +22,9 @@ const List<int> kClassicStripShotCounts = <int>[
   kStripShotCount,
 ];
 
+/// Matte inset for Classic / Noir / Filmstrip 1-shot (preview + local print).
+const double kClassicSingleMatteRatio = 0.027;
+
 /// Shot counts `/strip/compose` accepts: 1 (6×4 / 4×6) or a 2×6 strip length.
 bool isValidClassicComposeShotCount(int count) =>
     count == 1 || kClassicStripShotCounts.contains(count);
@@ -177,10 +180,48 @@ const StripTemplateSlot defaultOccasionSinglePhotoHole = StripTemplateSlot(
   height: 0.60,
 );
 
-/// Catalog hole for Classic 1-shot occasion overlay, else [defaultOccasionSinglePhotoHole].
-StripTemplateSlot occasionSinglePhotoHole(List<StripTemplateSlot> slots) {
+/// Landscape 6×4 photo window (~16:9) so chrome stays in the matte, not on faces.
+const StripTemplateSlot defaultClassicLandscapePhotoHole = StripTemplateSlot(
+  left: 0.07,
+  top: 0.14,
+  width: 0.86,
+  height: 0.72,
+);
+
+/// Catalog hole for Classic 1-shot occasion overlay, else orientation default.
+StripTemplateSlot occasionSinglePhotoHole(
+  List<StripTemplateSlot> slots, {
+  bool landscape = false,
+}) {
   if (slots.length == 1) return slots.first;
-  return defaultOccasionSinglePhotoHole;
+  return landscape
+      ? defaultClassicLandscapePhotoHole
+      : defaultOccasionSinglePhotoHole;
+}
+
+/// Built-in Classic / Noir / Filmstrip 1-shot: inset well on 6×4, thin matte on 4×6.
+StripTemplateSlot? classicBuiltInSinglePhotoHole({required bool landscape}) {
+  if (!landscape) return null;
+  return defaultClassicLandscapePhotoHole;
+}
+
+/// Photo window for Classic 1-shot preview/print (occasion hole or built-in matte).
+StripTemplateSlot resolveClassicSinglePhotoHole({
+  required bool hasOverlay,
+  required bool landscape,
+  StripTemplateSlot? overlayHole,
+}) {
+  if (hasOverlay) {
+    return overlayHole ??
+        occasionSinglePhotoHole(const [], landscape: landscape);
+  }
+  return classicBuiltInSinglePhotoHole(landscape: landscape) ??
+      const StripTemplateSlot(
+        left: kClassicSingleMatteRatio,
+        top: kClassicSingleMatteRatio,
+        width: 1 - 2 * kClassicSingleMatteRatio,
+        height: 1 - 2 * kClassicSingleMatteRatio,
+      );
 }
 
 /// Portrait 4×6 overlay, or the dedicated 6×4 PNG when [landscape] is true.
@@ -203,7 +244,9 @@ List<StripTemplateSlot> classicOccasionOverlaySlots({
   required bool hasLandscapeOverlay,
 }) {
   if (landscape && hasLandscapeOverlay) {
-    return landscapeSlots.length == 1 ? landscapeSlots : const [];
+    return landscapeSlots.length == 1
+        ? landscapeSlots
+        : const [defaultClassicLandscapePhotoHole];
   }
   return slots;
 }

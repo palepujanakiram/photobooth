@@ -90,7 +90,11 @@ void main() {
       );
       expect(
         stripPhotoCellUsesContainFit('classic', shotCount: 1),
-        isFalse,
+        isTrue,
+      );
+      expect(
+        stripPhotoCellUsesContainFit('filmstrip', shotCount: 1),
+        isTrue,
       );
       expect(
         stripPhotoCellUsesContainFit('ai:dps', shotCount: 1),
