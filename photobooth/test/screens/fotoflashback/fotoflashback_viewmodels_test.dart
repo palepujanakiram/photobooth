@@ -807,7 +807,7 @@ void main() {
     expect(image, isNotNull);
     expect(image!.imageUrl, isNotEmpty);
     expect(api.composeCalls, 0);
-    expect(SessionManager().isOfflineSession, isTrue);
+    expect(SessionManager().isOfflineSession, isFalse);
     await vm.refreshComposePreview();
     expect(api.composeCalls, 0);
     vm.dispose();

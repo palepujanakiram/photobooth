@@ -690,17 +690,19 @@ abstract final class AppStrings {
   static const offlineFrameOnlyMessage =
       'AI needs internet. You can still print this photo — '
       'try Classic while waiting to reconnect.';
-  static const offlineCashOnlyMessage =
-      'UPI needs internet. Pay cash at the counter.';
   static const offlineCashOnlyWaiting =
-      'Pay cash at the counter. Staff confirm here to start printing.';
-  static const counterCashOnlyMessage =
-      'Staff collects cash at the counter.';
+      'Staff confirm here after collecting cash.';
   static const counterCashOnlyWaiting =
-      'Pay cash at the counter. Staff confirm under Payments to start printing.';
+      'Staff confirm in Payments to start printing.';
+  static const counterCashAppBarSubtitle = 'Cash at the counter';
+  static const wanDownCashAppBarSubtitle = 'No internet for UPI';
+  static const payScanToComplete = 'Scan to complete your purchase';
+  static const payUpiIntro =
+      'Scan the QR code to pay with UPI.\n'
+      'Printing starts automatically after payment is approved.';
   static const offlineGiftCardUnavailable =
       'Gift cards and coupons need internet.';
-  static const offlinePayAtCounterTitle = 'Pay at counter';
+  static const offlinePayAtCounterTitle = 'Offline payment';
   static const offlineCashConfirmStaffCta = 'Staff: cash received';
   static const offlineCashConfirmSheetTitle = 'Confirm cash received';
   static const offlineCashConfirmSheetBody =

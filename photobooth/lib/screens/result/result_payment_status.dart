@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import '../../utils/app_strings.dart';
+import '../../utils/payment_workflow_helpers.dart';
 import 'result_viewmodel.dart';
 
 /// User-facing status line and color under the UPI QR on [ResultScreen].
@@ -45,11 +45,10 @@ class ResultPaymentStatusPresentation {
       );
     }
     if (viewModel.collectsCounterCash) {
-      final waiting = viewModel.cashOnlyOffline
-          ? AppStrings.offlineCashOnlyWaiting
-          : AppStrings.counterCashOnlyWaiting;
       return ResultPaymentStatusPresentation(
-        statusMessage: waiting,
+        statusMessage: payScreenCashStatus(
+          sessionOffline: viewModel.cashOnlyOffline,
+        ),
         statusMessageColor: Colors.white70,
       );
     }

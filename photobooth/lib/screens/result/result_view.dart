@@ -426,7 +426,10 @@ class _ResultScreenState extends State<ResultScreen> {
           child: Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: Text(
-              _payScreenSubtitle(viewModel),
+              payScreenAppBarSubtitle(
+                collectsCounterCash: viewModel.collectsCounterCash,
+                sessionOffline: viewModel.cashOnlyOffline,
+              ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
@@ -619,28 +622,15 @@ class _ResultScreenState extends State<ResultScreen> {
     );
   }
 
-  String _payScreenSubtitle(ResultViewModel viewModel) {
-    if (!viewModel.collectsCounterCash) {
-      return 'Scan to complete your purchase';
-    }
-    if (viewModel.cashOnlyOffline) return AppStrings.offlineCashOnlyWaiting;
-    return AppStrings.counterCashOnlyWaiting;
-  }
-
-  String _payScreenGuestMessage(ResultViewModel viewModel) {
-    if (!viewModel.collectsCounterCash) {
-      return 'Scan the QR code to pay with UPI.\n'
-          'Printing starts automatically after payment is approved.';
-    }
-    if (viewModel.cashOnlyOffline) return AppStrings.offlineCashOnlyMessage;
-    return AppStrings.counterCashOnlyMessage;
-  }
-
   Widget _buildTitleSection(AppColors appColors, ResultViewModel viewModel) {
+    final intro = payScreenIntroMessage(
+      collectsCounterCash: viewModel.collectsCounterCash,
+    );
+    if (intro == null) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(top: 0, bottom: 2),
       child: Text(
-        _payScreenGuestMessage(viewModel),
+        intro,
         maxLines: 3,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
@@ -827,7 +817,10 @@ class _ResultScreenState extends State<ResultScreen> {
                 onGetHelp: () => _showGetHelpDialog(viewModel),
                 refreshPollingChild: _buildRefreshPollingChild(),
                 buildQrArea: _buildPaymentQrArea,
-                onStaffCashConfirm: viewModel.cashOnlyOffline
+                onStaffCashConfirm: payScreenShowsStaffPinConfirm(
+                  sessionOffline: viewModel.cashOnlyOffline,
+                  isWeb: kIsWeb,
+                )
                     ? () => unawaited(
                           showOfflineCashConfirmSheet(
                             context: context,

@@ -1,7 +1,6 @@
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 
-import '../../utils/app_strings.dart';
 import '../../views/widgets/kiosk_payment_qr_display.dart';
 import 'result_viewmodel.dart';
 
@@ -31,23 +30,10 @@ class ResultPaymentQrArea extends StatelessWidget {
     if (vm.collectsCounterCash) {
       return Padding(
         padding: const EdgeInsets.all(12),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.payments_outlined,
-              size: 48,
-              color: Colors.grey.shade600,
-            ),
-            const SizedBox(height: 10),
-            Text(
-              vm.cashOnlyOffline
-                  ? AppStrings.offlineCashOnlyMessage
-                  : AppStrings.counterCashOnlyMessage,
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: Colors.grey.shade800),
-            ),
-          ],
+        child: Icon(
+          Icons.payments_outlined,
+          size: 48,
+          color: Colors.grey.shade600,
         ),
       );
     }

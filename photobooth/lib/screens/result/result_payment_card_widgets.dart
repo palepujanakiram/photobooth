@@ -82,7 +82,7 @@ class ResultPaymentCardColumn extends StatelessWidget {
             onApply: viewModel.applyCoupon,
             onUnapply: viewModel.unapplyCoupon,
           )
-        else
+        else if (viewModel.cashOnlyOffline)
           const Padding(
             padding: EdgeInsets.only(bottom: 6),
             child: Text(

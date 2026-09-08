@@ -1024,11 +1024,7 @@ if (graded.length == _expectedCaptureCount) {
       _errorMessage = null;
       notifyListeners();
       try {
-        final image = await _completeLocalLook();
-        if (image != null && _eventPrintIsLocal) {
-          _sessionManager.markSessionOffline();
-        }
-        return image;
+        return _completeLocalLook();
       } finally {
         _composing = false;
         notifyListeners();
