@@ -59,6 +59,20 @@ abstract final class KioskOfflineUx {
   }) =>
       shouldSkipAiGeneration(sessionOffline: sessionOffline, error: error);
 
+  /// Event Classic: capture, stamp chrome, print. Continue does not POST
+  /// `/strip/compose` or wait on Gemini polish.
+  static bool classicEventPrintIsLocal = true;
+
+  /// True when Pick-a-look Continue should bake the sheet on-device.
+  static bool shouldComposeClassicOnDevice({
+    required bool sessionOffline,
+    bool? eventPrintIsLocal,
+  }) {
+    final eventLocal = eventPrintIsLocal ?? classicEventPrintIsLocal;
+    return eventLocal ||
+        shouldUseLocalStripLook(sessionOffline: sessionOffline);
+  }
+
   /// Compose on-device instead of Fly `composeStrip`.
   ///
   /// Timeouts are not treated as WAN-down here (the ViewModel may still bake

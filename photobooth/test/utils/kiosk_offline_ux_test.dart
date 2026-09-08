@@ -267,4 +267,32 @@ void main() {
     expect(totals.cashCount, 2);
     expect(totals.cashAmount, 200);
   });
+
+  test('shouldComposeClassicOnDevice follows event-print flag', () {
+    expect(
+      KioskOfflineUx.shouldComposeClassicOnDevice(sessionOffline: false),
+      isTrue,
+    );
+    expect(
+      KioskOfflineUx.shouldComposeClassicOnDevice(
+        sessionOffline: false,
+        eventPrintIsLocal: true,
+      ),
+      isTrue,
+    );
+    expect(
+      KioskOfflineUx.shouldComposeClassicOnDevice(
+        sessionOffline: false,
+        eventPrintIsLocal: false,
+      ),
+      isFalse,
+    );
+    expect(
+      KioskOfflineUx.shouldComposeClassicOnDevice(
+        sessionOffline: true,
+        eventPrintIsLocal: false,
+      ),
+      isTrue,
+    );
+  });
 }
