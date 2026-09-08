@@ -443,9 +443,15 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
               dataUrl: i < imageDataUrls.length ? imageDataUrls[i] : '',
               fit: photoFit,
               alignment: photoFit == BoxFit.cover
-                  ? coverPhotoAlignmentForWindow(
-                      cells[i].width,
-                      cells[i].height,
+                  ? _coverSlotAlignment(
+                      width: cells[i].width,
+                      height: cells[i].height,
+                      jpegBytes: i < imageJpegBytes.length
+                          ? imageJpegBytes[i]
+                          : null,
+                      dataUrl: i < imageDataUrls.length
+                          ? imageDataUrls[i]
+                          : '',
                     )
                   : Alignment.center,
               cacheWidth: cacheW,
@@ -909,6 +915,19 @@ Uint8List? _tryBytesFromDataUrl(String dataUrl) {
   }
 }
 
+Alignment _coverSlotAlignment({
+  required double width,
+  required double height,
+  Uint8List? jpegBytes,
+  String dataUrl = '',
+}) {
+  return coverPhotoAlignmentForJpeg(
+    windowWidth: width,
+    windowHeight: height,
+    jpegBytes: jpegBytes ?? _tryBytesFromDataUrl(dataUrl),
+  );
+}
+
 Widget _lookPreviewSlot({
   required Uint8List? jpegBytes,
   required String dataUrl,
@@ -1114,7 +1133,12 @@ class _Single6x4Preview extends StatelessWidget {
             fit: containPhoto ? BoxFit.contain : BoxFit.cover,
             alignment: containPhoto
                 ? Alignment.center
-                : coverPhotoAlignmentForWindow(wellW, wellH),
+                : _coverSlotAlignment(
+                    width: wellW,
+                    height: wellH,
+                    jpegBytes: jpegBytes,
+                    dataUrl: imageDataUrl,
+                  ),
             cacheWidth: cacheW,
           );
     final photoLayer = !hasPhoto || imagesAreGraded

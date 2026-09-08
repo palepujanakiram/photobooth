@@ -269,11 +269,11 @@ void main() {
       );
       expect(head.g, greaterThan(150));
       expect(head.b, lessThan(100));
-      final body = decoded.getPixel(
+      final mid = decoded.getPixel(
         (holeLeft + holeW / 2).round(),
-        (holeTop + holeH * 0.82).round(),
+        (holeTop + holeH * 0.5).round(),
       );
-      expect(body.b, greaterThan(150));
+      expect(mid.g, greaterThan(150));
     });
 
     test('fills 6x4 occasion chrome on a landscape sheet', () {
@@ -517,6 +517,115 @@ void main() {
     );
     expect(coverTall, isNotNull);
     expect(coverTall!.height, 40);
+
+    final matched = prepareLocalStripCellForTest(
+      _solidJpeg(20, 20, 220, width: 80, height: 20),
+      80,
+      20,
+      contain: false,
+    );
+    expect(matched!.width, 80);
+    expect(matched.height, 20);
+  });
+
+  test('cover-fill centers a landscape webcam in a wide 3/4-shot hole', () {
+    final webcam = _bandedJpeg(width: 160, height: 90);
+    final cell = prepareLocalStripCellForTest(webcam, 80, 20, contain: false)!;
+    expect(cell.width, 80);
+    expect(cell.height, 20);
+    final subject = cell.getPixel(40, 10);
+    expect(subject.r, greaterThan(150));
+    expect(subject.g, lessThan(80));
+  });
+
+  test('cover-fill keeps heads of a portrait still in a landscape hole', () {
+    final portrait = _markerHeadJpeg(width: 40, height: 80);
+    final cell = prepareLocalStripCellForTest(portrait, 80, 20, contain: false)!;
+    final top = cell.getPixel(40, 2);
+    expect(top.g, greaterThan(150));
+    expect(top.b, lessThan(100));
+  });
+
+  test('3-shot and 4-shot occasion strips center a landscape webcam', () {
+    for (final shotCount in [3, 4]) {
+      final slots = [
+        for (var i = 0; i < shotCount; i++)
+          StripTemplateSlot(
+            left: 0.08,
+            top: 0.16 + i * 0.18,
+            width: 0.84,
+            height: 0.12,
+          ),
+      ];
+      final jpeg = composeLocalStripSheetJpegForTest(
+        sourceBytes: List<Uint8List>.generate(
+          shotCount,
+          (_) => _bandedJpeg(),
+        ),
+        filterId: 'clean',
+        frameId: shotCount == 3 ? 'f3:dps-1' : 'fr:dps-1',
+        single: false,
+        overlay: LocalStripOverlay(
+          pngBytes: _overlayPng(
+            width: 60,
+            height: 180,
+            holeLeft: 5,
+            holeTop: 29,
+            holeWidth: 50,
+            holeHeight: 22,
+          ),
+          slots: slots,
+        ),
+      );
+      final decoded = img.decodeJpg(jpeg)!;
+      const stripW = (kLocalStripSheetWidth - kLocalStripCenterGutter) ~/ 2;
+      final cell = slots.first;
+      final cx = (cell.left * stripW + cell.width * stripW / 2).round();
+      final cy = (cell.top * kLocalStripSheetHeight +
+              cell.height * kLocalStripSheetHeight / 2)
+          .round();
+      final pixel = decoded.getPixel(cx, cy);
+      expect(pixel.r, greaterThan(150), reason: '$shotCount-shot subject');
+    }
+  });
+
+  test('1-shot occasion cover-fills a landscape capture in a portrait hole', () {
+    const holeLeft = 9;
+    const holeTop = 32;
+    const holeWidth = 102;
+    const holeHeight = 108;
+    final overlay = _overlayPng(
+      width: 120,
+      height: 180,
+      holeLeft: holeLeft,
+      holeTop: holeTop,
+      holeWidth: holeWidth,
+      holeHeight: holeHeight,
+    );
+    final jpeg = composeLocalStripSheetJpegForTest(
+      sourceBytes: [_solidJpeg(220, 20, 20, width: 80, height: 20)],
+      filterId: 'clean',
+      frameId: 'ai:dps-1',
+      single: true,
+      overlay: LocalStripOverlay(
+        pngBytes: overlay,
+        slots: [
+          StripTemplateSlot(
+            left: holeLeft / 120,
+            top: holeTop / 180,
+            width: holeWidth / 120,
+            height: holeHeight / 180,
+          ),
+        ],
+      ),
+    );
+    final decoded = img.decodeJpg(jpeg)!;
+    final nearTop = decoded.getPixel(
+      ((holeLeft + holeWidth / 2) / 120 * decoded.width).round(),
+      ((holeTop + 8) / 180 * decoded.height).round(),
+    );
+    expect(nearTop.r, greaterThan(150));
+    expect(nearTop.g, lessThan(80));
   });
 
   test('Classic 1-shot contain-fits a landscape capture on 4x6', () {
@@ -629,6 +738,25 @@ Uint8List _markerHeadJpeg({int width = 60, int height = 90}) {
         head ? 40 : 20,
         head ? 220 : 20,
         head ? 60 : 200,
+      );
+    }
+  }
+  return Uint8List.fromList(img.encodeJpg(image, quality: 95));
+}
+
+/// Landscape webcam: green ceiling, red subject, blue floor.
+Uint8List _bandedJpeg({int width = 160, int height = 90}) {
+  final image = img.Image(width: width, height: height);
+  final third = height ~/ 3;
+  for (var y = 0; y < height; y++) {
+    final band = y < third ? 0 : (y < third * 2 ? 1 : 2);
+    for (var x = 0; x < width; x++) {
+      image.setPixelRgb(
+        x,
+        y,
+        band == 1 ? 220 : 20,
+        band == 0 ? 220 : 20,
+        band == 2 ? 220 : 20,
       );
     }
   }

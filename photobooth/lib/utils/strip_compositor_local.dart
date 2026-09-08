@@ -302,7 +302,7 @@ void _drawOccasionSingle(
       0,
       0,
     ),
-    contain: true,
+    contain: false,
     letterbox: img.ColorRgb8(18, 18, 18),
   );
   _compositeOverlay(
@@ -540,13 +540,16 @@ img.Image _resizeCover(img.Image source, int width, int height) {
   } else {
     final cropHeight =
         (source.width / targetAspect).round().clamp(1, source.height);
-    // Landscape destinations keep the top of the capture (heads). Portrait
-    // wells keep a slight top bias so 4×6 framing stays familiar.
-    final topBias = width > height ? 0.0 : 0.25;
     cropped = img.copyCrop(
       source,
       x: 0,
-      y: ((source.height - cropHeight) * topBias).round(),
+      y: _coverCropTopY(
+        sourceWidth: source.width,
+        sourceHeight: source.height,
+        destWidth: width,
+        destHeight: height,
+        cropHeight: cropHeight,
+      ),
       width: source.width,
       height: cropHeight,
     );
@@ -557,6 +560,26 @@ img.Image _resizeCover(img.Image source, int width, int height) {
     height: height,
     interpolation: img.Interpolation.average,
   );
+}
+
+/// Portrait still → landscape well: keep heads. Landscape webcam → wide
+/// 3/4-shot hole: center so the subject is not cropped off the bottom.
+int _coverCropTopY({
+  required int sourceWidth,
+  required int sourceHeight,
+  required int destWidth,
+  required int destHeight,
+  required int cropHeight,
+}) {
+  final extra = sourceHeight - cropHeight;
+  if (extra <= 0) return 0;
+  if (destWidth > destHeight && sourceHeight > sourceWidth) {
+    return 0;
+  }
+  if (destWidth > destHeight) {
+    return extra ~/ 2;
+  }
+  return (extra * 0.25).round();
 }
 
 img.Image _resizeContain(
