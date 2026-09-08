@@ -170,6 +170,56 @@
                 android:scaleType="fitCenter"
                 android:visibility="gone" />
 
+            <!--
+              Pose timer. Top of the viewfinder (not centred) so it does not sit on faces.
+              Scrim and disc stay translucent so the live preview remains visible.
+            -->
+            <View
+                android:id="@+id/canon_countdown_scrim"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#2E000000"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:id="@+id/canon_countdown_group"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|center_horizontal"
+                android:layout_marginTop="20dp"
+                android:gravity="center_horizontal"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <!--
+                  FotoZen only, and only on the first tick — Classic already shows "Shot X of Y" in
+                  the subtitle, and repeating it inside the preview is noise.
+                -->
+                <TextView
+                    android:id="@+id/canon_countdown_headline"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:gravity="center"
+                    android:textColor="#F2FFFFFF"
+                    android:textSize="22sp"
+                    android:textStyle="bold"
+                    android:visibility="gone"
+                    tools:text="Be ready for photo" />
+
+                <TextView
+                    android:id="@+id/canon_countdown"
+                    android:layout_width="150dp"
+                    android:layout_height="150dp"
+                    android:background="@drawable/bg_canon_countdown_circle"
+                    android:elevation="12dp"
+                    android:gravity="center"
+                    android:textColor="@android:color/white"
+                    android:textSize="80sp"
+                    android:textStyle="bold"
+                    tools:text="3" />
+            </LinearLayout>
+
             <!-- Review-hold banner, bottom-aligned over the still. -->
             <TextView
                 android:id="@+id/canon_review_banner"
@@ -298,56 +348,4 @@
             android:visibility="gone" />
     </LinearLayout>
 
-    <!--
-      Countdown overlay. Flutter dims the whole preview behind it with black at 50% and
-      centres a 150dp grey disc at 80px; the native screen used to draw a bare 160sp numeral
-      straight onto the live view, with no scrim and at twice the size.
-
-      The scrim is its own view rather than a background on the container so it can cover the
-      viewfinder edge-to-edge while the disc stays centred.
-    -->
-    <View
-        android:id="@+id/canon_countdown_scrim"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="#80000000"
-        android:visibility="gone" />
-
-    <LinearLayout
-        android:id="@+id/canon_countdown_group"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:gravity="center_horizontal"
-        android:orientation="vertical"
-        android:visibility="gone">
-
-        <!--
-          FotoZen only, and only on the first tick — Classic already shows "Shot X of Y" in
-          the subtitle, and repeating it inside the preview is noise.
-        -->
-        <TextView
-            android:id="@+id/canon_countdown_headline"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="20dp"
-            android:gravity="center"
-            android:textColor="#F2FFFFFF"
-            android:textSize="22sp"
-            android:textStyle="bold"
-            android:visibility="gone"
-            tools:text="Be ready for photo" />
-
-        <TextView
-            android:id="@+id/canon_countdown"
-            android:layout_width="150dp"
-            android:layout_height="150dp"
-            android:background="@drawable/bg_canon_countdown_circle"
-            android:elevation="12dp"
-            android:gravity="center"
-            android:textColor="@android:color/white"
-            android:textSize="80sp"
-            android:textStyle="bold"
-            tools:text="3" />
-    </LinearLayout>
 </FrameLayout>

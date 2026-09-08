@@ -22,15 +22,13 @@ class StripPhotoCellRect {
 
 /// Whether a strip cell letterboxes the capture instead of filling the window.
 ///
-/// Classic 1/3/4-shot windows show the full booth still. Cover-fill would crop
-/// landscape captures in taller occasion holes (see [FotoFlashbackStripPreview]).
-/// Sheet layouts keep cover so 4-up collages fill their cells.
+/// Always false: Classic 1/3/4-shot and sheet layouts cover-fill the slot.
+/// [frameId] and [shotCount] stay in the signature so preview/print share one hook.
 bool stripPhotoCellUsesContainFit(
   String frameId, {
   int shotCount = kStripShotCount,
 }) {
-  if (isStripSheetLayout(frameId)) return false;
-  return shotCount >= 1;
+  return frameId.isEmpty && shotCount < 0;
 }
 
 /// Letterbox well behind contain-fit cells (matches print chrome fill).
@@ -43,7 +41,7 @@ Color stripPhotoCellLetterboxColor(String frameId) {
 /// Photo cell geometry for one 2×6 strip — mirrors zenai `stripCompositor`.
 ///
 /// Classic / Noir (HAMA-style): 10px equal margins, 10px gutters.
-/// Filmstrip: 36px rails, same vertical stack as classic, contain fit.
+/// Filmstrip: 36px rails, same vertical stack as classic, cover fit.
 List<StripPhotoCellRect> computeStripPhotoCellRects({
   required String frameId,
   required double stripWidth,

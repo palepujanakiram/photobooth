@@ -198,12 +198,14 @@ class _QrShareScreenState extends State<QrShareScreen> {
     final vm = _viewModel;
     try {
       if (vm != null) {
-        await vm.privacyWipeLocal();
+        await vm
+            .privacyWipeLocal(waitForPrint: false)
+            .timeout(const Duration(seconds: 2));
       } else {
         await endPhotoboothCustomerSessionLogged(
           'qr-share start again',
           onlyIfId: SessionManager().sessionId,
-        );
+        ).timeout(const Duration(seconds: 2));
       }
     } catch (e, st) {
       AppLogger.debug('Privacy wipe (qr-share) failed: $e\n$st');
@@ -250,9 +252,8 @@ class _QrShareScreenState extends State<QrShareScreen> {
             headline: snapshot.headline,
             waLine: snapshot.waLine,
             offline: snapshot.offline,
-            appBarTitle: snapshot.offline
-                ? AppStrings.qrShareOfflineAppBarTitle
-                : null,
+            appBarTitle:
+                snapshot.offline ? AppStrings.qrShareOfflineAppBarTitle : null,
             secondsLeftListenable: _secondsLeft,
             onExit: () => unawaited(_exitToStart()),
           );

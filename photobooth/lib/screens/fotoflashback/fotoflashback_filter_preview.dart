@@ -436,6 +436,9 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
               jpegBytes: i < imageJpegBytes.length ? imageJpegBytes[i] : null,
               dataUrl: i < imageDataUrls.length ? imageDataUrls[i] : '',
               fit: photoFit,
+              alignment: photoFit == BoxFit.cover
+                  ? Alignment.topCenter
+                  : Alignment.center,
               cacheWidth: cacheW,
               letterbox: letterbox,
             ),
@@ -902,17 +905,21 @@ Widget _lookPreviewSlot({
   required String dataUrl,
   required BoxFit fit,
   required int? cacheWidth,
+  Alignment alignment = Alignment.center,
   Color letterbox = Colors.black,
 }) {
   final hasPhoto = jpegBytes != null || dataUrl.trim().isNotEmpty;
   if (!hasPhoto) return const ColoredBox(color: Colors.black12);
   return ColoredBox(
     color: letterbox,
-    child: _LookPreviewPhoto(
-      jpegBytes: jpegBytes,
-      dataUrl: dataUrl,
-      fit: fit,
-      cacheWidth: cacheWidth,
+    child: ClipRect(
+      child: _LookPreviewPhoto(
+        jpegBytes: jpegBytes,
+        dataUrl: dataUrl,
+        fit: fit,
+        alignment: alignment,
+        cacheWidth: cacheWidth,
+      ),
     ),
   );
 }
@@ -999,7 +1006,7 @@ Widget _lookPreviewMissingPhoto() {
   );
 }
 
-/// Classic 1-shot preview (matches zenai composeSingle6x4 contain fit).
+/// Classic 1-shot preview (fills the print; occasion overlay maps to the sheet).
 class _Single6x4Preview extends StatelessWidget {
   const _Single6x4Preview({
     required this.imageDataUrl,
@@ -1054,11 +1061,13 @@ class _Single6x4Preview extends StatelessWidget {
     required double boxWidth,
     required double boxHeight,
   }) {
-    final well = ColoredBox(
-      color: hasOverlay
-          ? stripPhotoCellLetterboxColor(frameId)
-          : const Color(0xFF121212),
-      child: photoLayer,
+    final well = ClipRect(
+      child: ColoredBox(
+        color: hasOverlay
+            ? stripPhotoCellLetterboxColor(frameId)
+            : const Color(0xFF121212),
+        child: photoLayer,
+      ),
     );
     if (!hasOverlay) {
       return Padding(padding: EdgeInsets.all(margin), child: well);
@@ -1091,7 +1100,7 @@ class _Single6x4Preview extends StatelessWidget {
         : _LookPreviewPhoto(
             jpegBytes: jpegBytes,
             dataUrl: imageDataUrl,
-            fit: BoxFit.contain,
+            fit: BoxFit.cover,
             alignment: Alignment.center,
             cacheWidth: cacheW,
           );
@@ -1179,33 +1188,17 @@ class _Single6x4Preview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final overlay = overlayUrl?.trim() ?? '';
-    final hasOverlay = overlay.isNotEmpty;
-    final Widget child = hasOverlay
-        ? Center(
-            child: AspectRatio(
-              aspectRatio: FotoFlashbackStripPreview.single4x6AspectRatio,
-              child: LayoutBuilder(
-                builder: (context, constraints) => _chromeStack(
-                  context: context,
-                  boxWidth: constraints.maxWidth,
-                  boxHeight: constraints.maxHeight,
-                  overlay: overlay,
-                ),
-              ),
-            ),
-          )
-        : _chromeStack(
-            context: context,
-            boxWidth: width,
-            boxHeight: height,
-            overlay: '',
-          );
     return Container(
       key: ValueKey<String>('single6x4_$frameId'),
       width: width,
       height: height,
       color: _matte,
-      child: child,
+      child: _chromeStack(
+        context: context,
+        boxWidth: width,
+        boxHeight: height,
+        overlay: overlay,
+      ),
     );
   }
 }

@@ -280,32 +280,31 @@ void _drawOccasionSingle(
   List<double>? matrix,
   LocalStripOverlay overlay,
 ) {
-  final chrome = portraitChromeRectOnSheet(sheet.width, sheet.height);
   _drawSourceIntoCell(
     sheet,
     source,
     matrix,
     _normalizedCell(
-      chrome.width,
-      chrome.height,
+      sheet.width,
+      sheet.height,
       occasionSinglePhotoHole(overlay.slots),
-      chrome.left,
-      chrome.top,
+      0,
+      0,
     ),
-    contain: true,
+    contain: false,
     letterbox: img.ColorRgb8(255, 255, 255),
   );
   _compositeOverlay(
     sheet,
     overlay.pngBytes,
-    chrome.left,
-    chrome.top,
-    chrome.width,
-    chrome.height,
+    0,
+    0,
+    sheet.width,
+    sheet.height,
   );
 }
 
-/// 4×6 occasion PNG, contain-centered on the print sheet (never stretched).
+/// 4×6 occasion PNG, contain-centered on the print sheet (tests / unused bake).
 @visibleForTesting
 ({int left, int top, int width, int height}) portraitChromeRectOnSheet(
   int sheetWidth,
@@ -363,7 +362,7 @@ void _drawOccasionDualStrip(
           stripLeft,
           0,
         ),
-        contain: true,
+        contain: false,
         letterbox: img.ColorRgb8(255, 255, 255),
       );
     }
@@ -457,7 +456,7 @@ void _drawDualStripCells(
       matrix,
       cellWidth,
       cellHeight,
-      contain: true,
+      contain: false,
       letterbox: _frameBackground(frameId),
     );
     if (prepared == null) continue;

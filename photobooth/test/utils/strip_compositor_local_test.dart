@@ -234,8 +234,7 @@ void main() {
       expect(tall.top, 450);
     });
 
-    test('letterboxes 4x6 occasion chrome on landscape 6x4 instead of stretching',
-        () {
+    test('fills 6x4 occasion chrome on a landscape sheet', () {
       final overlay = _overlayPng(
         width: 120,
         height: 180,
@@ -258,11 +257,14 @@ void main() {
       final decoded = img.decodeJpg(jpeg)!;
       expect(decoded.width, kLocalStripSheetHeight);
       expect(decoded.height, kLocalStripSheetWidth);
-      final matte = decoded.getPixel(20, 600);
-      expect(matte.r, lessThan(40));
-      expect(matte.g, lessThan(40));
-      final chrome = decoded.getPixel(900, 20);
-      expect(chrome.g, greaterThan(chrome.r));
+      final edge = decoded.getPixel(20, 600);
+      expect(edge.g, greaterThan(edge.r));
+      final hole = defaultOccasionSinglePhotoHole;
+      final photo = decoded.getPixel(
+        (hole.left * decoded.width + hole.width * decoded.width / 2).round(),
+        (hole.top * decoded.height + hole.height * decoded.height / 2).round(),
+      );
+      expect(photo.r, greaterThan(photo.g));
     });
 
     test('stamps a 1-shot occasion overlay into the photo hole', () {
@@ -475,14 +477,14 @@ void main() {
     expect(coverTall!.height, 40);
   });
 
-  test('landscape plates contain-fit 3-shot and 4-shot classic cells', () {
+  test('landscape plates cover-fill 3-shot and 4-shot classic cells', () {
     for (final shotCount in [kStripShotCountThree, kStripShotCount]) {
-      _expectLandscapeContainInClassicCells(shotCount);
+      _expectLandscapeCoverInClassicCells(shotCount);
     }
   });
 }
 
-void _expectLandscapeContainInClassicCells(int shotCount) {
+void _expectLandscapeCoverInClassicCells(int shotCount) {
   final sourceBytes = [
     _solidJpeg(220, 20, 20, width: 80, height: 20),
     _solidJpeg(20, 220, 20, width: 80, height: 20),
@@ -506,9 +508,9 @@ void _expectLandscapeContainInClassicCells(int shotCount) {
       kLocalStripGutter * (shotCount - 1);
   final cellHeight = innerHeight ~/ shotCount;
   final x = kLocalStripBorder + cellWidth ~/ 2;
-  final letterbox = decoded.getPixel(x, kLocalStripBorderTop + 8);
-  expect(letterbox.r, greaterThan(240), reason: '$shotCount-shot letterbox');
-  expect(letterbox.g, greaterThan(240), reason: '$shotCount-shot letterbox');
+  final edge = decoded.getPixel(x, kLocalStripBorderTop + 8);
+  expect(edge.r, greaterThan(180), reason: '$shotCount-shot cover edge');
+  expect(edge.g, lessThan(80), reason: '$shotCount-shot cover edge');
   final plate = decoded.getPixel(
     x,
     kLocalStripBorderTop + cellHeight ~/ 2,
