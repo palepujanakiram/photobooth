@@ -143,11 +143,15 @@ void main() {
     late EventPipelineDb db;
 
     setUp(() async {
+      // The reader shares one handle process-wide, so it must be reset between
+      // tests or a previous test's database leaks into this one.
+      EventPipelineStatsReader.resetSharedForTests();
       root = await Directory.systemTemp.createTemp('fz_evp_stats_');
       db = (await EventPipelineDb.open(root))!;
     });
 
     tearDown(() async {
+      EventPipelineStatsReader.resetSharedForTests();
       await db.close();
       if (await root.exists()) await root.delete(recursive: true);
     });
