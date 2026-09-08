@@ -268,7 +268,11 @@ class SessionManager extends ChangeNotifier {
         _expiryClearScheduled = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _expiryClearScheduled = false;
-          _clearSessionInternal(reason: 'expired');
+          final latest = _currentSession;
+          if (latest == null) return;
+          if (latest.expiresAt.add(kSessionExpiryGrace).isBefore(DateTime.now())) {
+            _clearSessionInternal(reason: 'expired');
+          }
         });
       }
       return null;
@@ -278,6 +282,16 @@ class SessionManager extends ChangeNotifier {
 
   /// Get current session ID (convenience method)
   String? get sessionId => currentSession?.id;
+
+  /// Mint a local offline session when photos exist but the in-memory session
+  /// was dropped (expiry callback, process restart). Classic Continue can then
+  /// compose on-device instead of showing "accept terms again".
+  String? ensureSessionForClassicCompose() {
+    final existing = sessionId?.trim() ?? '';
+    if (existing.isNotEmpty) return existing;
+    setSessionFromResponse(localSessionSkeleton(id: mintLocalShareToken()));
+    return sessionId?.trim();
+  }
 
   /// Kiosk session auth token for protected API routes (null if no active session).
   String? get kioskAuthToken => currentSession?.kioskAuthToken;
@@ -352,6 +366,14 @@ class SessionManager extends ChangeNotifier {
 
   /// Check if a session exists
   bool get hasSession => currentSession != null;
+
+  /// True when the in-memory guest session has an id and accepted terms.
+  bool get hasAcceptedTermsSession {
+    final s = currentSession;
+    if (s == null) return false;
+    if (s.id.trim().isEmpty) return false;
+    return s.termsAccepted;
+  }
 
   /// Check if session is expired (allows [kSessionExpiryGrace] after [expiresAt]).
   bool get isSessionExpired {
@@ -520,12 +542,25 @@ class SessionManager extends ChangeNotifier {
   /// [endPhotoboothCustomerSession] instead.
   ///
   /// Await before navigation or process exit so SharedPreferences can flush on kiosk hardware.
-  Future<void> endCustomerSession() async {
+  ///
+  /// Returns false when [onlyIfId] is set and a different session is already
+  /// active (a delayed Start-again wipe must not clear the next guest).
+  Future<bool> endCustomerSession({String? onlyIfId}) async {
+    final guard = onlyIfId?.trim() ?? '';
+    final currentId = _currentSession?.id.trim() ?? '';
+    if (guard.isNotEmpty && currentId.isNotEmpty && currentId != guard) {
+      AppLogger.debug(
+        'Skip session end; current $currentId is not $guard',
+      );
+      return false;
+    }
     _currentSession = null;
+    clearUserImageSynced();
     _expiryClearScheduled = false;
     AppLogger.debug('Session cleared (end customer)');
     await _persistCurrentSession();
     notifyListeners();
+    return true;
   }
 
   /// Restores persisted session into memory (best-effort).

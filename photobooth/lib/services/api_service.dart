@@ -16,6 +16,7 @@ import '../models/parallel_generation_result.dart';
 import '../models/strip_models.dart';
 import '../screens/result/transformed_image_model.dart';
 import '../screens/theme_selection/theme_model.dart';
+import '../utils/app_strings.dart';
 import '../utils/exceptions.dart';
 import '../utils/constants.dart';
 import '../utils/print_orientation.dart';
@@ -774,6 +775,11 @@ class ApiService {
         queryParameters: qp.isEmpty ? null : qp,
         options: Options(responseType: ResponseType.json),
       );
+      final status = r.statusCode;
+      if (status != null && status >= 400) {
+        if (cached != null) return cached;
+        throw ApiException(AppStrings.flashbackFiltersLoadFailed, status);
+      }
       final data = r.data;
       Map<String, dynamic>? map;
       if (data is Map<String, dynamic>) {
@@ -793,8 +799,11 @@ class ApiService {
     } on DioException catch (e) {
       _handleWebNetworkError(e);
       if (cached != null) return cached;
+      if (isDioTimeoutOrConnection(e)) {
+        throw ApiException(AppConstants.kErrorNetwork);
+      }
       throw ApiException(
-        'Failed to load strip filters: ${e.message}',
+        AppStrings.flashbackFiltersLoadFailed,
         e.response?.statusCode,
       );
     }
@@ -1059,7 +1068,12 @@ class ApiService {
           responseType: ResponseType.json,
           sendTimeout: timeout ?? AppConstants.kClassicStripComposeTimeout,
           receiveTimeout: timeout ?? AppConstants.kClassicStripComposeTimeout,
+          validateStatus: (c) => c != null && c < 600,
         ),
+      );
+      throwIfHttpErrorResponse(
+        r,
+        operationLabel: AppStrings.flashbackComposeFailed,
       );
       final data = r.data;
       Map<String, dynamic>? map;
@@ -1097,8 +1111,14 @@ class ApiService {
       rethrow;
     } on DioException catch (e) {
       _handleWebNetworkError(e);
+      if (isDioTimeoutOrConnection(e)) {
+        throw ApiException(
+          AppConstants.kErrorNetwork,
+          e.response?.statusCode,
+        );
+      }
       throw ApiException(
-        'Failed to compose strip: ${e.message}',
+        AppStrings.flashbackComposeFailed,
         e.response?.statusCode,
       );
     }

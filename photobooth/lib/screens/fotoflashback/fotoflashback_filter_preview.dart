@@ -415,8 +415,12 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
       stripWidth: width,
       layout: wysiwyg,
     );
-    final photoFit =
-        stripPhotoCellUsesContainFit(frameId) ? BoxFit.contain : BoxFit.cover;
+    final photoFit = stripPhotoCellUsesContainFit(
+      frameId,
+      shotCount: shotCount,
+    )
+        ? BoxFit.contain
+        : BoxFit.cover;
     final letterbox = stripPhotoCellLetterboxColor(frameId);
     final cacheW = flashbackLookPreviewCacheWidth(
       layoutWidth: width,

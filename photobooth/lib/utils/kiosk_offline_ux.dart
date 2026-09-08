@@ -59,10 +59,11 @@ abstract final class KioskOfflineUx {
   }) =>
       shouldSkipAiGeneration(sessionOffline: sessionOffline, error: error);
 
-  /// 4-shot local look instead of Fly `composeStrip`.
+  /// Compose on-device instead of Fly `composeStrip`.
   ///
-  /// Online compose timeouts stay failures (existing UX). Network / 5xx
-  /// ApiExceptions fall back to a baked look.
+  /// Online compose timeouts stay failures (existing UX). Network, 5xx, and
+  /// 4xx (rejected body / unknown session / missing theme) fall back to a
+  /// baked look so Continue still prints.
   static bool shouldUseLocalStripLook({
     required bool sessionOffline,
     Object? error,
@@ -72,7 +73,7 @@ abstract final class KioskOfflineUx {
     if (error is TimeoutException) return false;
     if (error is ApiException) {
       final code = error.statusCode;
-      if (code != null && code >= 500) return true;
+      if (code != null && code >= 400) return true;
       return error.message == AppConstants.kErrorNetwork;
     }
     return false;
@@ -99,7 +100,9 @@ abstract final class KioskOfflineUx {
     }
     if (error is ApiException) {
       final code = error.statusCode;
-      if (code != null && code >= 500) return true;
+      // 404 is not "spotty Wi‑Fi" — it means a host answered without this
+      // route (old API, proxy, captive portal). Built-in looks still work.
+      if (code != null && code >= 400) return true;
     }
     return false;
   }

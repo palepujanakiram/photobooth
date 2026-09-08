@@ -717,12 +717,18 @@ mixin _ResultViewModelImpl on ChangeNotifier {
   /// Waits for an in-flight silent print first so multi-page jobs are not aborted
   /// mid-cart when QR share idle-exits (temp files deleted under the printer).
   Future<void> privacyWipeLocal() async {
+    final sessionId = _r._sessionManager.sessionId;
     _r.stopPaymentPolling();
     stopWhatsappDeliveryPolling();
     await _awaitSilentPrintInflight();
     _r._downloadedFiles.clear();
-    await endPhotoboothCustomerSessionLogged('result: privacyWipeLocal');
-    await FileHelper.cleanupTempImages();
+    await endPhotoboothCustomerSessionLogged(
+      'result: privacyWipeLocal',
+      onlyIfId: sessionId,
+    );
+    if (!_r._sessionManager.hasSession) {
+      await FileHelper.cleanupTempImages();
+    }
   }
 
   static String? _firstNonEmptyString(dynamic v) {

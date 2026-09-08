@@ -155,6 +155,24 @@ class FakeApiService extends ApiService {
   }
 
   @override
+  Future<Map<String, dynamic>> acceptTermsAndCreateSession({
+    String? kioskCode,
+    String? source,
+    String? selectedFrameId,
+    bool includeSelectedFrameId = false,
+    bool groupConsentAccepted = true,
+    String? clientSessionId,
+  }) async {
+    return Map<String, dynamic>.from(sessionResponse);
+  }
+
+  @override
+  Future<void> registerSessionFcmToken({
+    required String sessionId,
+    required String fcmToken,
+  }) async {}
+
+  @override
   Future<Map<String, dynamic>> applySessionDiscount({
     required String sessionId,
     required String code,

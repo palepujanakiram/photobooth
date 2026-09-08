@@ -476,39 +476,22 @@ void main() {
     expect(PrintSelectionCoordinator.instance.awaitingExploreMoreReturn, isTrue);
   });
 
-  testWidgets('continueAfterFlashbackLook returns compose failure without session',
-      (tester) async {
+  test('continueAfterFlashbackLook composes locally when session is missing',
+      () async {
     await KioskManager().setPaymentEnabledOverride(false);
     SessionManager().clearSession();
     final theme = sampleTheme('strip').copyWith((p) => p.tier = 'photo_strip');
     final vm = FotoFlashbackFilterViewModel(
       theme: theme,
-      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
+      imageDataUrls: List.filled(4, kTinyJpegDataUrl),
       apiService: _PaymentFlowStripApi(enableOsdScrub: false),
+      overlayCleanupBuildGate: false,
     );
-    String? message;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Builder(
-          builder: (context) {
-            return ElevatedButton(
-              onPressed: () async {
-                message = await continueAfterFlashbackLook(
-                  context: context,
-                  viewModel: vm,
-                  paymentCollectionTiming:
-                      AppConstants.kPaymentCollectionAfterGeneration,
-                );
-              },
-              child: const Text('go'),
-            );
-          },
-        ),
-      ),
-    );
-    await tester.tap(find.text('go'));
-    await tester.pumpAndSettle();
-    expect(message, AppStrings.sessionPhotoSyncNoSession);
+    await vm.loadFilters();
+    final image = await vm.compose();
+    expect(image, isNotNull);
+    expect(image!.imageUrl, isNotEmpty);
+    expect(SessionManager().isOfflineSession, isTrue);
   });
 
   testWidgets('continueAfterFlashbackLook returns compose error message', (tester) async {

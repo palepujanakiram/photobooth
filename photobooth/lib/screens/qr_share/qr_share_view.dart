@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/app_settings_manager.dart';
+import '../../services/customer_session_lifecycle.dart';
 import '../../services/session_manager.dart';
 import '../../services/whatsapp_push_coordinator.dart';
 import '../../utils/app_strings.dart';
@@ -195,12 +196,18 @@ class _QrShareScreenState extends State<QrShareScreen> {
     _exiting = true;
     _timer?.cancel();
     final vm = _viewModel;
-    if (!mounted) return;
-    unawaited(
-      vm?.privacyWipeLocal().catchError((Object e, StackTrace st) {
-        AppLogger.debug('Privacy wipe (qr-share) failed: $e\n$st');
-      }),
-    );
+    try {
+      if (vm != null) {
+        await vm.privacyWipeLocal();
+      } else {
+        await endPhotoboothCustomerSessionLogged(
+          'qr-share start again',
+          onlyIfId: SessionManager().sessionId,
+        );
+      }
+    } catch (e, st) {
+      AppLogger.debug('Privacy wipe (qr-share) failed: $e\n$st');
+    }
     if (!mounted) return;
     Navigator.pushNamedAndRemoveUntil(
       context,

@@ -21,6 +21,7 @@ void main() {
     expect(AppStrings.receiptPrintEmptyPayload, isNotEmpty);
     expect(AppStrings.receiptPrintUnsupportedOnWeb, isNotEmpty);
     expect(AppStrings.printReceiptButton, isNotEmpty);
+    expect(AppStrings.flashbackFiltersLoadFailed, isNotEmpty);
     expect(AppStrings.printingReceiptButton, isNotEmpty);
     expect(AppStrings.staffNoKioskForRegister, isNotEmpty);
     expect(AppStrings.themeSelectionContinue, isNotEmpty);

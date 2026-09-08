@@ -789,6 +789,20 @@ void main() {
     expect(SessionManager().isOfflineSession, isTrue);
   });
 
+  test('FotoFlashbackFilterViewModel uses local look on compose 400', () async {
+    SessionManager().setSessionFromResponse(_sessionJson('sess-400'));
+    final api = _StripFakeApi(failCompose400: true);
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, _tinyJpegDataUrl()),
+      apiService: api,
+    );
+    final image = await vm.compose();
+    expect(image, isNotNull);
+    expect(api.composeCalls, 1);
+    expect(SessionManager().isOfflineSession, isFalse);
+  });
+
   test('FotoFlashbackFilterViewModel handles load/compose edge cases', () async {
     SessionManager().clearSession();
     final shortVm = FotoFlashbackFilterViewModel(
@@ -815,10 +829,13 @@ void main() {
       theme: stripTheme,
       imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
       apiService: _StripFakeApi(),
+      overlayCleanupBuildGate: false,
     );
-    expect(await noSession.compose(), isNull);
-    expect(noSession.errorMessage, isNotNull);
+    expect(await noSession.compose(), isNotNull);
+    expect(SessionManager().sessionId, isNotNull);
+    noSession.dispose();
 
+    SessionManager().setSessionFromResponse(_sessionJson('online-catalog'));
     final apiFail = _StripFakeApi(failLoad: true);
     final loadFail = FotoFlashbackFilterViewModel(
       theme: stripTheme,
@@ -1723,6 +1740,7 @@ class _StripFakeApi extends FakeApiService {
   _StripFakeApi({
     this.failCompose = false,
     this.failComposeWan = false,
+    this.failCompose400 = false,
     this.failLoad = false,
     this.failLoadHostLookup = false,
     this.throwGenericLoad = false,
@@ -1735,6 +1753,7 @@ class _StripFakeApi extends FakeApiService {
 
   final bool failCompose;
   final bool failComposeWan;
+  final bool failCompose400;
   final bool failLoad;
   final bool failLoadHostLookup;
   final bool throwGenericLoad;
@@ -1881,6 +1900,9 @@ class _StripFakeApi extends FakeApiService {
     lastComposeTimeout = timeout;
     if (failCompose) {
       throw ApiException('compose down');
+    }
+    if (failCompose400) {
+      throw ApiException('Select a FotoFlashback theme before composing', 400);
     }
     if (failComposeWan) {
       throw ApiException(AppConstants.kErrorNetwork, 503);

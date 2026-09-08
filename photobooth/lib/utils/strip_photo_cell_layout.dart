@@ -20,13 +20,19 @@ class StripPhotoCellRect {
   Rect get rect => Rect.fromLTWH(left, top, width, height);
 }
 
-/// Scale-to-fit so landscape group shots keep every person in the cell.
+/// Whether a strip cell letterboxes the capture instead of filling the window.
 ///
-/// Cover-cropping a wide booth capture into a tall window chops
-/// left/right subjects. Occasion chrome on landscape sheets is letterboxed
-/// separately so logos are not stretched.
-bool stripPhotoCellUsesContainFit(String frameId) =>
-    !isStripSheetLayout(frameId);
+/// 3-shot and 4-shot windows are taller than a typical landscape booth still;
+/// contain leaves large white bars — cover-fill those cells.
+/// 1-shot occasion holes stay contain (see [FotoFlashbackStripPreview]).
+bool stripPhotoCellUsesContainFit(
+  String frameId, {
+  int shotCount = kStripShotCount,
+}) {
+  if (isStripSheetLayout(frameId)) return false;
+  if (shotCount >= kStripShotCountThree) return false;
+  return true;
+}
 
 /// Letterbox well behind contain-fit cells (matches print chrome fill).
 Color stripPhotoCellLetterboxColor(String frameId) {

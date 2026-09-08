@@ -53,8 +53,7 @@ void main() {
       expect(decoded!.width, kLocalStripSheetWidth);
       expect(decoded.height, kLocalStripSheetHeight);
 
-      // Sample cell centers — contain-fit letterboxes landscape plates, so the
-      // top of a cell is chrome rather than the capture.
+      // Sample cell centers — 3-shot windows cover-fill landscape plates.
       const cellHeight = (kLocalStripSheetHeight -
               kLocalStripBorderTop -
               kLocalStripBorderBottom -
@@ -64,6 +63,11 @@ void main() {
         300,
         kLocalStripBorderTop + cellHeight ~/ 2,
       );
+      final firstCellTop = decoded.getPixel(
+        300,
+        kLocalStripBorderTop + 8,
+      );
+      expect(firstCellTop.r, greaterThan(180));
       final secondCell = decoded.getPixel(
         300,
         kLocalStripBorderTop + cellHeight + kLocalStripGutter + cellHeight ~/ 2,
@@ -471,8 +475,7 @@ void main() {
     expect(coverTall!.height, 40);
   });
 
-  test('landscape plates letterbox in tall classic cells instead of cropping',
-      () {
+  test('landscape plates cover-fill tall 3-shot classic cells', () {
     final jpeg = composeLocalStripSheetJpegForTest(
       sourceBytes: [
         _solidJpeg(220, 20, 20, width: 80, height: 20),
@@ -488,9 +491,31 @@ void main() {
         (kLocalStripSheetWidth - kLocalStripCenterGutter) ~/ 2;
     const cellWidth = stripDrawWidth - kLocalStripBorder * 2;
     final x = kLocalStripBorder + cellWidth ~/ 2;
-    final gutter = decoded.getPixel(x, kLocalStripBorderTop + 8);
-    expect(gutter.r, greaterThan(240));
-    expect(gutter.g, greaterThan(240));
+    final topOfCell = decoded.getPixel(x, kLocalStripBorderTop + 8);
+    expect(topOfCell.r, greaterThan(180));
+    expect(topOfCell.g, lessThan(80));
+  });
+
+  test('landscape plates cover-fill 4-shot classic cells', () {
+    final jpeg = composeLocalStripSheetJpegForTest(
+      sourceBytes: [
+        _solidJpeg(220, 20, 20, width: 80, height: 20),
+        _solidJpeg(20, 220, 20, width: 80, height: 20),
+        _solidJpeg(20, 20, 220, width: 80, height: 20),
+        _solidJpeg(220, 180, 20, width: 80, height: 20),
+      ],
+      filterId: 'clean',
+      frameId: 'classic',
+      single: false,
+    );
+    final decoded = img.decodeJpg(jpeg)!;
+    const stripDrawWidth =
+        (kLocalStripSheetWidth - kLocalStripCenterGutter) ~/ 2;
+    const cellWidth = stripDrawWidth - kLocalStripBorder * 2;
+    final x = kLocalStripBorder + cellWidth ~/ 2;
+    final topOfCell = decoded.getPixel(x, kLocalStripBorderTop + 8);
+    expect(topOfCell.r, greaterThan(180));
+    expect(topOfCell.g, lessThan(80));
   });
 }
 

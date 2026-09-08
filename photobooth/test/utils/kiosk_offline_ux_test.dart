@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/models/strip_models.dart';
 import 'package:photobooth/services/local_kiosk_models.dart';
 import 'package:photobooth/services/local_session_skeleton.dart';
+import 'package:photobooth/utils/app_strings.dart';
 import 'package:photobooth/utils/constants.dart';
 import 'package:photobooth/utils/exceptions.dart';
 import 'package:photobooth/utils/kiosk_offline_ux.dart';
@@ -129,7 +130,7 @@ void main() {
     );
   });
 
-  test('shouldUseLocalStripLook ignores online timeouts and 4xx', () {
+  test('shouldUseLocalStripLook falls back on 4xx and 5xx, not timeouts', () {
     expect(
       KioskOfflineUx.shouldUseLocalStripLook(sessionOffline: true),
       isTrue,
@@ -153,7 +154,7 @@ void main() {
         sessionOffline: false,
         error: ApiException('x', 400),
       ),
-      isFalse,
+      isTrue,
     );
     expect(
       KioskOfflineUx.shouldUseLocalStripLook(
@@ -215,6 +216,13 @@ void main() {
       KioskOfflineUx.shouldSilenceStripCatalogLoadError(
         sessionOffline: false,
         error: ApiException('x', 502),
+      ),
+      isTrue,
+    );
+    expect(
+      KioskOfflineUx.shouldSilenceStripCatalogLoadError(
+        sessionOffline: false,
+        error: ApiException(AppStrings.flashbackFiltersLoadFailed, 404),
       ),
       isTrue,
     );

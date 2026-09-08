@@ -1,10 +1,14 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http_mock_adapter/http_mock_adapter.dart';
 import 'package:photobooth/services/api_service.dart';
+import 'package:photobooth/services/catalog_disk_cache.dart';
+import 'package:photobooth/services/kiosk_manager.dart';
 import 'package:photobooth/services/session_manager.dart';
+import 'package:photobooth/utils/app_strings.dart';
 import 'package:photobooth/utils/constants.dart';
 import 'package:photobooth/utils/exceptions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -468,6 +472,35 @@ void main() {
     expect(catalog.printSize, 's6x2_2');
   });
 
+  test('fetchStripFilters maps 404 without Dio essay', () async {
+    final dir = await Directory.systemTemp.createTemp('strip_filters_404_');
+    addTearDown(() async {
+      if (await dir.exists()) await dir.delete(recursive: true);
+    });
+    await KioskManager().setKioskCode('K404MISS');
+    final isolated = ApiService(
+      dio: dio,
+      catalogDiskCache: CatalogDiskCache(resolveDirectory: () async => dir),
+    );
+    adapter.onGet(
+      '/api/strip/filters',
+      (server) => server.reply(404, {'error': 'missing'}),
+    );
+    await expectLater(
+      isolated.fetchStripFilters(),
+      throwsA(
+        isA<ApiException>()
+            .having((e) => e.statusCode, 'statusCode', 404)
+            .having(
+              (e) => e.message,
+              'message',
+              AppStrings.flashbackFiltersLoadFailed,
+            ),
+      ),
+    );
+    await KioskManager().setKioskCode('K1');
+  });
+
   test('fetchStripFilters rejects unexpected payload', () async {
     adapter.onGet(
       '/api/strip/filters',
@@ -657,6 +690,26 @@ void main() {
       api.composeStrip(sessionId: 'sess-bad', images: images),
       throwsA(isA<ApiException>()),
     );
+
+    adapter.onPost(
+      '/api/sessions/sess-400/strip/compose',
+      (server) => server.reply(400, {
+        'error': 'Select a FotoFlashback theme before composing the strip',
+      }),
+      data: Matchers.any,
+    );
+    await expectLater(
+      api.composeStrip(sessionId: 'sess-400', images: images),
+      throwsA(
+        isA<ApiException>()
+            .having((e) => e.statusCode, 'statusCode', 400)
+            .having(
+              (e) => e.message,
+              'message',
+              contains('FotoFlashback theme'),
+            ),
+      ),
+    );
   });
 
   test('strip APIs wrap DioException', () async {
@@ -688,7 +741,7 @@ void main() {
         isA<ApiException>().having(
           (e) => e.message,
           'message',
-          contains('compose strip'),
+          AppStrings.flashbackComposeFailed,
         ),
       ),
     );

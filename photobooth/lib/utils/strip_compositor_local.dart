@@ -363,7 +363,7 @@ void _drawOccasionDualStrip(
           stripLeft,
           0,
         ),
-        contain: true,
+        contain: sources.length < kStripShotCountThree,
         letterbox: img.ColorRgb8(255, 255, 255),
       );
     }
@@ -457,7 +457,7 @@ void _drawDualStripCells(
       matrix,
       cellWidth,
       cellHeight,
-      contain: true,
+      contain: shotCount < kStripShotCountThree,
       letterbox: _frameBackground(frameId),
     );
     if (prepared == null) continue;

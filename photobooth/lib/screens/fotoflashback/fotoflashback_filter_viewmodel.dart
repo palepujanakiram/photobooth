@@ -961,7 +961,7 @@ if (graded.length == _expectedCaptureCount) {
       notifyListeners();
       return null;
     }
-    final sessionId = _sessionManager.sessionId?.trim() ?? '';
+    final sessionId = _sessionManager.ensureSessionForClassicCompose() ?? '';
     if (sessionId.isEmpty) {
       _errorMessage = AppStrings.sessionPhotoSyncNoSession;
       notifyListeners();
@@ -1086,7 +1086,12 @@ if (graded.length == _expectedCaptureCount) {
         sessionOffline: false,
         error: e,
       )) {
-        _sessionManager.markSessionOffline();
+        if (KioskOfflineUx.shouldSkipAiGeneration(
+          sessionOffline: false,
+          error: e,
+        )) {
+          _sessionManager.markSessionOffline();
+        }
         return await _completeLocalLook();
       }
       _errorMessage = e.message;
