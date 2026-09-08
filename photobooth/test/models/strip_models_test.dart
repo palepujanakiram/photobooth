@@ -146,6 +146,12 @@ void main() {
     expect(empty.filters, isEmpty);
     expect(empty.printSize, AppConstants.kPrintSizeStripDual2x6);
     expect(empty.copiesOnSheet, 2);
+    final withFrame = empty.withFrames(const [
+      StripFrame(id: 'classic', name: 'Classic', description: 'White'),
+    ]);
+    expect(withFrame.frames.single.id, 'classic');
+    expect(withFrame.shotCount, empty.shotCount);
+    expect(withFrame.enableOsdScrub, empty.enableOsdScrub);
   });
 
   test('StripComposeResult prefers stripCompositeUrl for dual strip', () {
@@ -403,6 +409,14 @@ void main() {
     expect(classicFrameVisibleForShotCount(one, 4), isFalse);
     expect(isOccasionFrameId('ai:'), isFalse);
     expect(isStrip3TemplateFrame('f3:'), isFalse);
+    expect(isFrameStripVariantId('fr:frame-uuid'), isTrue);
+    expect(isFrameStripVariantId('fr:'), isFalse);
+    expect(classicFrameDbId('ai:frame-uuid'), 'frame-uuid');
+    expect(classicFrameDbId('f3:frame-uuid'), 'frame-uuid');
+    expect(classicFrameDbId('fr:frame-uuid'), 'frame-uuid');
+    expect(classicFrameDbId('st:tpl-1'), 'tpl-1');
+    expect(classicFrameDbId('classic'), isNull);
+    expect(classicFrameDbId('ai:'), isNull);
   });
 
   test('StripFrame parses 6x2 template slots', () {
@@ -470,6 +484,30 @@ void main() {
     expect(catalogHole.top, 0.2);
     expect(catalogHole.width, 0.8);
     expect(catalogHole.height, 0.5);
+    expect(
+      const StripTemplateSlot(
+        left: 0.1,
+        top: 0.2,
+        width: 0.8,
+        height: 0.5,
+      ).toJson(),
+      {
+        'left': 0.1,
+        'top': 0.2,
+        'width': 0.8,
+        'height': 0.5,
+      },
+    );
+    expect(
+      const StripTemplateSlot(
+        left: 0.1,
+        top: 0.2,
+        width: 0.8,
+        height: 0.5,
+        rotDeg: 5,
+      ).toJson()['rotDeg'],
+      5,
+    );
     expect(
       occasionSinglePhotoHole(const [
         StripTemplateSlot(left: 0.1, top: 0.1, width: 0.2, height: 0.2),

@@ -83,6 +83,9 @@ class FakeApiService extends ApiService {
   }
 
   @override
+  Future<List<KioskFrameModel>> getCachedKioskFrames() async => kioskFrames;
+
+  @override
   Future<List<ThemeModel>> getThemes() async => const [];
 
   @override

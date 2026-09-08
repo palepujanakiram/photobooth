@@ -3,12 +3,14 @@ import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../models/kiosk_frame_model.dart';
 import '../../models/strip_models.dart';
 import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/capture_flow_log.dart';
 import '../../utils/classic_look_memory_helpers.dart';
+import '../../utils/classic_offline_frames.dart';
 import '../../utils/classic_strip_scrub_coordinator.dart';
 import '../../utils/classic_strip_scrub_helpers.dart';
 import '../../utils/constants.dart';
@@ -46,6 +48,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     /// From [AppSettingsModel.enableOsdScrub] (kiosk / GSM). When set, wins
     /// over the strip catalog so Pick a look honors admin OFF.
     bool? enableOsdScrub,
+    ClassicOverlayBytesLookup? overlayBytesLookup,
   })  : _expectedCaptureCount = pendingImageFilePaths?.isNotEmpty == true
             ? pendingImageFilePaths!.length
             : imageDataUrls.length,
@@ -61,6 +64,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         _printOrientation = printOrientation ?? PrintOrientation.portrait,
         _overlayCleanupBuildGate = overlayCleanupBuildGate,
         _enableOsdScrubFromSettings = enableOsdScrub,
+        _overlayBytesLookup = overlayBytesLookup ?? readClassicOverlayBytes,
         _shotCleaned = List<bool>.generate(
           pendingImageFilePaths?.isNotEmpty == true
               ? pendingImageFilePaths!.length
@@ -92,6 +96,8 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   PrintOrientation _printOrientation;
   final bool? _overlayCleanupBuildGate;
   final bool? _enableOsdScrubFromSettings;
+  final ClassicOverlayBytesLookup _overlayBytesLookup;
+  List<KioskFrameModel> _kioskFramesCache = const [];
 
   StripFiltersCatalog? _catalog;
   String _selectedFilterId = kDefaultStripFilterId;
@@ -444,40 +450,54 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   }
 
   void _applyFallbackCatalog([String? message]) {
-    _catalog = stripFiltersCatalogFallback();
-    _selectedFilterId = kDefaultStripFilterId;
-    _selectedFrameId = kDefaultStripFrameId;
-    _selectedStickerId = kDefaultStripStickerId;
+    _catalog = mergeOccasionFramesIntoCatalog(
+      stripFiltersCatalogFallback(),
+      _kioskFramesCache,
+    );
     _errorMessage = message;
+    _applyCatalogSelections();
+  }
+
+  void _adoptCatalog(StripFiltersCatalog catalog) {
+    _catalog = mergeOccasionFramesIntoCatalog(catalog, _kioskFramesCache);
+    _errorMessage = null;
+    _applyCatalogSelections();
+  }
+
+  void _applyCatalogSelections() {
+    if (filters.isNotEmpty &&
+        !filters.any((f) => f.id == _selectedFilterId)) {
+      _selectedFilterId = filters.first.id;
+    }
+    if (frames.isNotEmpty) {
+      _selectedFrameId = preferredClassicFrameId(
+        frames: frames,
+        shotCount: shotCount,
+        selectedId: _selectedFrameId,
+      );
+    }
+    if (stickers.isNotEmpty &&
+        !stickers.any((s) => s.id == _selectedStickerId) &&
+        _placements.isEmpty) {
+      _selectedStickerId = kDefaultStripStickerId;
+    }
+  }
+
+  Future<List<KioskFrameModel>> _cachedKioskFrames() async {
+    try {
+      return await _api.getCachedKioskFrames();
+    } catch (_) {
+      return const [];
+    }
   }
 
   Future<void> _loadCatalog(int gen) async {
-    if (_sessionManager.isOfflineSession) {
-      AppLogger.debug('Strip filters: local catalog (offline session)');
-      _applyFallbackCatalog();
-      return;
-    }
+    _kioskFramesCache = await _cachedKioskFrames();
+    if (gen != _catalogLoadGen) return;
     try {
       final catalog = await _api.fetchStripFilters();
       if (gen != _catalogLoadGen) return;
-      _catalog = catalog;
-      if (filters.isNotEmpty &&
-          !filters.any((f) => f.id == _selectedFilterId)) {
-        _selectedFilterId = filters.first.id;
-      }
-      if (frames.isNotEmpty) {
-        _selectedFrameId = preferredClassicFrameId(
-          frames: frames,
-          shotCount: shotCount,
-          selectedId: _selectedFrameId,
-        );
-      }
-      if (stickers.isNotEmpty &&
-          !stickers.any((s) => s.id == _selectedStickerId) &&
-          _placements.isEmpty) {
-        _selectedStickerId = kDefaultStripStickerId;
-      }
-      _errorMessage = null;
+      _adoptCatalog(catalog);
     } on ApiException catch (e) {
       if (gen != _catalogLoadGen) return;
       if (filters.isNotEmpty) return;
@@ -877,7 +897,21 @@ if (graded.length == _expectedCaptureCount) {
     );
   }
 
+  Future<LocalStripOverlay?> _overlayForLocalCompose() async {
+    final frame = selectedFrame;
+    if (frame == null) return null;
+    if (!frame.isOccasion && !isStripTemplateFrame(frame.id)) return null;
+    try {
+      final bytes = await _overlayBytesLookup(frame);
+      if (bytes == null || bytes.isEmpty) return null;
+      return LocalStripOverlay(pngBytes: bytes, slots: frame.slots);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<GeneratedImage?> _completeLocalLook() async {
+    final overlay = await _overlayForLocalCompose();
     final persisted = await composeLocalStripSheet(
       LocalStripComposeRequest(
         sources: List<String>.from(_imageDataUrls),
@@ -886,6 +920,7 @@ if (graded.length == _expectedCaptureCount) {
         single: isSingleClassic,
         shotCount: stripShotCount,
         orientation: _printOrientation,
+        overlay: overlay,
       ),
     );
     if (persisted == null || persisted.isEmpty) {

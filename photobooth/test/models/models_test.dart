@@ -5,6 +5,7 @@ import 'package:photobooth/models/kiosk_info_model.dart';
 import 'package:photobooth/models/kiosk_share_link_model.dart';
 import 'package:photobooth/models/parallel_generation_result.dart';
 import 'package:photobooth/models/payment_initiate_result.dart';
+import 'package:photobooth/models/strip_models.dart';
 import 'package:photobooth/screens/result/transformed_image_model.dart';
 import 'package:photobooth/screens/theme_selection/theme_model.dart';
 
@@ -360,6 +361,30 @@ void main() {
     );
     expect(f.toJson()['scheduledStartAt'], start.toIso8601String());
     expect(f.toJson()['scheduledEndAt'], end.toIso8601String());
+  });
+
+  test('KioskFrameModel round-trips strip overlay variants', () {
+    const slots = [
+      StripTemplateSlot(left: 0.08, top: 0.16, width: 0.84, height: 0.155),
+    ];
+    const original = KioskFrameModel(
+      id: 'dps-1',
+      name: 'Delhi Public School',
+      overlayUrl: 'https://cdn.example/ai.png',
+      strip: KioskFrameStripAssets(
+        overlayUrl: 'https://cdn.example/6x2.png',
+        overlay3Url: 'https://cdn.example/6x2-3.png',
+        slots: slots,
+        slots3: slots,
+      ),
+    );
+    final parsed = KioskFrameModel.fromJson(original.toJson());
+    expect(parsed.strip.overlayUrl, 'https://cdn.example/6x2.png');
+    expect(parsed.strip.overlay3Url, 'https://cdn.example/6x2-3.png');
+    expect(parsed.strip.has4, isTrue);
+    expect(parsed.strip.has3, isTrue);
+    expect(parsed.strip.slots.single.left, 0.08);
+    expect(parsed.strip.slots3.single.top, 0.16);
   });
 
   test('KioskShareLinkModel.fromJson', () {

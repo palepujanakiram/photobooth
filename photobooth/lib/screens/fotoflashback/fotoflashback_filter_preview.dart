@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../models/strip_models.dart';
+import '../../utils/classic_offline_frames.dart';
 import '../../utils/strip_look_color_matrices.dart';
 import '../../utils/strip_photo_cell_layout.dart';
 import '../../views/widgets/cached_network_image.dart';
@@ -464,6 +465,7 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
               child: IgnorePointer(
                 child: CachedNetworkImage(
                   imageUrl: frameOverlayUrl!.trim(),
+                  cacheKey: classicFrameOverlayCacheKey(frameId),
                   fit: BoxFit.fill,
                   filterQuality: FilterQuality.high,
                 ),
@@ -921,14 +923,12 @@ class _LookPreviewPhoto extends StatefulWidget {
     required this.dataUrl,
     required this.fit,
     required this.cacheWidth,
-    this.alignment = Alignment.center,
     this.jpegBytes,
   });
 
   final Uint8List? jpegBytes;
   final String dataUrl;
   final BoxFit fit;
-  final Alignment alignment;
   final int? cacheWidth;
 
   @override
@@ -964,7 +964,7 @@ class _LookPreviewPhotoState extends State<_LookPreviewPhoto> {
     return Image.memory(
       bytes,
       fit: widget.fit,
-      alignment: widget.alignment,
+      alignment: Alignment.center,
       width: double.infinity,
       height: double.infinity,
       gaplessPlayback: true,
@@ -993,7 +993,7 @@ Widget _lookPreviewMissingPhoto() {
   );
 }
 
-/// Classic 1-shot preview (matches zenai composeSingle6x4 cover fill).
+/// Classic 1-shot preview (matches zenai composeSingle6x4 contain-fit).
 class _Single6x4Preview extends StatelessWidget {
   const _Single6x4Preview({
     required this.imageDataUrl,
@@ -1045,9 +1045,11 @@ class _Single6x4Preview extends StatelessWidget {
     required bool hasOverlay,
     required double margin,
     required Widget photoLayer,
+    required double boxWidth,
+    required double boxHeight,
   }) {
     final well = ColoredBox(
-      color: const Color(0xFF121212),
+      color: stripPhotoCellLetterboxColor(frameId),
       child: photoLayer,
     );
     if (!hasOverlay) {
@@ -1055,21 +1057,24 @@ class _Single6x4Preview extends StatelessWidget {
     }
     final hole = photoHole ?? defaultOccasionSinglePhotoHole;
     return Positioned(
-      left: hole.left * width,
-      top: hole.top * height,
-      width: hole.width * width,
-      height: hole.height * height,
+      left: hole.left * boxWidth,
+      top: hole.top * boxHeight,
+      width: hole.width * boxWidth,
+      height: hole.height * boxHeight,
       child: well,
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final margin = width * 0.027; // ~48/1800
-    final overlay = overlayUrl?.trim() ?? '';
+  Widget _chromeStack({
+    required BuildContext context,
+    required double boxWidth,
+    required double boxHeight,
+    required String overlay,
+  }) {
+    final margin = boxWidth * 0.027;
     final hasOverlay = overlay.isNotEmpty;
     final cacheW = flashbackLookPreviewCacheWidth(
-      layoutWidth: width,
+      layoutWidth: boxWidth,
       devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
     );
     final hasPhoto = jpegBytes != null || imageDataUrl.trim().isNotEmpty;
@@ -1078,9 +1083,7 @@ class _Single6x4Preview extends StatelessWidget {
         : _LookPreviewPhoto(
             jpegBytes: jpegBytes,
             dataUrl: imageDataUrl,
-            fit: BoxFit.cover,
-            alignment:
-                hasOverlay ? Alignment.topCenter : Alignment.center,
+            fit: BoxFit.contain,
             cacheWidth: cacheW,
           );
     final photoLayer = !hasPhoto || imagesAreGraded
@@ -1089,82 +1092,110 @@ class _Single6x4Preview extends StatelessWidget {
             colorFilter: stripPreviewColorFilter(filterId),
             child: photo,
           );
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _singleClassicPhotoWell(
+          hasOverlay: hasOverlay,
+          margin: margin,
+          photoLayer: photoLayer,
+          boxWidth: boxWidth,
+          boxHeight: boxHeight,
+        ),
+        if (frameId == 'filmstrip' && !hasOverlay)
+          CustomPaint(
+            painter: _SingleFilmstripSprocketPainter(margin: margin),
+          ),
+        if (hasOverlay)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CachedNetworkImage(
+                imageUrl: overlay,
+                cacheKey: classicFrameOverlayCacheKey(frameId),
+                fit: BoxFit.fill,
+                filterQuality: FilterQuality.high,
+              ),
+            ),
+          ),
+        if (placements.isNotEmpty)
+          for (final p in placements)
+            _PlacementSticker(
+              placement: p,
+              stripWidth: boxWidth,
+              stripHeight: boxHeight,
+              glyphRefWidth: boxWidth * 0.35,
+              layout: StripWysiwygLayout.defaults,
+              absorbPointers: drawMode,
+              onMove: onMovePlacement,
+              onRemove: onRemovePlacement,
+            ),
+        if (scribbles.isNotEmpty)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CustomPaint(
+                painter: _ScribblePainter(
+                  strokes: scribbles,
+                  stripWidth: boxWidth,
+                  stripHeight: boxHeight,
+                ),
+              ),
+            ),
+          ),
+        if (drawMode)
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onPanStart: (details) {
+                if (onScribbleStart == null) return;
+                onScribbleStart!(
+                  (details.localPosition.dx / boxWidth).clamp(0.0, 1.0),
+                  (details.localPosition.dy / boxHeight).clamp(0.0, 1.0),
+                );
+              },
+              onPanUpdate: (details) {
+                if (onScribbleUpdate == null) return;
+                onScribbleUpdate!(
+                  (details.localPosition.dx / boxWidth).clamp(0.0, 1.0),
+                  (details.localPosition.dy / boxHeight).clamp(0.0, 1.0),
+                );
+              },
+              onPanEnd: (_) => onScribbleEnd?.call(),
+              onPanCancel: onScribbleEnd,
+            ),
+          ),
+      ],
+    );
+  }
 
+  @override
+  Widget build(BuildContext context) {
+    final overlay = overlayUrl?.trim() ?? '';
+    final hasOverlay = overlay.isNotEmpty;
     return Container(
       key: ValueKey<String>('single6x4_$frameId'),
       width: width,
       height: height,
       color: _matte,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          _singleClassicPhotoWell(
-            hasOverlay: hasOverlay,
-            margin: margin,
-            photoLayer: photoLayer,
-          ),
-          if (frameId == 'filmstrip' && !hasOverlay)
-            CustomPaint(
-              painter: _SingleFilmstripSprocketPainter(margin: margin),
-            ),
-          if (hasOverlay)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: CachedNetworkImage(
-                  imageUrl: overlay,
-                  fit: BoxFit.fill,
-                  filterQuality: FilterQuality.high,
-                ),
-              ),
-            ),
-          if (placements.isNotEmpty)
-            for (final p in placements)
-              _PlacementSticker(
-                placement: p,
-                stripWidth: width,
-                stripHeight: height,
-                glyphRefWidth: width * 0.35,
-                layout: StripWysiwygLayout.defaults,
-                absorbPointers: drawMode,
-                onMove: onMovePlacement,
-                onRemove: onRemovePlacement,
-              ),
-          if (scribbles.isNotEmpty)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _ScribblePainter(
-                    strokes: scribbles,
-                    stripWidth: width,
-                    stripHeight: height,
+      child: hasOverlay
+          ? Center(
+              child: AspectRatio(
+                aspectRatio: FotoFlashbackStripPreview.single4x6AspectRatio,
+                child: LayoutBuilder(
+                  builder: (context, constraints) => _chromeStack(
+                    context: context,
+                    boxWidth: constraints.maxWidth,
+                    boxHeight: constraints.maxHeight,
+                    overlay: overlay,
                   ),
                 ),
               ),
+            )
+          : _chromeStack(
+              context: context,
+              boxWidth: width,
+              boxHeight: height,
+              overlay: '',
             ),
-          if (drawMode)
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onPanStart: (details) {
-                  if (onScribbleStart == null) return;
-                  onScribbleStart!(
-                    (details.localPosition.dx / width).clamp(0.0, 1.0),
-                    (details.localPosition.dy / height).clamp(0.0, 1.0),
-                  );
-                },
-                onPanUpdate: (details) {
-                  if (onScribbleUpdate == null) return;
-                  onScribbleUpdate!(
-                    (details.localPosition.dx / width).clamp(0.0, 1.0),
-                    (details.localPosition.dy / height).clamp(0.0, 1.0),
-                  );
-                },
-                onPanEnd: (_) => onScribbleEnd?.call(),
-                onPanCancel: onScribbleEnd,
-              ),
-            ),
-        ],
-      ),
     );
   }
 }

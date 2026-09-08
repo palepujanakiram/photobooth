@@ -74,6 +74,22 @@ bool isOccasionFrameId(String frameId) =>
 bool isStrip3TemplateFrame(String frameId) =>
     frameId.startsWith('f3:') && frameId.length > 3;
 
+/// Occasion-frame Classic 4-shot 6×2 variant (`fr:`).
+bool isFrameStripVariantId(String frameId) =>
+    frameId.startsWith('fr:') && frameId.length > 3;
+
+/// Database uuid from `ai:` / `f3:` / `fr:` / `st:` catalog ids.
+String? classicFrameDbId(String frameId) {
+  if (frameId.length <= 3) return null;
+  if (isOccasionFrameId(frameId) ||
+      isStrip3TemplateFrame(frameId) ||
+      isFrameStripVariantId(frameId) ||
+      frameId.startsWith('st:')) {
+    return frameId.substring(3);
+  }
+  return null;
+}
+
 /// Normalized photo window on a 600×1800 Classic 6×2 overlay.
 class StripTemplateSlot {
   const StripTemplateSlot({
@@ -112,6 +128,14 @@ class StripTemplateSlot {
       rotDeg: rot.clamp(-25.0, 25.0),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'left': left,
+        'top': top,
+        'width': width,
+        'height': height,
+        if (rotDeg != 0) 'rotDeg': rotDeg,
+      };
 }
 
 /// Catalog `slots` for a 6×2 overlay; empty when missing or malformed.
@@ -414,9 +438,7 @@ String? preferredOccasionFrameId(Iterable<StripFrame> frames, int shotCount) {
     if (shotCount == kStripShotCountThree && isStrip3TemplateFrame(frame.id)) {
       return frame.id;
     }
-    if (shotCount == kStripShotCount &&
-        frame.id.startsWith('fr:') &&
-        frame.id.length > 3) {
+    if (shotCount == kStripShotCount && isFrameStripVariantId(frame.id)) {
       return frame.id;
     }
   }
@@ -804,6 +826,23 @@ class StripFiltersCatalog {
               false,
       enableOsdScrub:
           JsonParseHelpers.boolOrNull(featuresMap?['enableOsdScrub']) ?? false,
+    );
+  }
+
+  /// Same catalog with a different [frames] list (offline kiosk-frame merge).
+  StripFiltersCatalog withFrames(List<StripFrame> frames) {
+    return StripFiltersCatalog(
+      brand: brand,
+      shotCount: shotCount,
+      filters: filters,
+      frames: frames,
+      stickers: stickers,
+      printSize: printSize,
+      copiesOnSheet: copiesOnSheet,
+      printNote: printNote,
+      layout: layout,
+      enableSurpriseMeAi: enableSurpriseMeAi,
+      enableOsdScrub: enableOsdScrub,
     );
   }
 }

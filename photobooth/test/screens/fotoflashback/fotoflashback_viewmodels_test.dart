@@ -7,6 +7,7 @@ import 'package:cross_file/cross_file.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
+import 'package:photobooth/models/kiosk_frame_model.dart';
 import 'package:photobooth/models/strip_models.dart';
 import 'package:photobooth/screens/fotoflashback/fotoflashback_capture_viewmodel.dart';
 import 'package:photobooth/screens/fotoflashback/fotoflashback_filter_viewmodel.dart';
@@ -32,6 +33,20 @@ String _tinyJpegDataUrl() {
   img.fill(src, color: img.ColorRgb8(20, 40, 60));
   return 'data:image/jpeg;base64,'
       '${base64Encode(img.encodeJpg(src, quality: 90))}';
+}
+
+Uint8List _solidOverlayPng() {
+  final image = img.Image(width: 20, height: 30, numChannels: 4);
+  img.fill(image, color: img.ColorRgba8(0, 160, 40, 255));
+  img.fillRect(
+    image,
+    x1: 2,
+    y1: 5,
+    x2: 17,
+    y2: 22,
+    color: img.ColorRgba8(0, 0, 0, 0),
+  );
+  return Uint8List.fromList(img.encodePng(image));
 }
 
 void main() {
@@ -829,6 +844,105 @@ void main() {
     expect(offlineLooks.filters, isNotEmpty);
     offlineLooks.dispose();
 
+    SessionManager().setSessionFromResponse({
+      ..._sessionJson('offline-dps'),
+      kKioskSessionOfflineKey: true,
+    });
+    const dps = KioskFrameModel(
+      id: 'dps-1',
+      name: 'Delhi Public School',
+      overlayUrl: 'https://cdn.example/dps.png',
+      strip: KioskFrameStripAssets(
+        overlayUrl: 'https://cdn.example/dps-6x2.png',
+        overlay3Url: 'https://cdn.example/dps-3.png',
+      ),
+    );
+    final dpsApi = _StripFakeApi(failLoad: true, kioskFrames: [dps]);
+    final offlineDpsOne = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: const ['data:image/jpeg;base64,/9j/4AAQ'],
+      apiService: dpsApi,
+      overlayCleanupBuildGate: false,
+    );
+    await offlineDpsOne.loadFilters();
+    expect(offlineDpsOne.errorMessage, isNull);
+    expect(offlineDpsOne.frames.any((f) => f.id == 'ai:dps-1'), isTrue);
+    expect(offlineDpsOne.selectedFrameId, 'ai:dps-1');
+    expect(
+      await offlineDpsOne.compose(),
+      isNotNull,
+      reason: 'occasion chrome without cached PNG still prints',
+    );
+    offlineDpsOne.dispose();
+
+    final overlayPng = _solidOverlayPng();
+    final stamped = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: [_tinyJpegDataUrl()],
+      apiService: dpsApi,
+      overlayCleanupBuildGate: false,
+      overlayBytesLookup: (frame) async {
+        expect(frame.id, 'ai:dps-1');
+        return overlayPng;
+      },
+    );
+    await stamped.loadFilters();
+    expect(await stamped.compose(), isNotNull);
+    stamped.dispose();
+
+    final emptyOverlay = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: [_tinyJpegDataUrl()],
+      apiService: dpsApi,
+      overlayCleanupBuildGate: false,
+      overlayBytesLookup: (_) async => Uint8List(0),
+    );
+    await emptyOverlay.loadFilters();
+    expect(await emptyOverlay.compose(), isNotNull);
+    emptyOverlay.dispose();
+
+    final throwingOverlay = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: [_tinyJpegDataUrl()],
+      apiService: dpsApi,
+      overlayCleanupBuildGate: false,
+      overlayBytesLookup: (_) async => throw StateError('cache boom'),
+    );
+    await throwingOverlay.loadFilters();
+    expect(await throwingOverlay.compose(), isNotNull);
+    throwingOverlay.dispose();
+
+    final offlineDpsFour = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
+      apiService: dpsApi,
+      overlayCleanupBuildGate: false,
+    );
+    await offlineDpsFour.loadFilters();
+    expect(offlineDpsFour.selectedFrameId, 'fr:dps-1');
+    offlineDpsFour.dispose();
+
+    final offlineDpsThree = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(3, 'data:image/jpeg;base64,/9j/4AAQ'),
+      apiService: dpsApi,
+      overlayCleanupBuildGate: false,
+    );
+    await offlineDpsThree.loadFilters();
+    expect(offlineDpsThree.selectedFrameId, 'f3:dps-1');
+    offlineDpsThree.dispose();
+
+    final throwingCache = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: const ['data:image/jpeg;base64,/9j/4AAQ'],
+      apiService: _ThrowingCachedFramesApi(),
+      overlayCleanupBuildGate: false,
+    );
+    await throwingCache.loadFilters();
+    expect(throwingCache.errorMessage, isNull);
+    expect(throwingCache.filters, isNotEmpty);
+    throwingCache.dispose();
+
     SessionManager().setSessionFromResponse(_sessionJson('dns-looks'));
     final dnsLooks = FotoFlashbackFilterViewModel(
       theme: stripTheme,
@@ -1013,6 +1127,29 @@ void main() {
     expect(one.selectedFrameId, 'ai:frame-1');
     one.selectFrame('f3:frame-1');
     expect(one.selectedFrameId, isNot('f3:frame-1'));
+  });
+
+  test('FotoFlashbackFilterViewModel merges cached kiosk frames into live catalog',
+      () async {
+    SessionManager().setSessionFromResponse(_sessionJson('sess-merge-dps'));
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: const ['data:image/jpeg;base64,/9j/4AAQ'],
+      apiService: _StripFakeApi(
+        kioskFrames: const [
+          KioskFrameModel(
+            id: 'dps-1',
+            name: 'Delhi Public School',
+            overlayUrl: 'https://cdn.example/dps.png',
+          ),
+        ],
+      ),
+      overlayCleanupBuildGate: false,
+    );
+    await vm.loadFilters();
+    expect(vm.frames.any((f) => f.id == 'ai:dps-1'), isTrue);
+    expect(vm.selectedFrameId, 'ai:dps-1');
+    vm.dispose();
   });
 
   test('FotoFlashbackFilterViewModel refreshPreviewGrade no-ops off strip count',
@@ -1593,6 +1730,7 @@ class _StripFakeApi extends FakeApiService {
     this.monoOnly = false,
     this.altChromeOnly = false,
     this.enableOsdScrub = true,
+    super.kioskFrames,
   });
 
   final bool failCompose;
@@ -1945,6 +2083,15 @@ class _EmptyFiltersFakeApi extends _StripFakeApi {
       'shotCount': 4,
       'filters': <Map<String, dynamic>>[],
     });
+  }
+}
+
+class _ThrowingCachedFramesApi extends _StripFakeApi {
+  _ThrowingCachedFramesApi() : super(failLoad: true);
+
+  @override
+  Future<List<KioskFrameModel>> getCachedKioskFrames() async {
+    throw Exception('disk boom');
   }
 }
 
