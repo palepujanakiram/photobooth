@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../../models/event_pipeline/media_item.dart';
 import 'event_pipeline_db.dart';
 import 'event_pipeline_ledger.dart';
@@ -84,6 +86,10 @@ class EventPipelineStats {
 }
 
 /// Reads [EventPipelineStats] from the ledger.
+///
+/// The handle is opened **once** and reused. This is polled on a timer by every
+/// station, and reopening per tick would re-run the schema DDL every few seconds
+/// and leak a connection each time.
 class EventPipelineStatsReader {
   EventPipelineStatsReader({
     Future<EventPipelineDb?> Function()? openDb,
@@ -91,8 +97,28 @@ class EventPipelineStatsReader {
 
   final Future<EventPipelineDb?> Function() _openDb;
 
+  static EventPipelineDb? _shared;
+  static Future<EventPipelineDb?>? _opening;
+
+  @visibleForTesting
+  static void resetSharedForTests() {
+    _shared = null;
+    _opening = null;
+  }
+
+  Future<EventPipelineDb?> _database() {
+    final ready = _shared;
+    if (ready != null) return Future<EventPipelineDb?>.value(ready);
+    // Guard against two ticks racing into a second open.
+    return _opening ??= _openDb().then((db) {
+      _shared = db;
+      _opening = null;
+      return db;
+    });
+  }
+
   Future<EventPipelineStats> read() async {
-    final db = await _openDb();
+    final db = await _database();
     // No database means no pipeline data, which is an empty strip rather than an
     // error — a station must still render when storage is unavailable.
     if (db == null) return const EventPipelineStats();

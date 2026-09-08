@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../services/event_pipeline/event_pipeline_config.dart';
 import '../../services/event_pipeline/event_pipeline_stats.dart';
 import '../../views/widgets/app_colors.dart';
 
@@ -16,10 +17,15 @@ class EventPipelineStatusStrip extends StatefulWidget {
   const EventPipelineStatusStrip({
     super.key,
     this.reader,
+    this.enabled,
     this.refreshInterval = const Duration(seconds: 5),
   });
 
   final EventPipelineStatsReader? reader;
+
+  /// Overrides the resolved pipeline flag. Tests pass this; production reads it.
+  final bool? enabled;
+
   final Duration refreshInterval;
 
   @override
@@ -37,7 +43,19 @@ class _EventPipelineStatusStripState extends State<EventPipelineStatusStrip> {
   @override
   void initState() {
     super.initState();
-    unawaited(_load());
+    unawaited(_begin());
+  }
+
+  /// Does nothing at all when the pipeline is off.
+  ///
+  /// Without this a purely server-brokered event station would open the pipeline
+  /// database and poll it every few seconds for counts that are always zero.
+  Future<void> _begin() async {
+    final enabled = widget.enabled ??
+        (await EventPipelineConfig().resolve()).pipelineEnabled;
+    if (!mounted || !enabled) return;
+    await _load();
+    if (!mounted) return;
     _timer = Timer.periodic(widget.refreshInterval, (_) => unawaited(_load()));
   }
 

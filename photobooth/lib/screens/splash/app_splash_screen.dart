@@ -438,12 +438,17 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     final eventCode = await _event.getEventCode();
     final role = await _event.getStationRole();
     if (!mounted) return;
+    // Only event devices need this. A guest kiosk has no event code, routes to
+    // Terms regardless, and must not pay for a pipeline lookup on every boot.
+    //
     // Resolved rather than read from the sync snapshot: at first boot nothing
     // has called resolve() yet, and defaulting to "off" would send an offline
     // event's station to needsInternet.
-    final pipelineEnabled =
-        (await EventPipelineConfig().resolve()).pipelineEnabled;
-    if (!mounted) return;
+    var pipelineEnabled = false;
+    if ((eventCode?.trim().isNotEmpty ?? false) && role != null) {
+      pipelineEnabled = (await EventPipelineConfig().resolve()).pipelineEnabled;
+      if (!mounted) return;
+    }
     final dest = resolveEventPostSplashRoute(
       eventCode: eventCode,
       stationRole: role,
