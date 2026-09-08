@@ -119,39 +119,42 @@ class EventStationQueueRow extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Row(
-            children: [
-              EventStationThumb(
-                imageUrl: imageUrl,
-                cacheId: cacheId,
-                size: 72,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      statusLabel,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: failed ? scheme.error : null,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      timingLabel,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
+      child: MouseRegion(
+        cursor: onTap == null ? MouseCursor.defer : SystemMouseCursors.click,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Row(
+              children: [
+                EventStationThumb(
+                  imageUrl: imageUrl,
+                  cacheId: cacheId,
+                  size: 72,
                 ),
-              ),
-              ...actions,
-            ],
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        statusLabel,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: failed ? scheme.error : null,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        timingLabel,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+                ...actions,
+              ],
+            ),
           ),
         ),
       ),

@@ -77,11 +77,12 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
       actions: actions
           ?.map(
             (action) => ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 48),
+              constraints: const BoxConstraints(minWidth: 48),
               child: action,
             ),
           )
           .toList(),
+      actionsPadding: const EdgeInsets.only(right: 8),
       automaticallyImplyLeading: automaticallyImplyLeading,
       backgroundColor: appColors.backgroundColor,
       foregroundColor: appColors.textColor,

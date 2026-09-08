@@ -58,9 +58,8 @@ class EventThemeStationScreen extends StatelessWidget {
         showBackButton: true,
         onBackPressed: () => _changeRole(context),
         actions: [
-          TextButton(
+          EventStationChangeRoleButton(
             onPressed: () => _changeRole(context),
-            child: const Text(AppStrings.eventStationChangeRole),
           ),
         ],
         child: EventStationBoundShell(

@@ -16,6 +16,25 @@ Future<EventInfoModel?> fetchBoundEventLive(String code) async {
   return ApiService().fetchEventByCode(code, kioskCode: kiosk);
 }
 
+class EventStationChangeRoleButton extends StatelessWidget {
+  const EventStationChangeRoleButton({super.key, required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: onPressed,
+      child: const Text(
+        AppStrings.eventStationChangeRole,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        softWrap: false,
+      ),
+    );
+  }
+}
+
 class EventStationChromeScope extends InheritedWidget {
   const EventStationChromeScope({
     super.key,

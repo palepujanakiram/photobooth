@@ -849,6 +849,8 @@ abstract final class AppStrings {
   static const eventStationAssignTheme = 'Use this look';
   static const eventStationNoThemes = 'No themes available for this event.';
   static const eventStationPrintNow = 'Print';
+  static const eventStationPrintPreview = 'Print preview';
+  static const eventStationPrintPreviewHint = 'As it will print';
   static const eventStationReprint = 'Print another copy';
   static const eventStationJobClaimed =
       'This job was taken by another station.';
