@@ -20,13 +20,11 @@ class StripPhotoCellRect {
   Rect get rect => Rect.fromLTWH(left, top, width, height);
 }
 
-/// Scale-to-fit so landscape group shots keep every person in the cell.
+/// Photo cells cover-fill the window so the capture occupies the slot.
 ///
-/// Cover-cropping a wide booth capture into a tall 2×6 window chopped
-/// left/right subjects (Pick a look looked like a one-person portrait).
-/// Scrapbook sheet layouts keep their own cover-fit cells.
-bool stripPhotoCellUsesContainFit(String frameId) =>
-    !isStripSheetLayout(frameId);
+/// Occasion chrome on landscape sheets is letterboxed separately so logos
+/// are not stretched; that path does not use this helper.
+bool stripPhotoCellUsesContainFit(String frameId) => false;
 
 /// Letterbox well behind contain-fit cells (matches print chrome fill).
 Color stripPhotoCellLetterboxColor(String frameId) {
@@ -38,7 +36,7 @@ Color stripPhotoCellLetterboxColor(String frameId) {
 /// Photo cell geometry for one 2×6 strip — mirrors zenai `stripCompositor`.
 ///
 /// Classic / Noir (HAMA-style): 10px equal margins, 10px gutters.
-/// Filmstrip: 36px rails, same vertical stack as classic, contain fit.
+/// Filmstrip: 36px rails, same vertical stack as classic, cover fit.
 List<StripPhotoCellRect> computeStripPhotoCellRects({
   required String frameId,
   required double stripWidth,

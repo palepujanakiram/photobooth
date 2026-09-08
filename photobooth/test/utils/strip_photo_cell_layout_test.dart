@@ -74,9 +74,8 @@ void main() {
       expect(cells.first.width, closeTo(cellW, 0.01));
       expect(cells.first.height, closeTo(cellH, 0.01));
       expect(cells[1].top, closeTo(marginY + cellH + gutter, 0.01));
-      expect(stripPhotoCellUsesContainFit('filmstrip'), isTrue);
-      expect(stripPhotoCellUsesContainFit('classic'), isTrue);
-      expect(stripPhotoCellUsesContainFit('polaroid'), isFalse);
+      expect(stripPhotoCellUsesContainFit('filmstrip'), isFalse);
+      expect(stripPhotoCellUsesContainFit('classic'), isFalse);
 
       final threeCells = computeStripPhotoCellRects(
         frameId: 'filmstrip',

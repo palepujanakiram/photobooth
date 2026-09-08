@@ -177,14 +177,14 @@ Uint8List _composeLocalStripSheetIsolate(_LocalStripIsolateInput input) {
   );
 }
 
-/// Test hook for cell resize. Production Classic cells use contain-fit.
+/// Test hook for cell resize. Production Classic cells cover-fill the slot.
 @visibleForTesting
 img.Image? prepareLocalStripCellForTest(
   Uint8List bytes,
   int width,
   int height, {
   List<double>? matrix,
-  bool contain = true,
+  bool contain = false,
   img.Color? letterbox,
 }) =>
     _prepareCell(
@@ -226,7 +226,6 @@ Uint8List composeLocalStripSheetJpegForTest({
         sourceBytes.single,
         matrix,
         _CellRect(0, 0, width, height),
-        frameId: frameId,
       );
     }
   } else if (overlay != null) {
@@ -281,20 +280,30 @@ void _drawOccasionSingle(
   List<double>? matrix,
   LocalStripOverlay overlay,
 ) {
-  final hole = occasionSinglePhotoHole(overlay.slots);
   final chrome = portraitChromeRectOnSheet(sheet.width, sheet.height);
-  _drawSourceIntoCell(
-    sheet,
-    source,
-    matrix,
-    _normalizedCell(
-      chrome.width,
-      chrome.height,
-      hole,
-      chrome.left,
-      chrome.top,
-    ),
-  );
+  final landscapeSheet =
+      chrome.width != sheet.width || chrome.height != sheet.height;
+  if (landscapeSheet) {
+    _drawSourceIntoCell(
+      sheet,
+      source,
+      matrix,
+      _CellRect(0, 0, sheet.width, sheet.height),
+    );
+  } else {
+    _drawSourceIntoCell(
+      sheet,
+      source,
+      matrix,
+      _normalizedCell(
+        chrome.width,
+        chrome.height,
+        occasionSinglePhotoHole(overlay.slots),
+        chrome.left,
+        chrome.top,
+      ),
+    );
+  }
   _compositeOverlay(
     sheet,
     overlay.pngBytes,
@@ -455,7 +464,6 @@ void _drawDualStripCells(
       matrix,
       cellWidth,
       cellHeight,
-      letterbox: _frameBackground(frameId),
     );
     if (prepared == null) continue;
     for (final stripLeft in stripOffsets) {
@@ -473,15 +481,13 @@ void _drawSourceIntoCell(
   img.Image sheet,
   Uint8List bytes,
   List<double>? matrix,
-  _CellRect rect, {
-  String frameId = 'classic',
-}) {
+  _CellRect rect,
+) {
   final prepared = _prepareCell(
     bytes,
     matrix,
     rect.width,
     rect.height,
-    letterbox: _frameBackground(frameId),
   );
   if (prepared != null) {
     img.compositeImage(sheet, prepared, dstX: rect.left, dstY: rect.top);
@@ -493,7 +499,7 @@ img.Image? _prepareCell(
   List<double>? matrix,
   int width,
   int height, {
-  bool contain = true,
+  bool contain = false,
   img.Color? letterbox,
 }) {
   final decoded = img.decodeImage(bytes);

@@ -53,27 +53,14 @@ void main() {
       expect(decoded!.width, kLocalStripSheetWidth);
       expect(decoded.height, kLocalStripSheetHeight);
 
-      // Sample cell centers — contain-fit letterboxes landscape plates, so the
-      // top of a cell is chrome rather than the capture.
-      const cellHeight = (kLocalStripSheetHeight -
-              kLocalStripBorderTop -
-              kLocalStripBorderBottom -
-              kLocalStripGutter * 2) ~/
-          3;
-      final firstCell = decoded.getPixel(
-        300,
-        kLocalStripBorderTop + cellHeight ~/ 2,
-      );
-      final secondCell = decoded.getPixel(
-        300,
-        kLocalStripBorderTop + cellHeight + kLocalStripGutter + cellHeight ~/ 2,
-      );
-      final thirdCell = decoded.getPixel(
-        300,
-        kLocalStripBorderTop +
-            (cellHeight + kLocalStripGutter) * 2 +
-            cellHeight ~/ 2,
-      );
+      // Each of the three cells is ~597px tall, so sampling a third of the way
+      // down lands in a different plate than the four-shot layout would.
+      const cellHeight = (kLocalStripSheetHeight - kLocalStripBorder * 2) ~/ 3;
+      final firstCell = decoded.getPixel(300, kLocalStripBorder + 50);
+      final secondCell =
+          decoded.getPixel(300, kLocalStripBorder + cellHeight + 50);
+      final thirdCell =
+          decoded.getPixel(300, kLocalStripBorder + cellHeight * 2 + 50);
       expect(firstCell.r, greaterThan(firstCell.g));
       expect(secondCell.g, greaterThan(secondCell.r));
       expect(thirdCell.b, greaterThan(thirdCell.r));
@@ -230,7 +217,7 @@ void main() {
       expect(tall.top, 450);
     });
 
-    test('letterboxes 4x6 occasion chrome on landscape 6x4 instead of stretching',
+    test('covers landscape 6x4 with the photo and contain-fits 4x6 chrome',
         () {
       final overlay = _overlayPng(
         width: 120,
@@ -254,9 +241,8 @@ void main() {
       final decoded = img.decodeJpg(jpeg)!;
       expect(decoded.width, kLocalStripSheetHeight);
       expect(decoded.height, kLocalStripSheetWidth);
-      final matte = decoded.getPixel(20, 600);
-      expect(matte.r, lessThan(40));
-      expect(matte.g, lessThan(40));
+      final edge = decoded.getPixel(20, 600);
+      expect(edge.r, greaterThan(edge.g));
       final chrome = decoded.getPixel(900, 20);
       expect(chrome.g, greaterThan(chrome.r));
     });
@@ -309,7 +295,7 @@ void main() {
         overlay: LocalStripOverlay(pngBytes: overlay),
       );
       final decoded = img.decodeJpg(jpeg)!;
-      final first = decoded.getPixel(296, 428);
+      final first = decoded.getPixel(80, 340);
       final chrome = decoded.getPixel(40, 20);
       expect(first.r, greaterThan(first.g));
       expect(chrome.g, greaterThan(chrome.r));
@@ -421,6 +407,7 @@ void main() {
       _solidJpeg(10, 20, 30, width: 80, height: 20),
       40,
       40,
+      contain: true,
     );
     expect(wide, isNotNull);
     expect(wide!.width, 40);
@@ -434,6 +421,7 @@ void main() {
       _solidJpeg(10, 20, 30, width: 80, height: 20),
       40,
       40,
+      contain: true,
       letterbox: img.ColorRgb8(0, 0, 0),
     );
     expect(custom!.getPixel(1, 1).r, lessThan(20));
@@ -469,8 +457,7 @@ void main() {
     expect(coverTall!.height, 40);
   });
 
-  test('landscape plates letterbox in tall classic cells instead of cropping',
-      () {
+  test('cover-fit fills tall classic cells instead of letterboxing', () {
     final jpeg = composeLocalStripSheetJpegForTest(
       sourceBytes: [
         _solidJpeg(220, 20, 20, width: 80, height: 20),
@@ -485,20 +472,9 @@ void main() {
     const stripDrawWidth =
         (kLocalStripSheetWidth - kLocalStripCenterGutter) ~/ 2;
     const cellWidth = stripDrawWidth - kLocalStripBorder * 2;
-    const cellHeight = (kLocalStripSheetHeight -
-            kLocalStripBorderTop -
-            kLocalStripBorderBottom -
-            kLocalStripGutter * 2) ~/
-        3;
     final x = kLocalStripBorder + cellWidth ~/ 2;
-    final gutter = decoded.getPixel(x, kLocalStripBorderTop + 8);
-    expect(gutter.r, greaterThan(240));
-    expect(gutter.g, greaterThan(240));
-    final plate = decoded.getPixel(
-      x,
-      kLocalStripBorderTop + cellHeight ~/ 2,
-    );
-    expect(plate.r, greaterThan(plate.g));
+    final filled = decoded.getPixel(x, kLocalStripBorderTop + 8);
+    expect(filled.r, greaterThan(filled.g));
   });
 }
 
