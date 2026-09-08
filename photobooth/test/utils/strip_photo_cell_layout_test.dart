@@ -98,7 +98,7 @@ void main() {
       );
       expect(
         stripPhotoCellUsesContainFit('ai:dps', shotCount: 1),
-        isFalse,
+        isTrue,
       );
       expect(
         stripPhotoCellUsesContainFit('classic', shotCount: 0),
@@ -123,6 +123,10 @@ void main() {
       expect(
         stripPhotoCellLetterboxColor('filmstrip'),
         const Color(0xFF0A0A0A),
+      );
+      expect(
+        stripPhotoCellLetterboxColor('ai:dps'),
+        const Color(0xFF121212),
       );
     });
   });

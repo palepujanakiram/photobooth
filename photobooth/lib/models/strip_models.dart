@@ -22,8 +22,11 @@ const List<int> kClassicStripShotCounts = <int>[
   kStripShotCount,
 ];
 
-/// Matte inset for Classic / Noir / Filmstrip 1-shot (preview + local print).
+/// Hairline matte for Classic / Noir 1-shot (preview + local print).
 const double kClassicSingleMatteRatio = 0.027;
+
+/// Filmstrip 1-shot rail (matches [StripChromeLook.filmRailRatio] 36/600).
+const double kClassicFilmstripRailRatio = 36 / 600;
 
 /// Shot counts `/strip/compose` accepts: 1 (6×4 / 4×6) or a 2×6 strip length.
 bool isValidClassicComposeShotCount(int count) =>
@@ -180,13 +183,27 @@ const StripTemplateSlot defaultOccasionSinglePhotoHole = StripTemplateSlot(
   height: 0.60,
 );
 
-/// Landscape 6×4 photo window (~16:9) so chrome stays in the matte, not on faces.
+/// Fallback 6×4 window when an occasion overlay has no landscape hole.
 const StripTemplateSlot defaultClassicLandscapePhotoHole = StripTemplateSlot(
   left: 0.07,
   top: 0.14,
   width: 0.86,
   height: 0.72,
 );
+
+/// Built-in Classic / Noir / Filmstrip 1-shot: thin chrome, full capture inside.
+StripTemplateSlot classicChromeSinglePhotoHole({String frameId = 'classic'}) {
+  final x = frameId == 'filmstrip'
+      ? kClassicFilmstripRailRatio
+      : kClassicSingleMatteRatio;
+  const y = kClassicSingleMatteRatio;
+  return StripTemplateSlot(
+    left: x,
+    top: y,
+    width: 1 - 2 * x,
+    height: 1 - 2 * y,
+  );
+}
 
 /// Catalog hole for Classic 1-shot occasion overlay, else orientation default.
 StripTemplateSlot occasionSinglePhotoHole(
@@ -199,10 +216,12 @@ StripTemplateSlot occasionSinglePhotoHole(
       : defaultOccasionSinglePhotoHole;
 }
 
-/// Built-in Classic / Noir / Filmstrip 1-shot: inset well on 6×4, thin matte on 4×6.
-StripTemplateSlot? classicBuiltInSinglePhotoHole({required bool landscape}) {
-  if (!landscape) return null;
-  return defaultClassicLandscapePhotoHole;
+/// Built-in 1-shot window (same thin chrome on 4×6 and 6×4).
+StripTemplateSlot? classicBuiltInSinglePhotoHole({
+  required bool landscape,
+  String frameId = 'classic',
+}) {
+  return classicChromeSinglePhotoHole(frameId: frameId);
 }
 
 /// Photo window for Classic 1-shot preview/print (occasion hole or built-in matte).
@@ -210,18 +229,13 @@ StripTemplateSlot resolveClassicSinglePhotoHole({
   required bool hasOverlay,
   required bool landscape,
   StripTemplateSlot? overlayHole,
+  String frameId = 'classic',
 }) {
   if (hasOverlay) {
     return overlayHole ??
         occasionSinglePhotoHole(const [], landscape: landscape);
   }
-  return classicBuiltInSinglePhotoHole(landscape: landscape) ??
-      const StripTemplateSlot(
-        left: kClassicSingleMatteRatio,
-        top: kClassicSingleMatteRatio,
-        width: 1 - 2 * kClassicSingleMatteRatio,
-        height: 1 - 2 * kClassicSingleMatteRatio,
-      );
+  return classicChromeSinglePhotoHole(frameId: frameId);
 }
 
 /// Portrait 4×6 overlay, or the dedicated 6×4 PNG when [landscape] is true.

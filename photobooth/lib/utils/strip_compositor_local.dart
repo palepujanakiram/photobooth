@@ -225,6 +225,7 @@ Uint8List composeLocalStripSheetJpegForTest({
       final hole = resolveClassicSinglePhotoHole(
         hasOverlay: false,
         landscape: landscape,
+        frameId: frameId,
       );
       _drawSourceIntoCell(
         sheet,
@@ -301,8 +302,8 @@ void _drawOccasionSingle(
       0,
       0,
     ),
-    contain: false,
-    letterbox: img.ColorRgb8(255, 255, 255),
+    contain: true,
+    letterbox: img.ColorRgb8(18, 18, 18),
   );
   _compositeOverlay(
     sheet,

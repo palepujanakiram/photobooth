@@ -1136,6 +1136,47 @@ class ApiService {
     }
   }
 
+  /// POST `/api/sessions/:id/strip/deliverable` — store a locally baked print.
+  Future<String?> registerStripDeliverable({
+    required String sessionId,
+    required String imageDataUrl,
+  }) async {
+    final sid = sessionId.trim();
+    final dataUrl = imageDataUrl.trim();
+    if (sid.isEmpty || !dataUrl.startsWith(AppStrings.dataImagePrefix)) {
+      return null;
+    }
+    try {
+      final r = await _dio.post<dynamic>(
+        '/api/sessions/$sid/strip/deliverable',
+        data: <String, dynamic>{'imageDataUrl': dataUrl},
+        options: Options(
+          responseType: ResponseType.json,
+          validateStatus: (c) => c != null && c < 600,
+        ),
+      );
+      throwIfHttpErrorResponse(
+        r,
+        operationLabel: AppStrings.flashbackComposeFailed,
+      );
+      final data = r.data;
+      Map<String, dynamic>? map;
+      if (data is Map<String, dynamic>) {
+        map = data;
+      } else if (data is Map) {
+        map = Map<String, dynamic>.from(data);
+      }
+      if (map == null || map['success'] == false) return null;
+      final url = map['imageUrl']?.toString().trim() ?? '';
+      return url.isEmpty ? null : url;
+    } on ApiException {
+      return null;
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+      return null;
+    }
+  }
+
   /// GET `/api/kiosk/generation-timing` — rolling p50/p90 for wait-screen ETAs.
   Future<Map<String, dynamic>> fetchKioskGenerationTiming() async {
     try {

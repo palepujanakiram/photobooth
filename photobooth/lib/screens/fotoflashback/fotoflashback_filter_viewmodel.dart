@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/kiosk_frame_model.dart';
 import '../../models/strip_models.dart';
 import '../../services/api_service.dart';
+import '../../services/classic_deliverable_upload.dart';
 import '../../services/session_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/capture_flow_log.dart';
@@ -23,8 +24,6 @@ import '../../utils/print_size_helpers.dart';
 import '../../utils/strip_compositor_local.dart';
 import '../../utils/strip_filters_catalog_fallback.dart';
 import '../../utils/strip_preview_grade_compress.dart';
-import '../../services/local_guest_media_write.dart';
-import '../../services/local_media_store.dart';
 import '../photo_generate/photo_generate_viewmodel.dart';
 import '../theme_selection/theme_model.dart';
 
@@ -911,11 +910,12 @@ if (graded.length == _expectedCaptureCount) {
     );
   }
 
-  Future<String> _persistStripPrintUrl(String url) {
-    return persistGuestImageUrl(
-      prefix: kGuestMediaPrefixFotoflashback,
-      source: url,
-      fetchBytes: guestMediaNetworkFetch(),
+  Future<String> _persistStripPrintUrl(String sessionId, String url) {
+    return persistClassicPrintDeliverable(
+      sessionId: sessionId,
+      imageUrl: url,
+      persistLocal: persistClassicPrintLocally,
+      upload: _api.registerStripDeliverable,
     );
   }
 
@@ -975,9 +975,15 @@ if (graded.length == _expectedCaptureCount) {
       _errorMessage = AppStrings.flashbackComposeFailed;
       return null;
     }
+    final printUrl = await persistClassicPrintDeliverable(
+      sessionId: _sessionManager.sessionId ?? '',
+      imageUrl: persisted,
+      persistLocal: persistClassicPrintLocally,
+      upload: _api.registerStripDeliverable,
+    );
     await _sessionManager.attachDeliverableImageUrls(
-      imageUrls: [persisted],
-      stripCompositeUrl: persisted,
+      imageUrls: [printUrl],
+      stripCompositeUrl: printUrl,
     );
     final printSize = resolveClassicComposePrintSize(
       imageCount: _imageDataUrls.length,
@@ -985,7 +991,7 @@ if (graded.length == _expectedCaptureCount) {
       orientation: _printOrientation,
     );
     final result = localLookComposeResult(
-      imageUrl: persisted,
+      imageUrl: printUrl,
       filterId: _selectedFilterId,
       printSize: printSize,
     );
@@ -993,7 +999,7 @@ if (graded.length == _expectedCaptureCount) {
     _composePreview = result;
     return GeneratedImage(
       id: 'local_look_$_selectedFilterId',
-      imageUrl: persisted,
+      imageUrl: printUrl,
       theme: theme,
       isSelected: true,
       printSize: printSize,
@@ -1110,7 +1116,7 @@ if (graded.length == _expectedCaptureCount) {
         apiPrintSize: result.printSize,
         orientation: _printOrientation,
       );
-      final printUrl = await _persistStripPrintUrl(result.printImageUrl);
+      final printUrl = await _persistStripPrintUrl(sessionId, result.printImageUrl);
       await _sessionManager.attachDeliverableImageUrls(
         imageUrls: [printUrl],
         stripCompositeUrl: printUrl,

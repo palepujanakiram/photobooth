@@ -745,6 +745,108 @@ void main() {
         ),
       ),
     );
+    expect(
+      await badApi.registerStripDeliverable(
+        sessionId: 's',
+        imageDataUrl: 'data:image/jpeg;base64,abc',
+      ),
+      isNull,
+    );
+  });
+
+  test('registerStripDeliverable uploads data URLs and fail-opens', () async {
+    expect(
+      await api.registerStripDeliverable(
+        sessionId: '',
+        imageDataUrl: 'data:image/jpeg;base64,xx',
+      ),
+      isNull,
+    );
+    expect(
+      await api.registerStripDeliverable(
+        sessionId: 'sess-1',
+        imageDataUrl: '/api/img/x.jpg',
+      ),
+      isNull,
+    );
+    adapter.onPost(
+      '/api/sessions/sess-1/strip/deliverable',
+      (server) => server.reply(200, {
+        'success': true,
+        'imageUrl': '/api/img/fotoflashback/web.jpg',
+      }),
+      data: Matchers.any,
+    );
+    expect(
+      await api.registerStripDeliverable(
+        sessionId: 'sess-1',
+        imageDataUrl: 'data:image/jpeg;base64,xx',
+      ),
+      '/api/img/fotoflashback/web.jpg',
+    );
+    adapter.onPost(
+      '/api/sessions/sess-map/strip/deliverable',
+      (server) => server.reply(200, <dynamic, dynamic>{
+        'success': true,
+        'imageUrl': '/api/img/fotoflashback/map.jpg',
+      }),
+      data: Matchers.any,
+    );
+    expect(
+      await api.registerStripDeliverable(
+        sessionId: 'sess-map',
+        imageDataUrl: 'data:image/jpeg;base64,xx',
+      ),
+      '/api/img/fotoflashback/map.jpg',
+    );
+    adapter.onPost(
+      '/api/sessions/sess-fail/strip/deliverable',
+      (server) => server.reply(200, {'success': false}),
+      data: Matchers.any,
+    );
+    expect(
+      await api.registerStripDeliverable(
+        sessionId: 'sess-fail',
+        imageDataUrl: 'data:image/jpeg;base64,xx',
+      ),
+      isNull,
+    );
+    adapter.onPost(
+      '/api/sessions/sess-empty/strip/deliverable',
+      (server) => server.reply(200, {'success': true, 'imageUrl': '  '}),
+      data: Matchers.any,
+    );
+    expect(
+      await api.registerStripDeliverable(
+        sessionId: 'sess-empty',
+        imageDataUrl: 'data:image/jpeg;base64,xx',
+      ),
+      isNull,
+    );
+    adapter.onPost(
+      '/api/sessions/sess-400/strip/deliverable',
+      (server) => server.reply(400, {'error': 'bad'}),
+      data: Matchers.any,
+    );
+    expect(
+      await api.registerStripDeliverable(
+        sessionId: 'sess-400',
+        imageDataUrl: 'data:image/jpeg;base64,xx',
+      ),
+      isNull,
+    );
+    adapter.onPost(
+      '/api/sessions/sess-text/strip/deliverable',
+      (server) => server.reply(200, 'not-json'),
+      data: Matchers.any,
+    );
+    expect(
+      await api.registerStripDeliverable(
+        sessionId: 'sess-text',
+        imageDataUrl: 'data:image/jpeg;base64,xx',
+      ),
+      isNull,
+    );
   });
 
   test('ingest kiosk entities and assets', () async {

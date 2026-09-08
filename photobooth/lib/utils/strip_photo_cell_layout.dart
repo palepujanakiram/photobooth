@@ -22,22 +22,20 @@ class StripPhotoCellRect {
 
 /// Whether a strip cell letterboxes the capture instead of filling the window.
 ///
-/// Classic 1-shot chrome (no occasion overlay) contain-fits so a landscape
-/// webcam still is not side-cropped into 4×6. Multi-shot and occasion holes
-/// still cover-fill their designed windows.
+/// Classic 1-shot (chrome and catalog overlays) contain-fits so the full
+/// capture sits in the hole. Multi-shot cells still cover-fill.
 bool stripPhotoCellUsesContainFit(
   String frameId, {
   int shotCount = kStripShotCount,
 }) {
-  if (shotCount != 1) return false;
-  if (isOccasionFrameId(frameId) || isStripTemplateFrame(frameId)) {
-    return false;
-  }
-  return true;
+  return shotCount == 1;
 }
 
 /// Letterbox well behind contain-fit cells (matches print chrome fill).
 Color stripPhotoCellLetterboxColor(String frameId) {
+  if (isOccasionFrameId(frameId) || isStripTemplateFrame(frameId)) {
+    return const Color(0xFF121212);
+  }
   if (frameId == 'filmstrip') return const Color(0xFF0A0A0A);
   if (frameId == 'noir') return const Color(0xFF121216);
   return const Color(0xFFFFFFFF);

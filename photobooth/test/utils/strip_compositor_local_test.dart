@@ -259,11 +259,21 @@ void main() {
       final decoded = img.decodeJpg(jpeg)!;
       expect(decoded.width, kLocalStripSheetHeight);
       expect(decoded.height, kLocalStripSheetWidth);
-      final holeCx = (8 / 180 * decoded.width + 164 / 180 * decoded.width / 2).round();
-      final holeCy = (8 / 120 * decoded.height + 90 / 120 * decoded.height / 2).round();
-      final photo = decoded.getPixel(holeCx, holeCy);
-      expect(photo.g, greaterThan(150));
-      expect(photo.b, lessThan(100));
+      final holeLeft = 8 / 180 * decoded.width;
+      final holeTop = 8 / 120 * decoded.height;
+      final holeW = 164 / 180 * decoded.width;
+      final holeH = 90 / 120 * decoded.height;
+      final head = decoded.getPixel(
+        (holeLeft + holeW / 2).round(),
+        (holeTop + holeH * 0.12).round(),
+      );
+      expect(head.g, greaterThan(150));
+      expect(head.b, lessThan(100));
+      final body = decoded.getPixel(
+        (holeLeft + holeW / 2).round(),
+        (holeTop + holeH * 0.82).round(),
+      );
+      expect(body.b, greaterThan(150));
     });
 
     test('fills 6x4 occasion chrome on a landscape sheet', () {
@@ -541,7 +551,7 @@ void main() {
     final decoded = img.decodeJpg(jpeg)!;
     expect(decoded.width, kLocalStripSheetHeight);
     expect(decoded.height, kLocalStripSheetWidth);
-    final hole = defaultClassicLandscapePhotoHole;
+    final hole = classicChromeSinglePhotoHole();
     final matteY = (hole.top * decoded.height * 0.4).round();
     final matte = decoded.getPixel(decoded.width ~/ 2, matteY);
     expect(matte.r, greaterThan(240));

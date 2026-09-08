@@ -1061,8 +1061,7 @@ class _Single6x4Preview extends StatelessWidget {
     if (overlayUrl != null && overlayUrl!.trim().isNotEmpty) {
       return const Color(0xFF121212);
     }
-    if (frameId == 'noir') return const Color(0xFF111111);
-    return Colors.white;
+    return stripPhotoCellLetterboxColor(frameId);
   }
 
   Widget _singleClassicPhotoWell({
@@ -1102,6 +1101,7 @@ class _Single6x4Preview extends StatelessWidget {
       hasOverlay: hasOverlay,
       landscape: landscapeSheet,
       overlayHole: photoHole,
+      frameId: frameId,
     );
     final wellW = hole.width * boxWidth;
     final wellH = hole.height * boxHeight;
@@ -1229,7 +1229,7 @@ class _SingleFilmstripSprocketPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final rail = Paint()..color = const Color(0xFF1A1A1A);
     final hole = Paint()..color = Colors.white;
-    final railW = margin.clamp(8.0, 28.0);
+    final railW = margin < 8 ? 8.0 : margin;
     canvas.drawRect(Rect.fromLTWH(0, 0, railW, size.height), rail);
     canvas.drawRect(
       Rect.fromLTWH(size.width - railW, 0, railW, size.height),

@@ -554,13 +554,14 @@ void main() {
     expect(catalogHole.top, 0.2);
     expect(catalogHole.width, 0.8);
     expect(catalogHole.height, 0.5);
-    expect(
-      resolveClassicSinglePhotoHole(
-        hasOverlay: false,
-        landscape: true,
-      ),
-      defaultClassicLandscapePhotoHole,
+    final landChrome = resolveClassicSinglePhotoHole(
+      hasOverlay: false,
+      landscape: true,
     );
+    expect(landChrome.left, kClassicSingleMatteRatio);
+    expect(landChrome.top, kClassicSingleMatteRatio);
+    expect(landChrome.width, 1 - 2 * kClassicSingleMatteRatio);
+    expect(landChrome.height, 1 - 2 * kClassicSingleMatteRatio);
     expect(
       resolveClassicSinglePhotoHole(
         hasOverlay: false,
@@ -569,8 +570,12 @@ void main() {
       kClassicSingleMatteRatio,
     );
     expect(
-      classicBuiltInSinglePhotoHole(landscape: false),
-      isNull,
+      classicBuiltInSinglePhotoHole(landscape: false)?.left,
+      kClassicSingleMatteRatio,
+    );
+    expect(
+      classicChromeSinglePhotoHole(frameId: 'filmstrip').left,
+      kClassicFilmstripRailRatio,
     );
     expect(
       const StripTemplateSlot(
