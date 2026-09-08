@@ -67,6 +67,7 @@ void main() {
     SessionManager().setSessionFromResponse(_sessionJson('sess-pre'));
     final theme = sampleTheme('strip').copyWith((p) => p.tier = 'photo_strip');
     final vm = FotoFlashbackFilterViewModel(
+      eventPrintIsLocal: false,
       theme: theme,
       imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
       apiService: _PaymentFlowStripApi(enableOsdScrub: false),
@@ -119,6 +120,7 @@ void main() {
     });
     final theme = sampleTheme('strip').copyWith((p) => p.tier = 'photo_strip');
     final vm = FotoFlashbackFilterViewModel(
+      eventPrintIsLocal: false,
       theme: theme,
       imageDataUrls: List.filled(4, kTinyJpegDataUrl),
       apiService: _PaymentFlowStripApi(enableOsdScrub: false),
@@ -169,6 +171,7 @@ void main() {
     SessionManager().setSessionFromResponse(_sessionJson('sess-compose'));
     final theme = sampleTheme('strip').copyWith((p) => p.tier = 'photo_strip');
     final vm = FotoFlashbackFilterViewModel(
+      eventPrintIsLocal: false,
       theme: theme,
       imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
       apiService: _PaymentFlowStripApi(enableOsdScrub: false),
@@ -223,7 +226,7 @@ void main() {
     final theme = sampleTheme('strip').copyWith((p) => p.tier = 'photo_strip');
     final args = FlashbackPrePayArgs(
       theme: theme,
-      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
+      imageDataUrls: List.filled(4, kTinyJpegDataUrl),
       filterId: kDefaultStripFilterId,
     );
     String? message;
@@ -249,7 +252,7 @@ void main() {
     );
     await tester.tap(find.text('go'));
     await tester.pumpAndSettle();
-    expect(message, isNotNull);
+    expect(message, isNull);
   });
 
   testWidgets('composeFlashbackAfterPrePay returns compose error message', (tester) async {
@@ -261,6 +264,7 @@ void main() {
       filterId: kDefaultStripFilterId,
     );
     final vm = FotoFlashbackFilterViewModel(
+      eventPrintIsLocal: false,
       theme: theme,
       imageDataUrls: args.imageDataUrls,
       apiService: _PaymentFlowStripApi(failCompose: true),
@@ -294,6 +298,7 @@ void main() {
     SessionManager().setSessionFromResponse(_sessionJson('sess-surprise-flag'));
     final theme = sampleTheme('strip').copyWith((p) => p.tier = 'photo_strip');
     final vm = FotoFlashbackFilterViewModel(
+      eventPrintIsLocal: false,
       theme: theme,
       imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
       apiService: _PaymentFlowStripApi(enableOsdScrub: false),
@@ -386,6 +391,7 @@ void main() {
     );
     Object? capturedArgs;
     final vm = FotoFlashbackFilterViewModel(
+      eventPrintIsLocal: false,
       theme: theme,
       imageDataUrls: args.imageDataUrls,
       apiService: _PaymentFlowStripApi(enableOsdScrub: false),
@@ -476,39 +482,23 @@ void main() {
     expect(PrintSelectionCoordinator.instance.awaitingExploreMoreReturn, isTrue);
   });
 
-  testWidgets('continueAfterFlashbackLook returns compose failure without session',
-      (tester) async {
+  test('continueAfterFlashbackLook composes locally when session is missing',
+      () async {
     await KioskManager().setPaymentEnabledOverride(false);
     SessionManager().clearSession();
     final theme = sampleTheme('strip').copyWith((p) => p.tier = 'photo_strip');
     final vm = FotoFlashbackFilterViewModel(
+      eventPrintIsLocal: false,
       theme: theme,
-      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
+      imageDataUrls: List.filled(4, kTinyJpegDataUrl),
       apiService: _PaymentFlowStripApi(enableOsdScrub: false),
+      overlayCleanupBuildGate: false,
     );
-    String? message;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Builder(
-          builder: (context) {
-            return ElevatedButton(
-              onPressed: () async {
-                message = await continueAfterFlashbackLook(
-                  context: context,
-                  viewModel: vm,
-                  paymentCollectionTiming:
-                      AppConstants.kPaymentCollectionAfterGeneration,
-                );
-              },
-              child: const Text('go'),
-            );
-          },
-        ),
-      ),
-    );
-    await tester.tap(find.text('go'));
-    await tester.pumpAndSettle();
-    expect(message, AppStrings.sessionPhotoSyncNoSession);
+    await vm.loadFilters();
+    final image = await vm.compose();
+    expect(image, isNotNull);
+    expect(image!.imageUrl, isNotEmpty);
+    expect(SessionManager().isOfflineSession, isTrue);
   });
 
   testWidgets('continueAfterFlashbackLook returns compose error message', (tester) async {
@@ -516,6 +506,7 @@ void main() {
     SessionManager().setSessionFromResponse(_sessionJson('sess-fail'));
     final theme = sampleTheme('strip').copyWith((p) => p.tier = 'photo_strip');
     final vm = FotoFlashbackFilterViewModel(
+      eventPrintIsLocal: false,
       theme: theme,
       imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
       apiService: _PaymentFlowStripApi(failCompose: true),

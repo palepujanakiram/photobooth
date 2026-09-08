@@ -623,6 +623,9 @@ abstract final class AppStrings {
   static const flashbackPreparingPreview = 'Polishing photos…';
   static const flashbackFiltersLoadTimeout =
       'Looks took too long to load. You can still continue with the default look.';
+
+  /// Catalog GET failed (404/5xx). Guest UI should usually silence this.
+  static const flashbackFiltersLoadFailed = 'Failed to load strip filters';
   static const flashbackMissingArgs =
       'Photo session data was lost. Go back and retake, or restart the booth.';
   static const flashbackGradingPreview = 'Refreshing preview…';
@@ -735,6 +738,8 @@ abstract final class AppStrings {
       'Could not sync. Check internet and try again.';
   static const termsDiskFull =
       'This kiosk is out of photo storage. Ask staff to connect internet and wait for sync.';
+  static const termsSessionCreateFailed =
+      'Could not start a new session. Please accept terms again.';
   static const staffModeUpi = 'UPI';
   static const staffModeCash = 'Cash';
   static const staffModeComplimentary = 'Complimentary';

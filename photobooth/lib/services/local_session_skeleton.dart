@@ -33,6 +33,29 @@ Map<String, dynamic> localSessionSkeleton({
   };
 }
 
+/// Stamp consent onto accept-terms JSON so the guest flow never proceeds
+/// with `termsAccepted: false` (API omit) or a missing id / expiry.
+Map<String, dynamic> normalizeAcceptTermsSessionJson(
+  Map<String, dynamic> json, {
+  required String fallbackId,
+  DateTime? now,
+}) {
+  final t = now ?? DateTime.now().toUtc();
+  final out = Map<String, dynamic>.from(json);
+  out['termsAccepted'] = true;
+  final acceptedAt = out['termsAcceptedAt']?.toString().trim() ?? '';
+  if (acceptedAt.isEmpty) {
+    out['termsAcceptedAt'] = t.toIso8601String();
+  }
+  final remoteId = out['id']?.toString().trim() ?? '';
+  out['id'] = remoteId.isNotEmpty ? remoteId : fallbackId;
+  final expiresAt = out['expiresAt']?.toString().trim() ?? '';
+  if (expiresAt.isEmpty) {
+    out['expiresAt'] = t.add(kLocalSessionTtl).toIso8601String();
+  }
+  return out;
+}
+
 String mintLocalShareToken() => const Uuid().v4();
 
 /// Drops capture blobs so SQLite/JSON never holds data-URL photos.

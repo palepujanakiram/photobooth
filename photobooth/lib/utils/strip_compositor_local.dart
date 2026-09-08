@@ -30,6 +30,16 @@ const int _filmHolePitch = 46;
 const int _filmHoleStartY = 28;
 const int _filmHoleInset = 4;
 
+class LocalStripOverlay {
+  const LocalStripOverlay({
+    required this.pngBytes,
+    this.slots = const [],
+  });
+
+  final Uint8List pngBytes;
+  final List<StripTemplateSlot> slots;
+}
+
 class LocalStripComposeRequest {
   const LocalStripComposeRequest({
     required this.sources,
@@ -39,6 +49,7 @@ class LocalStripComposeRequest {
     required this.orientation,
     this.shotCount,
     this.mediaStore,
+    this.overlay,
   });
 
   final List<String> sources;
@@ -51,6 +62,7 @@ class LocalStripComposeRequest {
   final int? shotCount;
 
   final LocalMediaStore? mediaStore;
+  final LocalStripOverlay? overlay;
 
   /// Sources this request must receive before it can compose.
   int get expectedSourceCount =>
@@ -64,6 +76,8 @@ class _LocalStripIsolateInput {
     required this.frameId,
     required this.single,
     required this.landscape,
+    this.overlayPng,
+    this.overlaySlots = const [],
   });
 
   final List<Uint8List> sources;
@@ -71,6 +85,8 @@ class _LocalStripIsolateInput {
   final String frameId;
   final bool single;
   final bool landscape;
+  final Uint8List? overlayPng;
+  final List<double> overlaySlots;
 }
 
 /// Builds and persists a print-ready Classic sheet without WAN access.
@@ -98,6 +114,8 @@ Future<String?> composeLocalStripSheet(LocalStripComposeRequest request) async {
         frameId: request.frameId,
         single: request.single,
         landscape: request.orientation == PrintOrientation.landscape,
+        overlayPng: request.overlay?.pngBytes,
+        overlaySlots: _flattenOverlaySlots(request.overlay?.slots),
       ),
     );
     if (jpeg.isEmpty) return null;
@@ -155,10 +173,11 @@ Uint8List _composeLocalStripSheetIsolate(_LocalStripIsolateInput input) {
     frameId: input.frameId,
     single: input.single,
     landscape: input.landscape,
+    overlay: _overlayFromIsolate(input.overlayPng, input.overlaySlots),
   );
 }
 
-/// Test hook for contain-fit cell resize (production always uses cover).
+/// Test hook for cell resize. Production Classic cells cover-fill the slot.
 @visibleForTesting
 img.Image? prepareLocalStripCellForTest(
   Uint8List bytes,
@@ -166,8 +185,16 @@ img.Image? prepareLocalStripCellForTest(
   int height, {
   List<double>? matrix,
   bool contain = false,
+  img.Color? letterbox,
 }) =>
-    _prepareCell(bytes, matrix, width, height, contain: contain);
+    _prepareCell(
+      bytes,
+      matrix,
+      width,
+      height,
+      contain: contain,
+      letterbox: letterbox,
+    );
 
 @visibleForTesting
 Uint8List composeLocalStripSheetJpegForTest({
@@ -176,24 +203,33 @@ Uint8List composeLocalStripSheetJpegForTest({
   required String frameId,
   required bool single,
   bool landscape = false,
+  LocalStripOverlay? overlay,
 }) {
   final width =
       single && landscape ? kLocalStripSheetHeight : kLocalStripSheetWidth;
   final height =
       single && landscape ? kLocalStripSheetWidth : kLocalStripSheetHeight;
-  final sheet = img.Image(width: width, height: height);
-  final background = _frameBackground(frameId);
+  final sheet = img.Image(width: width, height: height, numChannels: 4);
+  final background = single && overlay != null
+      ? img.ColorRgb8(18, 18, 18)
+      : _frameBackground(frameId);
   img.fill(sheet, color: background);
   final matrix = stripLookNeedsMatrixBake(filterId)
       ? stripLookColorMatrixValues(filterId)
       : null;
   if (single) {
-    _drawSourceIntoCell(
-      sheet,
-      sourceBytes.single,
-      matrix,
-      _CellRect(0, 0, width, height),
-    );
+    if (overlay != null) {
+      _drawOccasionSingle(sheet, sourceBytes.single, matrix, overlay);
+    } else {
+      _drawSourceIntoCell(
+        sheet,
+        sourceBytes.single,
+        matrix,
+        _CellRect(0, 0, width, height),
+      );
+    }
+  } else if (overlay != null) {
+    _drawOccasionDualStrip(sheet, sourceBytes, matrix, overlay);
   } else {
     _drawDualStripCells(
       sheet,
@@ -205,6 +241,190 @@ Uint8List composeLocalStripSheetJpegForTest({
   }
   return Uint8List.fromList(
     img.encodeJpg(sheet, quality: kLocalStripJpegQuality),
+  );
+}
+
+List<double> _flattenOverlaySlots(List<StripTemplateSlot>? slots) {
+  if (slots == null || slots.isEmpty) return const [];
+  final out = <double>[];
+  for (final slot in slots) {
+    out.addAll([slot.left, slot.top, slot.width, slot.height]);
+  }
+  return out;
+}
+
+LocalStripOverlay? _overlayFromIsolate(Uint8List? png, List<double> slots) {
+  if (png == null || png.isEmpty) return null;
+  return LocalStripOverlay(pngBytes: png, slots: _unflattenOverlaySlots(slots));
+}
+
+List<StripTemplateSlot> _unflattenOverlaySlots(List<double> values) {
+  if (values.length < 4 || values.length % 4 != 0) return const [];
+  final out = <StripTemplateSlot>[];
+  for (var i = 0; i < values.length; i += 4) {
+    out.add(
+      StripTemplateSlot(
+        left: values[i],
+        top: values[i + 1],
+        width: values[i + 2],
+        height: values[i + 3],
+      ),
+    );
+  }
+  return out;
+}
+
+void _drawOccasionSingle(
+  img.Image sheet,
+  Uint8List source,
+  List<double>? matrix,
+  LocalStripOverlay overlay,
+) {
+  _drawSourceIntoCell(
+    sheet,
+    source,
+    matrix,
+    _normalizedCell(
+      sheet.width,
+      sheet.height,
+      occasionSinglePhotoHole(overlay.slots),
+      0,
+      0,
+    ),
+    contain: false,
+    letterbox: img.ColorRgb8(255, 255, 255),
+  );
+  _compositeOverlay(
+    sheet,
+    overlay.pngBytes,
+    0,
+    0,
+    sheet.width,
+    sheet.height,
+  );
+}
+
+/// 4×6 occasion PNG, contain-centered on the print sheet (tests / unused bake).
+@visibleForTesting
+({int left, int top, int width, int height}) portraitChromeRectOnSheet(
+  int sheetWidth,
+  int sheetHeight,
+) {
+  const chromeAspect = kLocalStripSheetWidth / kLocalStripSheetHeight;
+  final sheetAspect = sheetWidth / sheetHeight;
+  if ((sheetAspect - chromeAspect).abs() < 0.02) {
+    return (left: 0, top: 0, width: sheetWidth, height: sheetHeight);
+  }
+  if (sheetAspect > chromeAspect) {
+    final width = (sheetHeight * chromeAspect).round().clamp(1, sheetWidth);
+    return (
+      left: (sheetWidth - width) ~/ 2,
+      top: 0,
+      width: width,
+      height: sheetHeight,
+    );
+  }
+  final height = (sheetWidth / chromeAspect).round().clamp(1, sheetHeight);
+  return (
+    left: 0,
+    top: (sheetHeight - height) ~/ 2,
+    width: sheetWidth,
+    height: height,
+  );
+}
+
+void _drawOccasionDualStrip(
+  img.Image sheet,
+  List<Uint8List> sources,
+  List<double>? matrix,
+  LocalStripOverlay overlay,
+) {
+  const stripDrawWidth =
+      (kLocalStripSheetWidth - kLocalStripCenterGutter) ~/ 2;
+  final stripOffsets = <int>[
+    0,
+    stripDrawWidth + kLocalStripCenterGutter,
+  ];
+  final slots = overlay.slots.length == sources.length
+      ? overlay.slots
+      : defaultOccasionStripSlots(sources.length);
+  for (var i = 0; i < sources.length; i++) {
+    final slot = slots[i];
+    for (final stripLeft in stripOffsets) {
+      _drawSourceIntoCell(
+        sheet,
+        sources[i],
+        matrix,
+        _normalizedCell(
+          stripDrawWidth,
+          kLocalStripSheetHeight,
+          slot,
+          stripLeft,
+          0,
+        ),
+        contain: false,
+        letterbox: img.ColorRgb8(255, 255, 255),
+      );
+    }
+  }
+  for (final stripLeft in stripOffsets) {
+    _compositeOverlay(
+      sheet,
+      overlay.pngBytes,
+      stripLeft,
+      0,
+      stripDrawWidth,
+      kLocalStripSheetHeight,
+    );
+  }
+}
+
+_CellRect _normalizedCell(
+  int spaceWidth,
+  int spaceHeight,
+  StripTemplateSlot slot,
+  int originX,
+  int originY,
+) {
+  final width = (slot.width * spaceWidth).round().clamp(1, spaceWidth);
+  final height = (slot.height * spaceHeight).round().clamp(1, spaceHeight);
+  return _CellRect(
+    originX + (slot.left * spaceWidth).round(),
+    originY + (slot.top * spaceHeight).round(),
+    width,
+    height,
+  );
+}
+
+void _compositeOverlay(
+  img.Image sheet,
+  Uint8List png,
+  int dstX,
+  int dstY,
+  int width,
+  int height,
+) {
+  img.Image? decoded;
+  try {
+    decoded = img.decodeImage(png);
+  } catch (_) {
+    return;
+  }
+  if (decoded == null) return;
+  final src =
+      decoded.numChannels < 4 ? decoded.convert(numChannels: 4) : decoded;
+  final resized = img.copyResize(
+    src,
+    width: width,
+    height: height,
+    interpolation: img.Interpolation.average,
+  );
+  img.compositeImage(
+    sheet,
+    resized,
+    dstX: dstX,
+    dstY: dstY,
+    blend: img.BlendMode.alpha,
   );
 }
 
@@ -236,6 +456,8 @@ void _drawDualStripCells(
       matrix,
       cellWidth,
       cellHeight,
+      contain: false,
+      letterbox: _frameBackground(frameId),
     );
     if (prepared == null) continue;
     for (final stripLeft in stripOffsets) {
@@ -253,13 +475,17 @@ void _drawSourceIntoCell(
   img.Image sheet,
   Uint8List bytes,
   List<double>? matrix,
-  _CellRect rect,
-) {
+  _CellRect rect, {
+  bool contain = false,
+  img.Color? letterbox,
+}) {
   final prepared = _prepareCell(
     bytes,
     matrix,
     rect.width,
     rect.height,
+    contain: contain,
+    letterbox: letterbox,
   );
   if (prepared != null) {
     img.compositeImage(sheet, prepared, dstX: rect.left, dstY: rect.top);
@@ -272,6 +498,7 @@ img.Image? _prepareCell(
   int width,
   int height, {
   bool contain = false,
+  img.Color? letterbox,
 }) {
   final decoded = img.decodeImage(bytes);
   if (decoded == null) return null;
@@ -281,7 +508,7 @@ img.Image? _prepareCell(
     applyStripLookColorMatrixInPlace(source, matrix);
   }
   return contain
-      ? _resizeContain(source, width, height)
+      ? _resizeContain(source, width, height, letterbox)
       : _resizeCover(source, width, height);
 }
 
@@ -318,7 +545,12 @@ img.Image _resizeCover(img.Image source, int width, int height) {
   );
 }
 
-img.Image _resizeContain(img.Image source, int width, int height) {
+img.Image _resizeContain(
+  img.Image source,
+  int width,
+  int height, [
+  img.Color? letterbox,
+]) {
   final scale = (width / source.width < height / source.height)
       ? width / source.width
       : height / source.height;
@@ -329,7 +561,10 @@ img.Image _resizeContain(img.Image source, int width, int height) {
     interpolation: img.Interpolation.average,
   );
   final canvas = img.Image(width: width, height: height);
-  img.fill(canvas, color: img.ColorRgb8(0, 0, 0));
+  img.fill(
+    canvas,
+    color: letterbox ?? img.ColorRgb8(255, 255, 255),
+  );
   img.compositeImage(
     canvas,
     resized,

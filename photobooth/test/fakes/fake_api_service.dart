@@ -83,6 +83,9 @@ class FakeApiService extends ApiService {
   }
 
   @override
+  Future<List<KioskFrameModel>> getCachedKioskFrames() async => kioskFrames;
+
+  @override
   Future<List<ThemeModel>> getThemes() async => const [];
 
   @override
@@ -150,6 +153,24 @@ class FakeApiService extends ApiService {
     fetchSessionCalls++;
     return fetchSessionResult ?? sessionResponse;
   }
+
+  @override
+  Future<Map<String, dynamic>> acceptTermsAndCreateSession({
+    String? kioskCode,
+    String? source,
+    String? selectedFrameId,
+    bool includeSelectedFrameId = false,
+    bool groupConsentAccepted = true,
+    String? clientSessionId,
+  }) async {
+    return Map<String, dynamic>.from(sessionResponse);
+  }
+
+  @override
+  Future<void> registerSessionFcmToken({
+    required String sessionId,
+    required String fcmToken,
+  }) async {}
 
   @override
   Future<Map<String, dynamic>> applySessionDiscount({

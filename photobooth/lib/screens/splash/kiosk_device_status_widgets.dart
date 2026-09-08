@@ -53,7 +53,7 @@ class KioskDeviceStatusPanel extends StatelessWidget {
       snapshot.receiptPrinter,
       snapshot.usbCamera,
       snapshot.dslrSidecar,
-    ].where((entry) => kioskDeviceStatusRowEnabled(entry.deviceName));
+    ].where(kioskDeviceStatusRowVisible);
 
     final rows = <Widget>[];
     for (final entry in entries) {

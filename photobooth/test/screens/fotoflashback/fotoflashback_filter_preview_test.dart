@@ -66,6 +66,32 @@ void main() {
     expect(FotoFlashbackStripPreview.credentialLine, 'FOTOZEN AI');
   });
 
+  testWidgets('occasion 1-shot fills a landscape 6x4 canvas', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: FotoFlashbackStripPreview(
+              imageDataUrls: [
+                'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+              ],
+              filterId: 'clean',
+              frameId: 'ai:dps-1',
+              frameOverlayUrl: 'https://cdn.example/dps.png',
+              width: 180,
+              height: 120,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byType(AspectRatio), findsNothing);
+    final box = tester.getSize(find.byType(FotoFlashbackStripPreview));
+    expect(box.width, 180);
+    expect(box.height, 120);
+  });
+
   testWidgets('flower placements render on the strip preview', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

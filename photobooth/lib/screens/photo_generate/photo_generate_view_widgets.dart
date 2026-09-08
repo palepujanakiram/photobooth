@@ -21,6 +21,7 @@ import '../../views/widgets/delete_my_photos_action.dart';
 import '../../views/widgets/contact_before_pay_sheet.dart';
 import '../../services/customer_session_lifecycle.dart';
 import '../../services/print_selection_coordinator.dart';
+import '../../services/session_manager.dart';
 import '../photo_capture/photo_image_from_xfile_io.dart'
     if (dart.library.html) '../photo_capture/photo_image_from_xfile_web.dart'
     as photo_image;
@@ -1084,7 +1085,10 @@ Widget _buildStartOverStripLink({
   return TextButton.icon(
     onPressed: () async {
       viewModel.cancelOperation();
-      await endPhotoboothCustomerSessionLogged('generate_start_over');
+      await endPhotoboothCustomerSessionLogged(
+        'generate_start_over',
+        onlyIfId: SessionManager().sessionId,
+      );
       if (!context.mounted) return;
       await Navigator.pushNamedAndRemoveUntil(
         context,

@@ -30,6 +30,51 @@ void main() {
     );
   });
 
+  test('kioskDeviceStatusRowVisible hides unconfigured receipt printer', () {
+    expect(
+      kioskDeviceStatusRowVisible(
+        const KioskDeviceStatusEntry(
+          deviceName: AppStrings.kioskDeviceReceiptPrinter,
+          connected: false,
+          configured: false,
+          transport: KioskDeviceTransport.usb,
+        ),
+      ),
+      isFalse,
+    );
+    expect(
+      kioskDeviceStatusRowVisible(
+        const KioskDeviceStatusEntry(
+          deviceName: AppStrings.kioskDeviceReceiptPrinter,
+          connected: false,
+          configured: true,
+          transport: KioskDeviceTransport.usb,
+        ),
+      ),
+      isTrue,
+    );
+    expect(
+      kioskDeviceStatusRowVisible(
+        const KioskDeviceStatusEntry(
+          deviceName: AppStrings.kioskDeviceDnpPrinter,
+          connected: false,
+          transport: KioskDeviceTransport.usb,
+        ),
+      ),
+      isTrue,
+    );
+    expect(
+      kioskDeviceStatusRowVisible(
+        const KioskDeviceStatusEntry(
+          deviceName: AppStrings.kioskDeviceSelphyPrinter,
+          connected: false,
+          transport: KioskDeviceTransport.usb,
+        ),
+      ),
+      isFalse,
+    );
+  });
+
   test('kioskDeviceStatusTransportLabel is USB for DNP and receipt', () {
     expect(
       kioskDeviceStatusTransportLabel(

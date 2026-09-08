@@ -46,6 +46,42 @@ void main() {
     expect(await compressDataUrlsForStripPreviewGrade(const []), isEmpty);
   });
 
+  test('compresses three stills in parallel', () async {
+    String tallUrl() {
+      final big = img.Image(width: 1944, height: 2592);
+      img.fill(big, color: img.ColorRgb8(40, 50, 60));
+      return 'data:image/jpeg;base64,'
+          '${base64Encode(img.encodeJpg(big, quality: 90))}';
+    }
+
+    final urls = [tallUrl(), tallUrl(), tallUrl()];
+    final out = await compressDataUrlsForStripPreviewGrade(urls);
+    expect(out, hasLength(3));
+    for (final url in out) {
+      final match = RegExp(r'^data:image/jpeg;base64,(.+)$').firstMatch(url);
+      expect(match, isNotNull);
+      final decoded = img.decodeImage(base64Decode(match!.group(1)!));
+      expect(decoded, isNotNull);
+      expect(
+        decoded!.width >= decoded.height ? decoded.width : decoded.height,
+        kStripPreviewGradeUploadMaxEdge,
+      );
+    }
+  });
+
+  test('compresses four stills in one isolate', () async {
+    String smallUrl() {
+      final small = img.Image(width: 40, height: 30);
+      img.fill(small, color: img.ColorRgb8(10, 20, 30));
+      return 'data:image/jpeg;base64,'
+          '${base64Encode(img.encodeJpg(small, quality: 90))}';
+    }
+
+    final urls = [smallUrl(), smallUrl(), smallUrl(), smallUrl()];
+    final out = await compressDataUrlsForStripPreviewGrade(urls);
+    expect(out, hasLength(4));
+  });
+
   test('pass-through non data URLs', () {
     expect(
       compressOneStripPreviewGradeDataUrlForTest('https://example.com/a.jpg'),

@@ -216,7 +216,6 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     }
   }
 
-
   void _applyQrFieldsFromPollMap(Map<String, dynamic> raw) {
     if (_r.hasPaymentQrPayload) return;
     final parsed = PaymentInitiateResult.fromJson(raw);
@@ -301,8 +300,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
         // Keep polling, but allow UI to surface a "stuck" fallback.
       }
       _r._sessionConsecutiveFailureTicks += 1;
-      if (_r._sessionConsecutiveFailureTicks ==
-          kPaymentPollDeadFailureTicks) {
+      if (_r._sessionConsecutiveFailureTicks == kPaymentPollDeadFailureTicks) {
         notifyListeners();
       }
       return;
@@ -492,9 +490,8 @@ mixin _ResultViewModelImpl on ChangeNotifier {
   /// Free checkout (payments disabled on kiosk): print immediately after BEHOLD.
   Future<void> onFreeCheckoutPrint() async {
     _r._fcmPaymentPushSuccess = true;
-    _r._fcmPaymentStatusDetail = kIsWeb
-        ? 'Preparing your photos…'
-        : 'Printing your photos…';
+    _r._fcmPaymentStatusDetail =
+        kIsWeb ? 'Preparing your photos…' : 'Printing your photos…';
     _r.enterGuestQrShareMode();
     notifyListeners();
     await startPostPaymentPrintIfNeeded();
@@ -716,13 +713,24 @@ mixin _ResultViewModelImpl on ChangeNotifier {
   ///
   /// Waits for an in-flight silent print first so multi-page jobs are not aborted
   /// mid-cart when QR share idle-exits (temp files deleted under the printer).
-  Future<void> privacyWipeLocal() async {
+  ///
+  /// Pass [waitForPrint] false for guest Start again / close — LAN print can
+  /// block the CTA for minutes and looks like a dead button.
+  Future<void> privacyWipeLocal({bool waitForPrint = true}) async {
+    final sessionId = _r._sessionManager.sessionId;
     _r.stopPaymentPolling();
     stopWhatsappDeliveryPolling();
-    await _awaitSilentPrintInflight();
+    if (waitForPrint) {
+      await _awaitSilentPrintInflight();
+    }
     _r._downloadedFiles.clear();
-    await endPhotoboothCustomerSessionLogged('result: privacyWipeLocal');
-    await FileHelper.cleanupTempImages();
+    await endPhotoboothCustomerSessionLogged(
+      'result: privacyWipeLocal',
+      onlyIfId: sessionId,
+    );
+    if (!_r._sessionManager.hasSession) {
+      await FileHelper.cleanupTempImages();
+    }
   }
 
   static String? _firstNonEmptyString(dynamic v) {
@@ -1325,7 +1333,10 @@ mixin _ResultViewModelImpl on ChangeNotifier {
           'Failed to download images for print/share',
           e,
           st,
-          extraInfo: {'source': 'result_download_images', 'forAction': forAction},
+          extraInfo: {
+            'source': 'result_download_images',
+            'forAction': forAction
+          },
         ),
       );
       _r._isDownloading = false;
@@ -1507,7 +1518,8 @@ mixin _ResultViewModelImpl on ChangeNotifier {
 
       return await _printLocalGstReceipt(showErrors: showErrors);
     } catch (e, st) {
-      AppLogger.error('printReceiptToNetwork failed: $e', error: e, stackTrace: st);
+      AppLogger.error('printReceiptToNetwork failed: $e',
+          error: e, stackTrace: st);
       if (showErrors) {
         _r._errorMessage = e is ApiException
             ? e.userFacingMessage

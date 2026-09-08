@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../services/customer_session_lifecycle.dart';
+import '../../services/session_manager.dart';
 import '../../utils/constants.dart';
 import '../../utils/route_args.dart';
 import '../../views/widgets/theme_background.dart';
@@ -22,7 +23,10 @@ class _ThankYouScreenState extends State<ThankYouScreen> {
 
   Future<void> _exit() async {
     if (!mounted) return;
-    await endPhotoboothCustomerSessionLogged('thank-you exit');
+    await endPhotoboothCustomerSessionLogged(
+      'thank-you exit',
+      onlyIfId: SessionManager().sessionId,
+    );
     if (!mounted) return;
     // Returns operator to terms (same stack reset as other flow ends); not slideshow.
     Navigator.pushNamedAndRemoveUntil(
