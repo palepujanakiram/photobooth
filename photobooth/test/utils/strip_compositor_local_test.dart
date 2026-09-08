@@ -475,48 +475,46 @@ void main() {
     expect(coverTall!.height, 40);
   });
 
-  test('landscape plates cover-fill tall 3-shot classic cells', () {
-    final jpeg = composeLocalStripSheetJpegForTest(
-      sourceBytes: [
-        _solidJpeg(220, 20, 20, width: 80, height: 20),
-        _solidJpeg(20, 220, 20, width: 80, height: 20),
-        _solidJpeg(20, 20, 220, width: 80, height: 20),
-      ],
-      filterId: 'clean',
-      frameId: 'classic',
-      single: false,
-    );
-    final decoded = img.decodeJpg(jpeg)!;
-    const stripDrawWidth =
-        (kLocalStripSheetWidth - kLocalStripCenterGutter) ~/ 2;
-    const cellWidth = stripDrawWidth - kLocalStripBorder * 2;
-    final x = kLocalStripBorder + cellWidth ~/ 2;
-    final topOfCell = decoded.getPixel(x, kLocalStripBorderTop + 8);
-    expect(topOfCell.r, greaterThan(180));
-    expect(topOfCell.g, lessThan(80));
+  test('landscape plates contain-fit 3-shot and 4-shot classic cells', () {
+    for (final shotCount in [kStripShotCountThree, kStripShotCount]) {
+      _expectLandscapeContainInClassicCells(shotCount);
+    }
   });
+}
 
-  test('landscape plates cover-fill 4-shot classic cells', () {
-    final jpeg = composeLocalStripSheetJpegForTest(
-      sourceBytes: [
-        _solidJpeg(220, 20, 20, width: 80, height: 20),
-        _solidJpeg(20, 220, 20, width: 80, height: 20),
-        _solidJpeg(20, 20, 220, width: 80, height: 20),
-        _solidJpeg(220, 180, 20, width: 80, height: 20),
-      ],
-      filterId: 'clean',
-      frameId: 'classic',
-      single: false,
-    );
-    final decoded = img.decodeJpg(jpeg)!;
-    const stripDrawWidth =
-        (kLocalStripSheetWidth - kLocalStripCenterGutter) ~/ 2;
-    const cellWidth = stripDrawWidth - kLocalStripBorder * 2;
-    final x = kLocalStripBorder + cellWidth ~/ 2;
-    final topOfCell = decoded.getPixel(x, kLocalStripBorderTop + 8);
-    expect(topOfCell.r, greaterThan(180));
-    expect(topOfCell.g, lessThan(80));
-  });
+void _expectLandscapeContainInClassicCells(int shotCount) {
+  final sourceBytes = [
+    _solidJpeg(220, 20, 20, width: 80, height: 20),
+    _solidJpeg(20, 220, 20, width: 80, height: 20),
+    _solidJpeg(20, 20, 220, width: 80, height: 20),
+    if (shotCount >= kStripShotCount)
+      _solidJpeg(220, 180, 20, width: 80, height: 20),
+  ];
+  final jpeg = composeLocalStripSheetJpegForTest(
+    sourceBytes: sourceBytes,
+    filterId: 'clean',
+    frameId: 'classic',
+    single: false,
+  );
+  final decoded = img.decodeJpg(jpeg)!;
+  const stripDrawWidth =
+      (kLocalStripSheetWidth - kLocalStripCenterGutter) ~/ 2;
+  const cellWidth = stripDrawWidth - kLocalStripBorder * 2;
+  final innerHeight = kLocalStripSheetHeight -
+      kLocalStripBorderTop -
+      kLocalStripBorderBottom -
+      kLocalStripGutter * (shotCount - 1);
+  final cellHeight = innerHeight ~/ shotCount;
+  final x = kLocalStripBorder + cellWidth ~/ 2;
+  final letterbox = decoded.getPixel(x, kLocalStripBorderTop + 8);
+  expect(letterbox.r, greaterThan(240), reason: '$shotCount-shot letterbox');
+  expect(letterbox.g, greaterThan(240), reason: '$shotCount-shot letterbox');
+  final plate = decoded.getPixel(
+    x,
+    kLocalStripBorderTop + cellHeight ~/ 2,
+  );
+  expect(plate.r, greaterThan(180), reason: '$shotCount-shot plate');
+  expect(plate.g, lessThan(80), reason: '$shotCount-shot plate');
 }
 
 Uint8List _solidJpeg(

@@ -74,23 +74,31 @@ void main() {
       expect(cells.first.width, closeTo(cellW, 0.01));
       expect(cells.first.height, closeTo(cellH, 0.01));
       expect(cells[1].top, closeTo(marginY + cellH + gutter, 0.01));
-      expect(stripPhotoCellUsesContainFit('filmstrip'), isFalse);
-      expect(stripPhotoCellUsesContainFit('classic'), isFalse);
+      expect(stripPhotoCellUsesContainFit('filmstrip'), isTrue);
+      expect(stripPhotoCellUsesContainFit('classic'), isTrue);
       expect(
         stripPhotoCellUsesContainFit('classic', shotCount: kStripShotCountThree),
-        isFalse,
+        isTrue,
       );
       expect(
         stripPhotoCellUsesContainFit('f3:dps', shotCount: kStripShotCountThree),
-        isFalse,
+        isTrue,
       );
       expect(
         stripPhotoCellUsesContainFit('fr:dps', shotCount: kStripShotCount),
-        isFalse,
+        isTrue,
       );
       expect(
         stripPhotoCellUsesContainFit('classic', shotCount: 1),
         isTrue,
+      );
+      expect(
+        stripPhotoCellUsesContainFit('ai:dps', shotCount: 1),
+        isTrue,
+      );
+      expect(
+        stripPhotoCellUsesContainFit('classic', shotCount: 0),
+        isFalse,
       );
       expect(stripPhotoCellUsesContainFit('polaroid'), isFalse);
 

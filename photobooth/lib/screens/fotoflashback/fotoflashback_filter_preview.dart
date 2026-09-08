@@ -999,7 +999,7 @@ Widget _lookPreviewMissingPhoto() {
   );
 }
 
-/// Classic 1-shot preview (matches zenai composeSingle6x4 cover fill).
+/// Classic 1-shot preview (matches zenai composeSingle6x4 contain fit).
 class _Single6x4Preview extends StatelessWidget {
   const _Single6x4Preview({
     required this.imageDataUrl,
@@ -1091,7 +1091,7 @@ class _Single6x4Preview extends StatelessWidget {
         : _LookPreviewPhoto(
             jpegBytes: jpegBytes,
             dataUrl: imageDataUrl,
-            fit: hasOverlay ? BoxFit.contain : BoxFit.cover,
+            fit: BoxFit.contain,
             alignment: Alignment.center,
             cacheWidth: cacheW,
           );

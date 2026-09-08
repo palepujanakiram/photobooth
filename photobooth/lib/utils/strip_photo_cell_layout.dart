@@ -22,16 +22,15 @@ class StripPhotoCellRect {
 
 /// Whether a strip cell letterboxes the capture instead of filling the window.
 ///
-/// 3-shot and 4-shot windows are taller than a typical landscape booth still;
-/// contain leaves large white bars — cover-fill those cells.
-/// 1-shot occasion holes stay contain (see [FotoFlashbackStripPreview]).
+/// Classic 1/3/4-shot windows show the full booth still. Cover-fill would crop
+/// landscape captures in taller occasion holes (see [FotoFlashbackStripPreview]).
+/// Sheet layouts keep cover so 4-up collages fill their cells.
 bool stripPhotoCellUsesContainFit(
   String frameId, {
   int shotCount = kStripShotCount,
 }) {
   if (isStripSheetLayout(frameId)) return false;
-  if (shotCount >= kStripShotCountThree) return false;
-  return true;
+  return shotCount >= 1;
 }
 
 /// Letterbox well behind contain-fit cells (matches print chrome fill).
