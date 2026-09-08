@@ -694,6 +694,10 @@ abstract final class AppStrings {
       'UPI needs internet. Pay cash at the counter.';
   static const offlineCashOnlyWaiting =
       'Pay cash at the counter. Staff confirm here to start printing.';
+  static const counterCashOnlyMessage =
+      'Staff collects cash at the counter.';
+  static const counterCashOnlyWaiting =
+      'Pay cash at the counter. Staff confirm under Payments to start printing.';
   static const offlineGiftCardUnavailable =
       'Gift cards and coupons need internet.';
   static const offlinePayAtCounterTitle = 'Pay at counter';

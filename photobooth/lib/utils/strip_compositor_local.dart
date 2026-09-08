@@ -529,10 +529,13 @@ img.Image _resizeCover(img.Image source, int width, int height) {
   } else {
     final cropHeight =
         (source.width / targetAspect).round().clamp(1, source.height);
+    // Landscape destinations keep the top of the capture (heads). Portrait
+    // wells keep a slight top bias so 4×6 framing stays familiar.
+    final topBias = width > height ? 0.0 : 0.25;
     cropped = img.copyCrop(
       source,
       x: 0,
-      y: ((source.height - cropHeight) * 0.25).round(),
+      y: ((source.height - cropHeight) * topBias).round(),
       width: source.width,
       height: cropHeight,
     );

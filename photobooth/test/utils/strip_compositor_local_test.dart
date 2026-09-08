@@ -234,6 +234,38 @@ void main() {
       expect(tall.top, 450);
     });
 
+    test('keeps the top of a portrait capture in a landscape 6x4 hole', () {
+      final overlay = _overlayPng(
+        width: 180,
+        height: 120,
+        holeLeft: 8,
+        holeTop: 8,
+        holeWidth: 164,
+        holeHeight: 90,
+      );
+      final jpeg = composeLocalStripSheetJpegForTest(
+        sourceBytes: [_markerHeadJpeg()],
+        filterId: 'clean',
+        frameId: 'ai:dps-1',
+        single: true,
+        landscape: true,
+        overlay: LocalStripOverlay(
+          pngBytes: overlay,
+          slots: const [
+            StripTemplateSlot(left: 8 / 180, top: 8 / 120, width: 164 / 180, height: 90 / 120),
+          ],
+        ),
+      );
+      final decoded = img.decodeJpg(jpeg)!;
+      expect(decoded.width, kLocalStripSheetHeight);
+      expect(decoded.height, kLocalStripSheetWidth);
+      final holeCx = (8 / 180 * decoded.width + 164 / 180 * decoded.width / 2).round();
+      final holeCy = (8 / 120 * decoded.height + 90 / 120 * decoded.height / 2).round();
+      final photo = decoded.getPixel(holeCx, holeCy);
+      expect(photo.g, greaterThan(150));
+      expect(photo.b, lessThan(100));
+    });
+
     test('fills 6x4 occasion chrome on a landscape sheet', () {
       final overlay = _overlayPng(
         width: 120,
@@ -528,6 +560,25 @@ Uint8List _solidJpeg(
 }) {
   final image = img.Image(width: width, height: height);
   img.fill(image, color: img.ColorRgb8(red, green, blue));
+  return Uint8List.fromList(img.encodeJpg(image, quality: 95));
+}
+
+/// Portrait capture: green head band on top, blue body below.
+Uint8List _markerHeadJpeg({int width = 60, int height = 90}) {
+  final image = img.Image(width: width, height: height);
+  final headEnd = height ~/ 3;
+  for (var y = 0; y < height; y++) {
+    final head = y < headEnd;
+    for (var x = 0; x < width; x++) {
+      image.setPixelRgb(
+        x,
+        y,
+        head ? 40 : 20,
+        head ? 220 : 20,
+        head ? 60 : 200,
+      );
+    }
+  }
   return Uint8List.fromList(img.encodeJpg(image, quality: 95));
 }
 

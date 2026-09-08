@@ -187,13 +187,13 @@ void main() {
   });
 
   group('shouldSkipOfflinePayCollect', () {
-    test('true only for offline sessions with payments disabled', () {
+    test('never skips cash collect', () {
       expect(
         shouldSkipOfflinePayCollect(
           paymentsEnabled: false,
           sessionOffline: true,
         ),
-        isTrue,
+        isFalse,
       );
       expect(
         shouldSkipOfflinePayCollect(
@@ -209,6 +209,13 @@ void main() {
         ),
         isFalse,
       );
+    });
+  });
+
+  group('shouldCollectCounterCash', () {
+    test('true when UPI is off', () {
+      expect(shouldCollectCounterCash(paymentsEnabled: false), isTrue);
+      expect(shouldCollectCounterCash(paymentsEnabled: true), isFalse);
     });
   });
 

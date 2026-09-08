@@ -63,20 +63,24 @@ String resolvePostFrameRoute({
   return AppConstants.kRouteGenerateProgress;
 }
 
-/// Kiosk payment enablement: false override skips all payment screens.
-/// Event-bound booths never collect payment.
+/// Kiosk payment enablement: false override skips UPI.
+/// Event-bound booths collect cash at the counter instead of UPI.
 Future<bool> resolvePaymentsEnabled() async {
   if (await EventManager().isEventBound()) return false;
   final override = await KioskManager().getPaymentEnabledOverride();
   return override ?? true;
 }
 
-/// Offline + payments off → no cash wait; free print (skip Pay collect UI).
+/// True when UPI is off — Pay screen collects cash (copies + staff approve).
+bool shouldCollectCounterCash({required bool paymentsEnabled}) =>
+    !paymentsEnabled;
+
+/// Always false: Pay collect stays on so staff can record cash.
 bool shouldSkipOfflinePayCollect({
   required bool paymentsEnabled,
   required bool sessionOffline,
 }) =>
-    sessionOffline && !paymentsEnabled;
+    false;
 
 /// Navigates to pre-payment or generation based on account payment timing.
 Future<void> navigateToGenerationOrPrePayment({

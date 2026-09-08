@@ -10,7 +10,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
   }) async {
     if (_r._paymentInitInProgress && !force) return;
     if (!force && _r._shouldSkipPaymentInitiate()) return;
-    if (_r.checkoutAmount <= 0) return;
+    if (_r.checkoutAmount <= 0 && !_r.collectsCounterCash) return;
     final sessionId = _r._sessionManager.sessionId;
     if (sessionId == null || sessionId.isEmpty) {
       _r._paymentInitError = 'No session for payment. Go back and try again.';
@@ -76,7 +76,9 @@ mixin _ResultViewModelImpl on ChangeNotifier {
           'link=${_r._paymentLink != null}',
         );
       }
-      if (!_r.hasPaymentQrPayload &&
+      final counterCash = _isCounterCashInitiate(result);
+      if (!counterCash &&
+          !_r.hasPaymentQrPayload &&
           _r._activePaymentId != null &&
           _r._paymentInitiateAttempts < 1) {
         _r._paymentInitiateAttempts += 1;
@@ -86,7 +88,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
         if (_r._disposed) return;
         return loadPaymentQr(customerPhone: customerPhone, force: true);
       }
-      if (!_r.hasPaymentQrPayload) {
+      if (!counterCash && !_r.hasPaymentQrPayload) {
         _r._paymentInitError =
             'Could not load UPI QR from the server. Tap Retry below or ask staff.';
       } else {
@@ -136,6 +138,9 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     if (existingId == null || existingId.isEmpty) return false;
     return _r.hasPaymentQrPayload;
   }
+
+  bool _isCounterCashInitiate(PaymentInitiateResult result) =>
+      _r.collectsCounterCash || result.paymentMode == PaymentMode.cash;
 
   void _applyPaymentInitiateResult(PaymentInitiateResult result) {
     _r._paymentLink = result.paymentLink;

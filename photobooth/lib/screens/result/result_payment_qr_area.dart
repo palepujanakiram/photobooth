@@ -28,7 +28,7 @@ class ResultPaymentQrArea extends StatelessWidget {
   }
 
   Widget _buildContent(ResultViewModel vm) {
-    if (vm.cashOnlyOffline) {
+    if (vm.collectsCounterCash) {
       return Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
@@ -41,7 +41,9 @@ class ResultPaymentQrArea extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             Text(
-              AppStrings.offlineCashOnlyMessage,
+              vm.cashOnlyOffline
+                  ? AppStrings.offlineCashOnlyMessage
+                  : AppStrings.counterCashOnlyMessage,
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 14, color: Colors.grey.shade800),
             ),

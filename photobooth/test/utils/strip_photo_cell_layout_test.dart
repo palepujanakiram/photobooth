@@ -203,4 +203,17 @@ void main() {
       expect(fallback, hasLength(3));
     });
   });
+
+  group('coverPhotoAlignmentForWindow', () {
+    test('keeps heads in landscape wells and centers portrait wells', () {
+      expect(
+        coverPhotoAlignmentForWindow(1640, 900),
+        Alignment.topCenter,
+      );
+      expect(
+        coverPhotoAlignmentForWindow(800, 900),
+        Alignment.center,
+      );
+    });
+  });
 }

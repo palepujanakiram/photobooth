@@ -1,4 +1,4 @@
-import 'dart:ui';
+import 'package:flutter/painting.dart';
 
 import '../models/strip_models.dart';
 import '../screens/fotoflashback/fotoflashback_strip_chrome_view_widgets.dart';
@@ -37,6 +37,13 @@ Color stripPhotoCellLetterboxColor(String frameId) {
   if (frameId == 'noir') return const Color(0xFF121216);
   return const Color(0xFFFFFFFF);
 }
+
+/// Cover-crop anchor for a photo well.
+///
+/// Landscape windows crop a portrait capture from the top so heads stay in
+/// frame. Portrait wells stay centered (same as Classic 4×6).
+Alignment coverPhotoAlignmentForWindow(double width, double height) =>
+    width > height ? Alignment.topCenter : Alignment.center;
 
 /// Photo cell geometry for one 2×6 strip — mirrors zenai `stripCompositor`.
 ///

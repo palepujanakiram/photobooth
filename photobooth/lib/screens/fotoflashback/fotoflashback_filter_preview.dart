@@ -1100,13 +1100,16 @@ class _Single6x4Preview extends StatelessWidget {
       devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
     );
     final hasPhoto = jpegBytes != null || imageDataUrl.trim().isNotEmpty;
+    final hole = photoHole ?? defaultOccasionSinglePhotoHole;
+    final wellW = hasOverlay ? hole.width * boxWidth : boxWidth - 2 * margin;
+    final wellH = hasOverlay ? hole.height * boxHeight : boxHeight - 2 * margin;
     final photo = !hasPhoto
         ? _lookPreviewMissingPhoto()
         : _LookPreviewPhoto(
             jpegBytes: jpegBytes,
             dataUrl: imageDataUrl,
             fit: BoxFit.cover,
-            alignment: Alignment.center,
+            alignment: coverPhotoAlignmentForWindow(wellW, wellH),
             cacheWidth: cacheW,
           );
     final photoLayer = !hasPhoto || imagesAreGraded

@@ -44,9 +44,12 @@ class ResultPaymentStatusPresentation {
         statusMessageColor: Colors.green.shade200,
       );
     }
-    if (viewModel.cashOnlyOffline) {
-      return const ResultPaymentStatusPresentation(
-        statusMessage: AppStrings.offlineCashOnlyWaiting,
+    if (viewModel.collectsCounterCash) {
+      final waiting = viewModel.cashOnlyOffline
+          ? AppStrings.offlineCashOnlyWaiting
+          : AppStrings.counterCashOnlyWaiting;
+      return ResultPaymentStatusPresentation(
+        statusMessage: waiting,
         statusMessageColor: Colors.white70,
       );
     }
