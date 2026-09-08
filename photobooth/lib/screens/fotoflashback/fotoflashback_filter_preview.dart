@@ -1051,7 +1051,9 @@ class _Single6x4Preview extends StatelessWidget {
     required double boxHeight,
   }) {
     final well = ColoredBox(
-      color: const Color(0xFF121212),
+      color: hasOverlay
+          ? stripPhotoCellLetterboxColor(frameId)
+          : const Color(0xFF121212),
       child: photoLayer,
     );
     if (!hasOverlay) {
@@ -1072,7 +1074,6 @@ class _Single6x4Preview extends StatelessWidget {
     required double boxWidth,
     required double boxHeight,
     required String overlay,
-    bool fullBleedPhoto = false,
   }) {
     final margin = boxWidth * 0.027;
     final hasOverlay = overlay.isNotEmpty;
@@ -1086,10 +1087,8 @@ class _Single6x4Preview extends StatelessWidget {
         : _LookPreviewPhoto(
             jpegBytes: jpegBytes,
             dataUrl: imageDataUrl,
-            fit: BoxFit.cover,
-            alignment: hasOverlay && !fullBleedPhoto
-                ? Alignment.topCenter
-                : Alignment.center,
+            fit: hasOverlay ? BoxFit.contain : BoxFit.cover,
+            alignment: Alignment.center,
             cacheWidth: cacheW,
           );
     final photoLayer = !hasPhoto || imagesAreGraded
@@ -1101,16 +1100,13 @@ class _Single6x4Preview extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        if (fullBleedPhoto)
-          Positioned.fill(child: photoLayer)
-        else
-          _singleClassicPhotoWell(
-            hasOverlay: hasOverlay,
-            margin: margin,
-            photoLayer: photoLayer,
-            boxWidth: boxWidth,
-            boxHeight: boxHeight,
-          ),
+        _singleClassicPhotoWell(
+          hasOverlay: hasOverlay,
+          margin: margin,
+          photoLayer: photoLayer,
+          boxWidth: boxWidth,
+          boxHeight: boxHeight,
+        ),
         if (frameId == 'filmstrip' && !hasOverlay)
           CustomPaint(
             painter: _SingleFilmstripSprocketPainter(margin: margin),
@@ -1121,7 +1117,7 @@ class _Single6x4Preview extends StatelessWidget {
               child: CachedNetworkImage(
                 imageUrl: overlay,
                 cacheKey: classicFrameOverlayCacheKey(frameId),
-                fit: fullBleedPhoto ? BoxFit.contain : BoxFit.fill,
+                fit: BoxFit.fill,
                 filterQuality: FilterQuality.high,
               ),
             ),
@@ -1180,31 +1176,26 @@ class _Single6x4Preview extends StatelessWidget {
   Widget build(BuildContext context) {
     final overlay = overlayUrl?.trim() ?? '';
     final hasOverlay = overlay.isNotEmpty;
-    final landscapeSheet = width > height;
-    final Widget child;
-    if (hasOverlay && !landscapeSheet) {
-      child = Center(
-        child: AspectRatio(
-          aspectRatio: FotoFlashbackStripPreview.single4x6AspectRatio,
-          child: LayoutBuilder(
-            builder: (context, constraints) => _chromeStack(
-              context: context,
-              boxWidth: constraints.maxWidth,
-              boxHeight: constraints.maxHeight,
-              overlay: overlay,
+    final Widget child = hasOverlay
+        ? Center(
+            child: AspectRatio(
+              aspectRatio: FotoFlashbackStripPreview.single4x6AspectRatio,
+              child: LayoutBuilder(
+                builder: (context, constraints) => _chromeStack(
+                  context: context,
+                  boxWidth: constraints.maxWidth,
+                  boxHeight: constraints.maxHeight,
+                  overlay: overlay,
+                ),
+              ),
             ),
-          ),
-        ),
-      );
-    } else {
-      child = _chromeStack(
-        context: context,
-        boxWidth: width,
-        boxHeight: height,
-        overlay: overlay,
-        fullBleedPhoto: hasOverlay && landscapeSheet,
-      );
-    }
+          )
+        : _chromeStack(
+            context: context,
+            boxWidth: width,
+            boxHeight: height,
+            overlay: '',
+          );
     return Container(
       key: ValueKey<String>('single6x4_$frameId'),
       width: width,

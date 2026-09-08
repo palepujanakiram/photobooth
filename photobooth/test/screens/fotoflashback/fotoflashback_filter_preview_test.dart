@@ -66,7 +66,7 @@ void main() {
     expect(FotoFlashbackStripPreview.credentialLine, 'FOTOZEN AI');
   });
 
-  testWidgets('occasion 1-shot landscape fills the sheet without a 4x6 letterbox',
+  testWidgets('occasion 1-shot keeps 4x6 chrome on a landscape canvas',
       (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
@@ -87,7 +87,11 @@ void main() {
       ),
     );
     await tester.pump();
-    expect(find.byType(AspectRatio), findsNothing);
+    final aspect = tester.widget<AspectRatio>(find.byType(AspectRatio));
+    expect(
+      aspect.aspectRatio,
+      FotoFlashbackStripPreview.single4x6AspectRatio,
+    );
   });
 
   testWidgets('flower placements render on the strip preview', (tester) async {

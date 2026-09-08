@@ -281,29 +281,20 @@ void _drawOccasionSingle(
   LocalStripOverlay overlay,
 ) {
   final chrome = portraitChromeRectOnSheet(sheet.width, sheet.height);
-  final landscapeSheet =
-      chrome.width != sheet.width || chrome.height != sheet.height;
-  if (landscapeSheet) {
-    _drawSourceIntoCell(
-      sheet,
-      source,
-      matrix,
-      _CellRect(0, 0, sheet.width, sheet.height),
-    );
-  } else {
-    _drawSourceIntoCell(
-      sheet,
-      source,
-      matrix,
-      _normalizedCell(
-        chrome.width,
-        chrome.height,
-        occasionSinglePhotoHole(overlay.slots),
-        chrome.left,
-        chrome.top,
-      ),
-    );
-  }
+  _drawSourceIntoCell(
+    sheet,
+    source,
+    matrix,
+    _normalizedCell(
+      chrome.width,
+      chrome.height,
+      occasionSinglePhotoHole(overlay.slots),
+      chrome.left,
+      chrome.top,
+    ),
+    contain: true,
+    letterbox: img.ColorRgb8(255, 255, 255),
+  );
   _compositeOverlay(
     sheet,
     overlay.pngBytes,
@@ -372,6 +363,8 @@ void _drawOccasionDualStrip(
           stripLeft,
           0,
         ),
+        contain: true,
+        letterbox: img.ColorRgb8(255, 255, 255),
       );
     }
   }
@@ -464,6 +457,8 @@ void _drawDualStripCells(
       matrix,
       cellWidth,
       cellHeight,
+      contain: true,
+      letterbox: _frameBackground(frameId),
     );
     if (prepared == null) continue;
     for (final stripLeft in stripOffsets) {
@@ -481,13 +476,17 @@ void _drawSourceIntoCell(
   img.Image sheet,
   Uint8List bytes,
   List<double>? matrix,
-  _CellRect rect,
-) {
+  _CellRect rect, {
+  bool contain = false,
+  img.Color? letterbox,
+}) {
   final prepared = _prepareCell(
     bytes,
     matrix,
     rect.width,
     rect.height,
+    contain: contain,
+    letterbox: letterbox,
   );
   if (prepared != null) {
     img.compositeImage(sheet, prepared, dstX: rect.left, dstY: rect.top);
