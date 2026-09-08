@@ -215,7 +215,10 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     final worker = KioskOutboxWorker.instance;
     if (worker == null) {
       if (mounted) {
-        AppSnackBar.showError(context, AppStrings.splashSyncFailedToast);
+        AppSnackBar.showError(
+          context,
+          splashOutboxSyncUnavailableMessage(),
+        );
       }
       return;
     }
@@ -277,13 +280,15 @@ class _AppSplashScreenState extends State<AppSplashScreen>
         _bootstrapDone = true;
         _storedCode = code;
         _codeController.text = (code ?? '').trim();
-        if ((code ?? '').trim().isNotEmpty) {
+        if ((code ?? '').trim().isNotEmpty && splashOutboxSyncAvailable()) {
           _outboxCounts = const KioskOutboxSyncCounts();
         }
       });
       if ((code ?? '').trim().isNotEmpty) {
         unawaited(_bootstrapDeviceStatus());
-        unawaited(_refreshOutboxCounts());
+        if (splashOutboxSyncAvailable()) {
+          unawaited(_refreshOutboxCounts());
+        }
       }
       return;
     }
@@ -909,11 +914,14 @@ class _AppSplashScreenState extends State<AppSplashScreen>
                     onApiEnvironmentChanged: widget.args.manageKiosk
                         ? _onApiEnvironmentChanged
                         : null,
-                    outboxCounts: showManageSummary ? _outboxCounts : null,
+                    outboxCounts: showManageSummary && splashOutboxSyncAvailable()
+                        ? _outboxCounts
+                        : null,
                     outboxSyncing: _outboxSyncing,
                     outboxCompletedThisRun: _outboxCompletedThisRun,
-                    onOutboxSync:
-                        showManageSummary ? _onOutboxSyncPressed : null,
+                    onOutboxSync: showManageSummary && splashOutboxSyncAvailable()
+                        ? _onOutboxSyncPressed
+                        : null,
                   ),
                 ),
                 appSplashVersionFooter(versionFooter, appColors),

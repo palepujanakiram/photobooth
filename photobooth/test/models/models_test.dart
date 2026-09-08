@@ -371,6 +371,7 @@ void main() {
       id: 'dps-1',
       name: 'Delhi Public School',
       overlayUrl: 'https://cdn.example/ai.png',
+      landscapeOverlayUrl: 'https://cdn.example/ai-6x4.png',
       strip: KioskFrameStripAssets(
         overlayUrl: 'https://cdn.example/6x2.png',
         overlay3Url: 'https://cdn.example/6x2-3.png',
@@ -380,6 +381,7 @@ void main() {
     );
     final parsed = KioskFrameModel.fromJson(original.toJson());
     expect(parsed.strip.overlayUrl, 'https://cdn.example/6x2.png');
+    expect(parsed.landscapeOverlayUrl, 'https://cdn.example/ai-6x4.png');
     expect(parsed.strip.overlay3Url, 'https://cdn.example/6x2-3.png');
     expect(parsed.strip.has4, isTrue);
     expect(parsed.strip.has3, isTrue);

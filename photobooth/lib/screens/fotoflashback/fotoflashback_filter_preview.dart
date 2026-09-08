@@ -25,6 +25,7 @@ class FotoFlashbackStripPreview extends StatelessWidget {
     required this.filterId,
     this.frameId = kDefaultStripFrameId,
     this.frameOverlayUrl,
+    this.overlayCacheLandscape = false,
     this.frameSlots = const [],
     this.frameCaption,
     this.stickerId = kDefaultStripStickerId,
@@ -54,6 +55,7 @@ class FotoFlashbackStripPreview extends StatelessWidget {
 
   /// Occasion / scrapbook overlay PNG for live preview.
   final String? frameOverlayUrl;
+  final bool overlayCacheLandscape;
   final List<StripTemplateSlot> frameSlots;
   final String? frameCaption;
 
@@ -149,6 +151,7 @@ class FotoFlashbackStripPreview extends StatelessWidget {
               filterId: filterId,
               frameId: frameId,
               overlayUrl: isOccasionFrameId(frameId) ? frameOverlayUrl : null,
+              overlayCacheLandscape: overlayCacheLandscape,
               photoHole: occasionSinglePhotoHole(frameSlots),
               imagesAreGraded: imagesAreGraded,
               placements: placements,
@@ -1013,6 +1016,7 @@ class _Single6x4Preview extends StatelessWidget {
     required this.filterId,
     required this.frameId,
     this.overlayUrl,
+    this.overlayCacheLandscape = false,
     this.photoHole,
     required this.imagesAreGraded,
     required this.placements,
@@ -1033,6 +1037,7 @@ class _Single6x4Preview extends StatelessWidget {
   final String filterId;
   final String frameId;
   final String? overlayUrl;
+  final bool overlayCacheLandscape;
   final StripTemplateSlot? photoHole;
   final bool imagesAreGraded;
   final List<StripStickerPlacement> placements;
@@ -1129,7 +1134,10 @@ class _Single6x4Preview extends StatelessWidget {
             child: IgnorePointer(
               child: CachedNetworkImage(
                 imageUrl: overlay,
-                cacheKey: classicFrameOverlayCacheKey(frameId),
+                cacheKey: classicFrameOverlayCacheKey(
+                  frameId,
+                  landscape: overlayCacheLandscape,
+                ),
                 fit: BoxFit.fill,
                 filterQuality: FilterQuality.high,
               ),

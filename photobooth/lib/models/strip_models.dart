@@ -183,6 +183,31 @@ StripTemplateSlot occasionSinglePhotoHole(List<StripTemplateSlot> slots) {
   return defaultOccasionSinglePhotoHole;
 }
 
+/// Portrait 4×6 overlay, or the dedicated 6×4 PNG when [landscape] is true.
+String? classicOccasionOverlayUrl({
+  required String? overlayUrl,
+  String? landscapeOverlayUrl,
+  required bool landscape,
+}) {
+  final land = (landscapeOverlayUrl ?? '').trim();
+  if (landscape && land.isNotEmpty) return land;
+  final portrait = (overlayUrl ?? '').trim();
+  return portrait.isEmpty ? null : portrait;
+}
+
+/// Photo window for the overlay returned by [classicOccasionOverlayUrl].
+List<StripTemplateSlot> classicOccasionOverlaySlots({
+  required List<StripTemplateSlot> slots,
+  List<StripTemplateSlot> landscapeSlots = const [],
+  required bool landscape,
+  required bool hasLandscapeOverlay,
+}) {
+  if (landscape && hasLandscapeOverlay) {
+    return landscapeSlots.length == 1 ? landscapeSlots : const [];
+  }
+  return slots;
+}
+
 const List<String> kStripStickerIds = [
   'none',
   'hearts',
@@ -360,10 +385,12 @@ class StripFrame {
     required this.description,
     this.kind,
     this.overlayUrl,
+    this.landscapeOverlayUrl,
     this.caption,
     this.logoUrl,
     this.shotCount,
     this.slots = const [],
+    this.landscapeSlots = const [],
   });
 
   final String id;
@@ -373,6 +400,7 @@ class StripFrame {
   /// `template` for admin scrapbook strips; `occasion` for 1-shot AI overlay.
   final String? kind;
   final String? overlayUrl;
+  final String? landscapeOverlayUrl;
   final String? caption;
   final String? logoUrl;
 
@@ -380,6 +408,7 @@ class StripFrame {
   /// except sheet layouts (those use [isStripSheetLayout]).
   final int? shotCount;
   final List<StripTemplateSlot> slots;
+  final List<StripTemplateSlot> landscapeSlots;
 
   bool get isTemplate => kind == 'template' || isStripTemplateFrame(id);
 
@@ -392,10 +421,13 @@ class StripFrame {
       description: JsonParseHelpers.stringValue(json['description']),
       kind: JsonParseHelpers.stringOrNull(json['kind']),
       overlayUrl: JsonParseHelpers.stringOrNull(json['overlayUrl']),
+      landscapeOverlayUrl:
+          JsonParseHelpers.stringOrNull(json['landscapeOverlayUrl']),
       caption: JsonParseHelpers.stringOrNull(json['caption']),
       logoUrl: JsonParseHelpers.stringOrNull(json['logoUrl']),
       shotCount: JsonParseHelpers.intOrNull(json['shotCount']),
       slots: parseStripTemplateSlots(json['slots']),
+      landscapeSlots: parseStripTemplateSlots(json['landscapeSlots']),
     );
   }
 }

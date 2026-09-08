@@ -995,6 +995,34 @@ void main() {
     expect(await throwingOverlay.compose(), isNotNull);
     throwingOverlay.dispose();
 
+    String? landscapeLookupUrl;
+    final landscapeDps = FotoFlashbackFilterViewModel(
+      eventPrintIsLocal: true,
+      theme: stripTheme,
+      imageDataUrls: [_tinyJpegDataUrl()],
+      apiService: _StripFakeApi(
+        failLoad: true,
+        kioskFrames: [
+          const KioskFrameModel(
+            id: 'dps-1',
+            name: 'Delhi Public School',
+            overlayUrl: 'https://cdn.example/dps.png',
+            landscapeOverlayUrl: 'https://cdn.example/dps-6x4.png',
+          ),
+        ],
+      ),
+      overlayCleanupBuildGate: false,
+      overlayBytesLookup: (frame) async {
+        landscapeLookupUrl = frame.overlayUrl;
+        return overlayPng;
+      },
+    );
+    await landscapeDps.loadFilters();
+    landscapeDps.selectPrintOrientation(PrintOrientation.landscape);
+    expect(await landscapeDps.compose(), isNotNull);
+    expect(landscapeLookupUrl, 'https://cdn.example/dps-6x4.png');
+    landscapeDps.dispose();
+
     final offlineDpsFour = FotoFlashbackFilterViewModel(
       eventPrintIsLocal: false,
       theme: stripTheme,

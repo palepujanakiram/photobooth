@@ -736,6 +736,9 @@ abstract final class AppStrings {
       'Sync paused with $remaining still pending. Check internet and try again.';
   static const splashSyncFailedToast =
       'Could not sync. Check internet and try again.';
+  static const splashSyncUnavailableInBrowser =
+      'Offline sync runs on the booth app, not in the browser. '
+      'This web kiosk is already talking to the server.';
   static const termsDiskFull =
       'This kiosk is out of photo storage. Ask staff to connect internet and wait for sync.';
   static const termsSessionCreateFailed =

@@ -924,9 +924,35 @@ if (graded.length == _expectedCaptureCount) {
     if (frame == null) return null;
     if (!frame.isOccasion && !isStripTemplateFrame(frame.id)) return null;
     try {
-      final bytes = await _overlayBytesLookup(frame);
+      final landscape = _printOrientation == PrintOrientation.landscape;
+      final overlayUrl = classicOccasionOverlayUrl(
+        overlayUrl: frame.overlayUrl,
+        landscapeOverlayUrl: frame.landscapeOverlayUrl,
+        landscape: landscape,
+      );
+      final slots = classicOccasionOverlaySlots(
+        slots: frame.slots,
+        landscapeSlots: frame.landscapeSlots,
+        landscape: landscape,
+        hasLandscapeOverlay:
+            (frame.landscapeOverlayUrl ?? '').trim().isNotEmpty,
+      );
+      final resolved = StripFrame(
+        id: frame.id,
+        name: frame.name,
+        description: frame.description,
+        kind: frame.kind,
+        overlayUrl: overlayUrl,
+        landscapeOverlayUrl: frame.landscapeOverlayUrl,
+        caption: frame.caption,
+        logoUrl: frame.logoUrl,
+        shotCount: frame.shotCount,
+        slots: slots,
+        landscapeSlots: frame.landscapeSlots,
+      );
+      final bytes = await _overlayBytesLookup(resolved);
       if (bytes == null || bytes.isEmpty) return null;
-      return LocalStripOverlay(pngBytes: bytes, slots: frame.slots);
+      return LocalStripOverlay(pngBytes: bytes, slots: slots);
     } catch (_) {
       return null;
     }

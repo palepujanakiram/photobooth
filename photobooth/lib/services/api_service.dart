@@ -600,6 +600,11 @@ class ApiService {
         frame.strip.overlay3Url,
         catalogCacheKeyForFrame('${frame.id}-strip3'),
       );
+      await _cacheFrameOverlay(
+        cache,
+        frame.landscapeOverlayUrl,
+        catalogCacheKeyForFrame('${frame.id}-land'),
+      );
     }
   }
 
@@ -747,10 +752,17 @@ class ApiService {
     if (cache == null) return;
     for (final frame in catalog.frames) {
       final url = frame.overlayUrl?.trim() ?? '';
-      if (url.isEmpty) continue;
+      if (url.isNotEmpty) {
+        await cache.cacheImage(
+          SecureImageUrl.absolutize(url),
+          cacheKey: classicFrameOverlayCacheKey(frame.id),
+        );
+      }
+      final landscapeUrl = frame.landscapeOverlayUrl?.trim() ?? '';
+      if (landscapeUrl.isEmpty) continue;
       await cache.cacheImage(
-        SecureImageUrl.absolutize(url),
-        cacheKey: classicFrameOverlayCacheKey(frame.id),
+        SecureImageUrl.absolutize(landscapeUrl),
+        cacheKey: classicFrameOverlayCacheKey(frame.id, landscape: true),
       );
     }
   }
