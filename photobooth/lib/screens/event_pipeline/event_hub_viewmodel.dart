@@ -40,7 +40,7 @@ class EventHubViewModel extends ChangeNotifier {
     DirectPtpCameraService? camera,
     Future<EventPipelineDb?> Function()? openDb,
     Duration refreshInterval = const Duration(seconds: 4),
-    Duration hardwareInterval = const Duration(seconds: 20),
+    Duration hardwareWindow = const Duration(seconds: 15),
     int Function()? nowMs,
   })  : _runner = runner ?? EventPipelineRunner.instance ?? EventPipelineRunner(),
         _config = config ?? EventPipelineConfig(),
@@ -52,7 +52,7 @@ class EventHubViewModel extends ChangeNotifier {
         _camera = camera ?? DirectPtpCameraService(),
         _openDb = openDb ?? EventPipelineDb.openDefault,
         _refreshInterval = refreshInterval,
-        _hardwareInterval = hardwareInterval,
+        _hardwareWindow = hardwareWindow,
         _nowMs = nowMs ?? _defaultNowMs {
     _sync = sync ??
         EventPipelineSync(
@@ -73,25 +73,25 @@ class EventHubViewModel extends ChangeNotifier {
   final Future<EventPipelineDb?> Function() _openDb;
   final Duration _refreshInterval;
 
-  /// How often the hardware is re-probed **once it is all present**.
+  /// How long the hub keeps looking for hardware after entering the event.
   ///
-  /// A camera being plugged in or a ribbon running out happens on human
-  /// timescales; the counters move at queue speed. Enumerating USB and querying
-  /// the printer on the counter's tick is contention the Amlogic box does not
-  /// need to spend all night.
+  /// Discovery is a **bounded window, not a poll.** Entering an event is when
+  /// an operator is plugging things in and watching the rows, so for this long
+  /// the camera and printer are re-checked on every tick. After it the hub
+  /// stops asking entirely: enumerating USB and querying the printer every few
+  /// seconds all night is contention the Amlogic box does not need, and neither
+  /// changes on its own.
   ///
-  /// Deliberately not applied while something is missing — see
-  /// [_hardwareIsSettled]. An operator who has just plugged a camera in is
-  /// watching the row, and making them wait out this interval to see it appear
-  /// is how a working camera looks broken.
-  final Duration _hardwareInterval;
+  /// [recheckHardware] reopens the window, which is the only thing that does.
+  final Duration _hardwareWindow;
   final int Function() _nowMs;
   late final EventPipelineSync _sync;
 
   static int _defaultNowMs() => DateTime.now().millisecondsSinceEpoch;
 
-  int? _hardwareProbedAtMs;
-  bool _hardwareIsSettled = false;
+  /// When the current discovery window opened. Null once it has closed.
+  int? _windowOpenedAtMs;
+  bool _rechecking = false;
   String? _cameraNameCache;
   PrinterConsumables? _printerCache;
   FrameCacheStatus? _frameCache;
@@ -116,6 +116,9 @@ class EventHubViewModel extends ChangeNotifier {
   EventReadinessReport? get readiness => _readiness;
   bool get isSyncing => _syncing;
 
+  /// True while the hub is still actively looking for hardware.
+  bool get isCheckingHardware => _windowOpenedAtMs != null || _rechecking;
+
   List<ReadinessRow> get readinessRows => _readiness?.rows ?? const [];
   bool get canImport => _readiness?.canImport ?? false;
   bool get canCapture => _readiness?.canCapture ?? false;
@@ -131,6 +134,8 @@ class EventHubViewModel extends ChangeNotifier {
     await _runner.ensureStarted();
     await _loadEvent();
     _syncStatus = await _sync.status();
+    // Entering the event opens the discovery window.
+    _windowOpenedAtMs = _nowMs();
     await refresh(probeHardware: true);
 
     // Awaited, but nothing is waiting on start(): the provider cascades into it
@@ -202,29 +207,43 @@ class EventHubViewModel extends ChangeNotifier {
     _notify();
   }
 
-  /// Re-probes the hardware, as often as it is actually worth doing.
-  ///
-  /// Backs off to [_hardwareInterval] only once everything is present. While
-  /// something is missing the probe runs on every tick, because that is exactly
-  /// when an operator is plugging things in and waiting to see the row change.
+  /// Probes the hardware while the discovery window is open, then stops.
   Future<void> _refreshHardware(
     EventPipelineSettings settings, {
     required bool force,
   }) async {
-    final last = _hardwareProbedAtMs;
-    if (!force &&
-        _hardwareIsSettled &&
-        last != null &&
-        _nowMs() - last < _hardwareInterval.inMilliseconds) {
-      return;
+    final opened = _windowOpenedAtMs;
+    if (!force) {
+      if (opened == null) return;
+      if (_nowMs() - opened >= _hardwareWindow.inMilliseconds) {
+        // The window has closed. Nothing looks again until Recheck.
+        _windowOpenedAtMs = null;
+        return;
+      }
     }
     _cameraNameCache = await _cameraName();
     _printerCache = await _printer.read();
     _frameCache = await _frameStatus(settings);
     _freeBytesCache = await _freeBytes();
-    _hardwareProbedAtMs = _nowMs();
-    _hardwareIsSettled = (_cameraNameCache?.trim().isNotEmpty ?? false) &&
-        (_printerCache?.canPrint ?? false);
+  }
+
+  /// Looks for the camera and printer again, for another window.
+  ///
+  /// The operator's control for "I have just plugged it in", and the only way
+  /// back once the window has closed. Also the answer to a row that has gone
+  /// stale: the hub stops asking, so a camera unplugged after the window would
+  /// otherwise read connected until someone checked.
+  Future<void> recheckHardware() async {
+    if (_rechecking) return;
+    _rechecking = true;
+    _windowOpenedAtMs = _nowMs();
+    _notify();
+    try {
+      await refresh(probeHardware: true);
+    } finally {
+      _rechecking = false;
+      _notify();
+    }
   }
 
   Future<void> _loadEvent() async {

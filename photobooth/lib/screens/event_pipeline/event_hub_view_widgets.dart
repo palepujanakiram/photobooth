@@ -61,6 +61,8 @@ class EventHubReadinessBlock extends StatelessWidget {
     required this.rows,
     required this.onExplain,
     this.onOpenSettings,
+    this.onRecheck,
+    this.isChecking = false,
   });
 
   final AppColors appColors;
@@ -70,6 +72,15 @@ class EventHubReadinessBlock extends StatelessWidget {
   /// Opens event settings. Lives on this header because the hub has no app
   /// bar — it is the event's root and a title bar would carry a back arrow.
   final VoidCallback? onOpenSettings;
+
+  /// Looks for the camera and printer again.
+  ///
+  /// Always available rather than only on a red row: the hub stops probing once
+  /// its window closes, so a camera unplugged afterwards reads connected until
+  /// someone asks again. A stale green row is exactly the case that needs this.
+  final VoidCallback? onRecheck;
+
+  final bool isChecking;
 
   /// Called when an amber or red row is tapped. Green rows are not tappable —
   /// there is nothing to explain, and a tap that does nothing teaches an
@@ -102,6 +113,31 @@ class EventHubReadinessBlock extends StatelessWidget {
                   ),
                 ),
               ),
+              if (onRecheck != null)
+                InkWell(
+                  onTap: isChecking ? null : onRecheck,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.refresh,
+                          size: 16,
+                          color: appColors.secondaryTextColor,
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          isChecking ? 'Checking…' : 'Recheck',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: appColors.secondaryTextColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               if (onOpenSettings != null)
                 InkWell(
                   onTap: onOpenSettings,

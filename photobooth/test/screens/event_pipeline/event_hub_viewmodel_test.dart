@@ -488,117 +488,120 @@ void main() {
     });
   });
 
-  group('probe cadence', () {
-    test('counters re-read every refresh without touching the hardware',
-        () async {
-      final vm = build(initial: synced);
-      await vm.start();
-      addTearDown(vm.dispose);
-      final afterStart = camera.probes;
-
-      await vm.refresh();
-      await vm.refresh();
-
-      // Enumerating USB and querying the printer on the counter's tick is
-      // contention the box does not need to spend all night.
-      expect(camera.probes, afterStart);
-    });
-
-    test('the hardware is re-read once its interval has passed', () async {
-      var now = 1000;
-      final vm = EventHubViewModel(
-        config: config,
-        events: events,
-        sync: FakeSync(initial: synced),
-        stats: EventPipelineStatsReader(openDb: () async => db),
-        printer: printer,
-        storage: storage,
-        mediaStore: EventMediaStore(resolveDirectory: () async => mediaDir),
-        camera: camera,
-        openDb: () async => db,
-        runner: EventPipelineRunner(
+  group('hardware discovery', () {
+    EventHubViewModel windowed(int Function() clock) => EventHubViewModel(
           config: config,
+          events: events,
+          sync: FakeSync(initial: synced),
+          stats: EventPipelineStatsReader(openDb: () async => db),
+          printer: printer,
+          storage: storage,
           mediaStore: EventMediaStore(resolveDirectory: () async => mediaDir),
-          openDb: () async => null,
-        ),
-        refreshInterval: const Duration(minutes: 5),
-        hardwareInterval: const Duration(seconds: 20),
-        nowMs: () => now,
-      );
+          camera: camera,
+          openDb: () async => db,
+          runner: EventPipelineRunner(
+            config: config,
+            mediaStore: EventMediaStore(resolveDirectory: () async => mediaDir),
+            openDb: () async => null,
+          ),
+          refreshInterval: const Duration(minutes: 5),
+          hardwareWindow: const Duration(seconds: 15),
+          nowMs: clock,
+        );
+
+    test('keeps looking while the window is open', () async {
+      var now = 1000;
+      final vm = windowed(() => now);
       await vm.start();
       addTearDown(vm.dispose);
       final afterStart = camera.probes;
 
-      now += 5000;
-      await vm.refresh();
-      expect(camera.probes, afterStart, reason: 'too soon');
-
-      now += 20000;
+      // Entering an event is when things are being plugged in.
+      now += 3000;
       await vm.refresh();
       expect(camera.probes, afterStart + 1);
+
+      now += 3000;
+      await vm.refresh();
+      expect(camera.probes, afterStart + 2);
     });
 
-    test('a missing camera is re-probed every tick, not once a interval',
-        () async {
-      // The operator plugging a camera in is watching this row. Making them
-      // wait out the back-off is how a working camera looks broken.
-      camera.device = null;
+    test('stops asking once the window closes', () async {
       var now = 1000;
-      final vm = EventHubViewModel(
-        config: config,
-        events: events,
-        sync: FakeSync(initial: synced),
-        stats: EventPipelineStatsReader(openDb: () async => db),
-        printer: printer,
-        storage: storage,
-        mediaStore: EventMediaStore(resolveDirectory: () async => mediaDir),
-        camera: camera,
-        openDb: () async => db,
-        runner: EventPipelineRunner(
-          config: config,
-          mediaStore: EventMediaStore(resolveDirectory: () async => mediaDir),
-          openDb: () async => null,
-        ),
-        refreshInterval: const Duration(minutes: 5),
-        hardwareInterval: const Duration(seconds: 20),
-        nowMs: () => now,
-      );
+      final vm = windowed(() => now);
       await vm.start();
       addTearDown(vm.dispose);
-      final afterStart = camera.probes;
 
-      now += 1000;
+      now += 16000;
       await vm.refresh();
-      expect(camera.probes, afterStart + 1, reason: 'still missing, keep looking');
+      final settled = camera.probes;
 
-      // It appears, and the row picks it up on the very next tick.
+      // Neither a camera nor a printer changes on its own, and probing all
+      // night is contention the box does not need.
+      now += 60000;
+      await vm.refresh();
+      now += 60000;
+      await vm.refresh();
+      expect(camera.probes, settled);
+      expect(vm.isCheckingHardware, isFalse);
+    });
+
+    test('Recheck opens a fresh window', () async {
+      var now = 1000;
+      final vm = windowed(() => now);
+      await vm.start();
+      addTearDown(vm.dispose);
+      now += 16000;
+      await vm.refresh();
+      final settled = camera.probes;
+
+      await vm.recheckHardware();
+      expect(camera.probes, greaterThan(settled));
+
+      // And the window is open again, so the next tick still looks.
+      final afterRecheck = camera.probes;
+      now += 3000;
+      await vm.refresh();
+      expect(camera.probes, afterRecheck + 1);
+    });
+
+    test('Recheck finds a camera plugged in after the window closed', () async {
+      camera.device = null;
+      var now = 1000;
+      final vm = windowed(() => now);
+      await vm.start();
+      addTearDown(vm.dispose);
+      now += 16000;
+      await vm.refresh();
+      expect(vm.canCapture, isFalse);
+
       camera.device = const DirectPtpDevice(
         deviceName: '/dev/bus/usb/001/004',
         vendorId: 0x04a9,
         productId: 0x32e9,
         product: 'Canon EOS R',
       );
-      now += 1000;
+      // Without Recheck the hub would never look again.
       await vm.refresh();
-      expect(vm.canCapture, isTrue);
+      expect(vm.canCapture, isFalse);
 
-      // Now that everything is present, it backs off.
-      final settled = camera.probes;
-      now += 1000;
-      await vm.refresh();
-      expect(camera.probes, settled);
+      await vm.recheckHardware();
+      expect(vm.canCapture, isTrue);
     });
 
-    test('a sync looks at the hardware straight away', () async {
-      final vm = build(initial: synced);
+    test('a sync opens the window too', () async {
+      var now = 1000;
+      final vm = windowed(() => now);
       await vm.start();
       addTearDown(vm.dispose);
-      final afterStart = camera.probes;
+      now += 16000;
+      await vm.refresh();
+      final settled = camera.probes;
 
-      // Syncing is the moment an operator is setting the event up, so waiting
-      // out the interval would show them stale hardware.
+      // Syncing is the operator setting the event up; stale hardware then is
+      // the failure the readiness block exists to prevent.
       await vm.resync();
-      expect(camera.probes, greaterThan(afterStart));
+      expect(camera.probes, greaterThan(settled));
     });
   });
 

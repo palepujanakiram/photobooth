@@ -74,7 +74,9 @@ class _HubBody extends StatelessWidget {
             headline: vm.isSyncing ? AppStrings.eventHubSyncing : vm.headline,
             rows: vm.readinessRows,
             onExplain: (row) => _explain(context, row),
-            // With no app bar, the status header is where the gear lives.
+            // With no app bar, the status header is where these live.
+            onRecheck: vm.recheckHardware,
+            isChecking: vm.isCheckingHardware,
             onOpenSettings: () => Navigator.of(context)
                 .pushNamed(AppConstants.kRouteEventSettings),
           ),
