@@ -92,6 +92,22 @@ void main() {
       AppStrings.flashbackCaptureSubtitle,
       contains('8s'),
     );
+    expect(
+      AppStrings.flashbackCaptureSubtitleFor(7),
+      contains('7s'),
+    );
+    expect(
+      AppStrings.flashbackCaptureSubtitleThreeFor(7),
+      contains('3 shots'),
+    );
+    expect(
+      AppStrings.flashbackCaptureSubtitleSingleFor(7),
+      'One shot · 7s pose countdown',
+    );
+    expect(
+      AppStrings.flashbackPoseProgressSingleFor(7),
+      'Pose now — 7 second countdown',
+    );
     expect(AppStrings.captureMaskStallRetry, contains('Tap Capture'));
     expect(AppStrings.printSelectionTotal(250), 'Total ₹250');
     expect(AppStrings.printSelectionContinue(0), 'Select a photo');

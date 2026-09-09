@@ -70,6 +70,8 @@ class AppSettingsModel {
   /// for the bound kiosk when settings were fetched with `?kiosk=` (kiosk
   /// override wins over account default). True = AF/OSD scrub; false/null = originals.
   final bool? enableOsdScrub;
+  /// Per-kiosk Classic pose countdown in seconds (5–15). Null = use default 10.
+  final int? classicPoseCountdownSeconds;
   /// Test-only: burn AF brackets into Classic captures (`injectAfMarkers`).
   final bool? injectAfMarkers;
   /// Classic Surprise Me AI teaser (`settings.photoStripConfig.enableSurpriseMeAi`).
@@ -134,6 +136,7 @@ class AppSettingsModel {
     this.exifStampEnabled,
     this.c2paSigningEnabled,
     this.enableOsdScrub,
+    this.classicPoseCountdownSeconds,
     this.injectAfMarkers,
     this.enableSurpriseMeAi,
     this.offlineCashPins,
@@ -220,6 +223,10 @@ class AppSettingsModel {
             stripMap?['enableOsdScrub'],
           ) ??
           JsonParseHelpers.boolOrNull(json['enableOsdScrub']),
+      classicPoseCountdownSeconds: JsonParseHelpers.intOrNull(
+        json['classicPoseCountdownSeconds'] ??
+            json['classic_pose_countdown_seconds'],
+      ),
       injectAfMarkers: JsonParseHelpers.boolOrNull(
             stripMap?['injectAfMarkers'],
           ) ??

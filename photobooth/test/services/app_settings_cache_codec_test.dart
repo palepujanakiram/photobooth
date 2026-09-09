@@ -57,6 +57,7 @@ void main() {
       exifStampEnabled: true,
       c2paSigningEnabled: false,
       enableOsdScrub: true,
+      classicPoseCountdownSeconds: 7,
       injectAfMarkers: false,
       enableSurpriseMeAi: true,
       createdAt: DateTime.utc(2026, 8, 23),
@@ -69,6 +70,7 @@ void main() {
     expect(back.parallelImageCount, 2);
     expect(back.printerHost, '10.0.0.8');
     expect(back.enableOsdScrub, isTrue);
+    expect(back.classicPoseCountdownSeconds, 7);
     expect(back.enableSurpriseMeAi, isTrue);
     expect(back.showApiLogs, isFalse);
     expect(back.id, 's1');

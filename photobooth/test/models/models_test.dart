@@ -157,6 +157,7 @@ void main() {
     expect(again.regenerationPrice, original.regenerationPrice);
     expect(again.operatingMode, original.operatingMode);
     expect(again.invoiceLastSeq, original.invoiceLastSeq);
+    expect(again.classicPoseCountdownSeconds, 10);
   });
 
   test('KioskInfoModel parses price overrides', () {
@@ -182,6 +183,38 @@ void main() {
       'classicShotModes': [1, 3.2, '4', 'nope'],
     });
     expect(m.classicShotModes, [1, 3, 4]);
+  });
+
+  test('KioskInfoModel parses and clamps classicPoseCountdownSeconds', () {
+    expect(
+      KioskInfoModel.fromJson({'id': 'k1', 'code': 'ABC'})
+          .classicPoseCountdownSeconds,
+      10,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'classicPoseCountdownSeconds': 7,
+      }).classicPoseCountdownSeconds,
+      7,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'classic_pose_countdown_seconds': '4',
+      }).classicPoseCountdownSeconds,
+      5,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'classicPoseCountdownSeconds': 15.6,
+      }).classicPoseCountdownSeconds,
+      15,
+    );
   });
 
   test('KioskInfoModel aiPhotosEnabled defaults true and parses false', () {

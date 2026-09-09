@@ -22,6 +22,7 @@ import '../../services/kiosk_device_status_service.dart';
 import '../../services/kiosk_outbox_worker.dart';
 import '../../services/local_kiosk_models.dart';
 import '../../utils/api_environment.dart';
+import '../../utils/app_runtime_config.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/kiosk_qr_payload.dart';
@@ -433,6 +434,9 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     await _kiosk.setAiPhotosEnabled(kiosk.aiPhotosEnabled);
     await _kiosk.setClassicShotModes(kiosk.classicShotModes);
     await _kiosk.setOperatingModeOffline(kiosk.isOperatingModeOffline);
+    AppRuntimeConfig.instance.applyClassicPoseCountdown(
+      kiosk.classicPoseCountdownSeconds,
+    );
   }
 
   Future<void> _goAfterBind(

@@ -1288,8 +1288,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       _multiShotTotal = 1;
       final counting = _captureViewModel.isCountingDown;
       _subtitleHint = counting
-          ? AppStrings.flashbackPoseProgressSingle
-          : AppStrings.flashbackCaptureSubtitleSingle;
+          ? AppStrings.flashbackPoseProgressSingleFor(
+              captureCountdownSecondsForMode(isFlashbackMultiShot: true),
+            )
+          : classicPoseSubtitle(ClassicShotMode.single6x4);
       return;
     }
     final total = _classicShotCap;
@@ -1311,8 +1313,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       _subtitleHint = AppStrings.flashbackGetReadyForShot(next, total);
     } else {
       _subtitleHint = total == 3
-          ? AppStrings.flashbackCaptureSubtitleThree
-          : AppStrings.flashbackCaptureSubtitle;
+          ? classicPoseSubtitle(ClassicShotMode.threeShot)
+          : classicPoseSubtitle(ClassicShotMode.fourShot);
     }
   }
 

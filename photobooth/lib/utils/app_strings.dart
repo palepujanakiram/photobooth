@@ -540,11 +540,19 @@ abstract final class AppStrings {
   static const flashbackCaptureSubtitleThree =
       '3 shots · 10s to pose · 8s between shots to rearrange';
   static const flashbackCaptureSubtitleSingle = 'One shot · 10s pose countdown';
+  static String flashbackCaptureSubtitleFor(int poseSeconds) =>
+      '4 shots · ${poseSeconds}s to pose · 8s between shots to rearrange';
+  static String flashbackCaptureSubtitleThreeFor(int poseSeconds) =>
+      '3 shots · ${poseSeconds}s to pose · 8s between shots to rearrange';
+  static String flashbackCaptureSubtitleSingleFor(int poseSeconds) =>
+      'One shot · ${poseSeconds}s pose countdown';
   static String flashbackShotProgress(int current, int total) =>
       'Shot $current of $total';
   static String flashbackPoseProgress(int current, int total) =>
       'Pose now — Shot $current of $total';
   static const flashbackPoseProgressSingle = 'Pose now — 10 second countdown';
+  static String flashbackPoseProgressSingleFor(int poseSeconds) =>
+      'Pose now — $poseSeconds second countdown';
   static const flashbackSingle6x4Title = 'Classic print';
   static String flashbackSinglePrintTitle(bool portrait) =>
       portrait ? 'Classic 4×6' : 'Classic 6×4';

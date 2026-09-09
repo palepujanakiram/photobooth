@@ -1,4 +1,6 @@
 import '../../utils/constants.dart';
+import '../../utils/app_runtime_config.dart';
+import '../../utils/classic_pose_countdown.dart';
 
 /// Whether a Classic review-hold timer is already running (do not re-arm).
 bool flashbackReviewHoldAlreadyScheduled({
@@ -59,23 +61,24 @@ int flashbackReviewSecondsRemaining({
 
 /// Pose countdown length for the active capture mode.
 ///
-/// Classic 1-shot and 4-shot use a 10s pose window for every shutter.
+/// Classic 1-shot and strip shots use the kiosk Classic pose window
+/// ([AppRuntimeConfig.classicPoseCountdownSeconds], default 10s).
 int captureCountdownSecondsForMode({
   required bool isFlashbackMultiShot,
   int acceptedShotCount = 0,
+  int? classicSeconds,
 }) {
   if (!isFlashbackMultiShot) return AppConstants.kCaptureCountdownSeconds;
-  // Follow-on shots use the same 10s window as shot 1.
-  if (acceptedShotCount >= 1) {
-    return AppConstants.kFlashbackFollowOnCountdownSeconds;
-  }
-  return AppConstants.kFlashbackCaptureCountdownSeconds;
+  // [acceptedShotCount] kept so follow-on call sites share this helper.
+  return normalizeClassicPoseCountdownSeconds(
+    classicSeconds ?? AppRuntimeConfig.instance.classicPoseCountdownSeconds,
+  );
 }
 
 /// Countdown step at which HDMI + Pi gphoto2 should start [prepareStill].
 ///
 /// All Classic shots prepare mid-countdown so EVF stays up for most of the
-/// 10s pose window, then tears down ~4s before shutter.
+/// pose window, then tears down ~4s before shutter.
 ///
 /// Not used when Pose is the Canon USB EVF stream — see
 /// [shouldPrepareSidecarStillDuringCountdown].

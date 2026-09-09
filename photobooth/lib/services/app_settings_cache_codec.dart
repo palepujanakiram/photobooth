@@ -69,6 +69,8 @@ Map<String, dynamic> appSettingsToCacheJson(AppSettingsModel s) {
       if (s.enableSurpriseMeAi != null)
         'enableSurpriseMeAi': s.enableSurpriseMeAi,
     },
+    if (s.classicPoseCountdownSeconds != null)
+      'classicPoseCountdownSeconds': s.classicPoseCountdownSeconds,
     if (s.offlineCashPins != null) 'offlineCashPins': s.offlineCashPins,
     if (s.receiptMerchant != null)
       'receiptMerchant': s.receiptMerchant!.toJson(),

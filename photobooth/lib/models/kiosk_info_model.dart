@@ -1,3 +1,6 @@
+import '../utils/classic_pose_countdown.dart';
+import '../utils/constants.dart';
+
 class KioskInfoModel {
   final String id;
   final String code;
@@ -18,6 +21,9 @@ class KioskInfoModel {
 
   /// Classic shot counts offered on the experience screen (1, 3, and/or 4).
   final List<int> classicShotModes;
+
+  /// Seconds of Classic pose countdown (5–15). Default 10.
+  final int classicPoseCountdownSeconds;
 
   /// Per-kiosk guest price overrides (rupees). null = inherit account settings.
   final int? initialPrice;
@@ -44,6 +50,8 @@ class KioskInfoModel {
     this.classicPhotosEnabled = true,
     this.aiPhotosEnabled = true,
     this.classicShotModes = const [1, 3, 4],
+    this.classicPoseCountdownSeconds =
+        AppConstants.kFlashbackCaptureCountdownSeconds,
     this.initialPrice,
     this.additionalPrintPrice,
     this.regenerationPrice,
@@ -76,6 +84,10 @@ class KioskInfoModel {
     final modes = _parseClassicShotModes(
       json['classicShotModes'] ?? json['classic_shot_modes'],
     );
+    final countdown = _parseClassicPoseCountdownSeconds(
+      json['classicPoseCountdownSeconds'] ??
+          json['classic_pose_countdown_seconds'],
+    );
 
     return KioskInfoModel(
       id: (json['id'] ?? '').toString(),
@@ -87,6 +99,7 @@ class KioskInfoModel {
       classicPhotosEnabled: classicEnabled,
       aiPhotosEnabled: aiEnabled,
       classicShotModes: modes,
+      classicPoseCountdownSeconds: countdown,
       initialPrice: parsePrice(json['initialPrice']),
       additionalPrintPrice: parsePrice(json['additionalPrintPrice']),
       regenerationPrice: parsePrice(json['regenerationPrice']),
@@ -109,6 +122,7 @@ class KioskInfoModel {
         'classicPhotosEnabled': classicPhotosEnabled,
         'aiPhotosEnabled': aiPhotosEnabled,
         'classicShotModes': classicShotModes,
+        'classicPoseCountdownSeconds': classicPoseCountdownSeconds,
         if (initialPrice != null) 'initialPrice': initialPrice,
         if (additionalPrintPrice != null)
           'additionalPrintPrice': additionalPrintPrice,
@@ -145,6 +159,18 @@ class KioskInfoModel {
     }
     if (seen.isEmpty) return const [1, 3, 4];
     return [1, 3, 4].where(seen.contains).toList();
+  }
+
+  static int _parseClassicPoseCountdownSeconds(dynamic raw) {
+    int? n;
+    if (raw is int) {
+      n = raw;
+    } else if (raw is num) {
+      n = raw.round();
+    } else if (raw is String) {
+      n = int.tryParse(raw.trim());
+    }
+    return normalizeClassicPoseCountdownSeconds(n);
   }
 
   /// Missing/unknown → online (legacy kiosks / older API builds).

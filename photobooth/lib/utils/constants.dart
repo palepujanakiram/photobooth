@@ -276,7 +276,12 @@ class AppConstants {
   static const int kCaptureCountdownSeconds = 5;
 
   /// Classic 1-shot and 4-shot pose countdown before each shutter.
+  /// Default when a kiosk has no `classicPoseCountdownSeconds` override.
   static const int kFlashbackCaptureCountdownSeconds = 10;
+
+  /// Admin / API clamp for per-kiosk Classic pose countdown.
+  static const int kClassicPoseCountdownMinSeconds = 5;
+  static const int kClassicPoseCountdownMaxSeconds = 15;
 
   /// Classic 4-shot shots 2–4 use the same pose window as shot 1.
   static const int kFlashbackFollowOnCountdownSeconds = 10;
