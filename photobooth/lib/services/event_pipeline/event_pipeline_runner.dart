@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 
+import '../../models/event_pipeline/event_frame.dart';
 import '../../models/event_pipeline/event_pipeline_settings.dart';
 import '../../utils/logger.dart';
 import '../event_manager.dart';
@@ -84,8 +85,19 @@ class EventPipelineRunner {
   );
 
   bool _running = false;
+  FrameCacheStatus _frameStatus = const FrameCacheStatus(
+    total: 0,
+    cached: 0,
+    selectedIsCached: false,
+  );
 
   bool get isRunning => _running;
+
+  /// Whether the event's frame artwork is on disk and framing can run offline.
+  ///
+  /// Surfaced so a station can warn **before** a batch is queued rather than
+  /// deferring four hundred items one at a time.
+  FrameCacheStatus get frameStatus => _frameStatus;
   EventPipelineSettings get settings => _settings;
   EventPipelineLedger? get ledger => _ledger;
   EventPipelineQueue? get queue => _queue;
@@ -117,7 +129,28 @@ class EventPipelineRunner {
     _startWorkers();
     _instance = this;
     _running = true;
+    // Download the overlays while the link is up. Without this the frame cache
+    // exists but is always empty, and every frame job defers forever.
+    unawaited(refreshFrames());
     return true;
+  }
+
+  /// Fetches the frame catalogue and downloads any overlay not yet on disk.
+  ///
+  /// Needs WAN, so it belongs at station entry rather than mid-import. Failure
+  /// is not fatal: [FrameCacheStatus] simply reports what is actually cached.
+  Future<FrameCacheStatus> refreshFrames() async {
+    final frames = _frames;
+    if (frames == null) return _frameStatus;
+    if (!_settings.frameEnabled) return _frameStatus;
+    final eventId = await _events.getEventId();
+    if (eventId == null || eventId.isEmpty) return _frameStatus;
+    _frameStatus = await frames.refresh(
+      eventId: eventId,
+      selectedFrameId: _settings.frameId,
+    );
+    AppLogger.debug('Event frames: ${_frameStatus.summary}');
+    return _frameStatus;
   }
 
   Future<EventPipelineSettings> _resolveSettings() async {

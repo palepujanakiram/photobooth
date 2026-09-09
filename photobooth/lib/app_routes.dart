@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 
 import 'screens/event_pipeline/event_ingest_view.dart';
+import 'screens/event_pipeline/event_queue_view.dart';
 import 'screens/event_station/event_capture_station_view.dart';
 import 'screens/event_station/event_print_station_view.dart';
 import 'screens/event_station/event_station_picker_view.dart';
@@ -92,6 +93,7 @@ Map<String, WidgetBuilder> buildAppRoutes() {
         const EventPrintStationScreen(),
     AppConstants.kRouteEventIngestStation: (context) =>
         const EventIngestScreen(),
+    AppConstants.kRouteEventQueue: (context) => const EventQueueScreen(),
     AppConstants.kRouteWebView: (context) => WebViewScreen.fromRouteSettings(
           ModalRoute.of(context)?.settings,
         ),

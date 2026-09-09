@@ -40,6 +40,14 @@ class EventIngestScreen extends StatelessWidget {
         showBackButton: true,
         onBackPressed: () => _changeRole(context),
         actions: [
+          // Imported photos have to be reachable, or they look lost the moment
+          // the import finishes.
+          IconButton(
+            tooltip: AppStrings.eventQueueTitle,
+            icon: const Icon(Icons.photo_library_outlined),
+            onPressed: () => Navigator.of(context)
+                .pushNamed(AppConstants.kRouteEventQueue),
+          ),
           // The app bar squeezes actions when the title is long, and this label
           // wrapped to "Ch / ang" on a phone. Scale it down rather than wrap.
           TextButton(
