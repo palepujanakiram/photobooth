@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/event_pipeline/event_frame.dart';
 import '../../models/event_pipeline/event_pipeline_settings.dart';
 import '../../models/event_pipeline/event_readiness.dart';
+import '../../models/event_pipeline/printer_consumables.dart';
 import '../../services/direct_ptp_camera_service.dart';
 import '../../services/event_manager.dart';
 import '../../services/event_pipeline/event_frame_cache.dart';
@@ -39,6 +40,8 @@ class EventHubViewModel extends ChangeNotifier {
     DirectPtpCameraService? camera,
     Future<EventPipelineDb?> Function()? openDb,
     Duration refreshInterval = const Duration(seconds: 4),
+    Duration hardwareInterval = const Duration(seconds: 20),
+    int Function()? nowMs,
   })  : _runner = runner ?? EventPipelineRunner.instance ?? EventPipelineRunner(),
         _config = config ?? EventPipelineConfig(),
         _events = events ?? EventManager(),
@@ -48,7 +51,9 @@ class EventHubViewModel extends ChangeNotifier {
         _media = mediaStore ?? EventMediaStore(),
         _camera = camera ?? DirectPtpCameraService(),
         _openDb = openDb ?? EventPipelineDb.openDefault,
-        _refreshInterval = refreshInterval {
+        _refreshInterval = refreshInterval,
+        _hardwareInterval = hardwareInterval,
+        _nowMs = nowMs ?? _defaultNowMs {
     _sync = sync ??
         EventPipelineSync(
           config: _config,
@@ -67,7 +72,24 @@ class EventHubViewModel extends ChangeNotifier {
   final DirectPtpCameraService _camera;
   final Future<EventPipelineDb?> Function() _openDb;
   final Duration _refreshInterval;
+
+  /// How often the hardware is re-probed, as opposed to the counters.
+  ///
+  /// A camera being plugged in or a ribbon running out happens on human
+  /// timescales; the counters move at queue speed. Enumerating USB and querying
+  /// the printer on the counter's tick is contention the Amlogic box does not
+  /// need to spend all night.
+  final Duration _hardwareInterval;
+  final int Function() _nowMs;
   late final EventPipelineSync _sync;
+
+  static int _defaultNowMs() => DateTime.now().millisecondsSinceEpoch;
+
+  int? _hardwareProbedAtMs;
+  String? _cameraNameCache;
+  PrinterConsumables? _printerCache;
+  FrameCacheStatus? _frameCache;
+  int? _freeBytesCache;
 
   Timer? _timer;
   bool _disposed = false;
@@ -103,7 +125,7 @@ class EventHubViewModel extends ChangeNotifier {
     await _runner.ensureStarted();
     await _loadEvent();
     _syncStatus = await _sync.status();
-    await refresh();
+    await refresh(probeHardware: true);
 
     // Awaited, but nothing is waiting on start(): the provider cascades into it
     // and returns the model immediately, and refresh() above has already
@@ -130,12 +152,18 @@ class EventHubViewModel extends ChangeNotifier {
       AppLogger.error('Event sync failed', error: e, stackTrace: st);
     } finally {
       _syncing = false;
-      await refresh();
+      // A sync is the moment an operator is setting the event up, so look at
+      // the hardware properly rather than waiting out the interval.
+      await refresh(probeHardware: true);
     }
   }
 
   /// Re-reads counters and readiness. Local only; never touches the network.
-  Future<void> refresh() async {
+  ///
+  /// Pass [probeHardware] to force a fresh look at the camera, printer, frames
+  /// and disk; otherwise they are re-read only once [_hardwareInterval] has
+  /// passed. The counters are read every time — they are what actually moves.
+  Future<void> refresh({bool probeHardware = false}) async {
     final settings = await _config.resolve(
       defaults: EventPipelineDefaults(
         photoMode: await _events.getPhotoModeOverride() ?? 'BOTH',
@@ -143,16 +171,17 @@ class EventHubViewModel extends ChangeNotifier {
       ),
     );
     final counters = await _stats.read();
+    await _refreshHardware(settings, force: probeHardware);
     final readiness = EventReadiness.evaluate(EventReadinessInput(
       settings: settings,
       hasSyncedOnce: _syncStatus.hasSyncedOnce,
       syncIsFresh: _syncStatus.isFresh,
       syncedAtMs: _syncStatus.syncedAtMs,
       syncError: _syncStatus.error,
-      cameraName: await _cameraName(),
-      printer: await _printer.read(),
-      frames: _syncStatus.frames ?? await _frameStatus(settings),
-      freeBytes: await _freeBytes(),
+      cameraName: _cameraNameCache,
+      printer: _printerCache,
+      frames: _syncStatus.frames ?? _frameCache,
+      freeBytes: _freeBytesCache,
       queuePaused: counters.queuePaused,
       inFlight: counters.inFlight,
       // The last sync reaching ZenAI is the honest signal for whether AI jobs
@@ -165,6 +194,24 @@ class EventHubViewModel extends ChangeNotifier {
     _counters = counters;
     _readiness = readiness;
     _notify();
+  }
+
+  /// Re-probes the hardware, but only as often as hardware actually changes.
+  Future<void> _refreshHardware(
+    EventPipelineSettings settings, {
+    required bool force,
+  }) async {
+    final last = _hardwareProbedAtMs;
+    if (!force &&
+        last != null &&
+        _nowMs() - last < _hardwareInterval.inMilliseconds) {
+      return;
+    }
+    _cameraNameCache = await _cameraName();
+    _printerCache = await _printer.read();
+    _frameCache = await _frameStatus(settings);
+    _freeBytesCache = await _freeBytes();
+    _hardwareProbedAtMs = _nowMs();
   }
 
   Future<void> _loadEvent() async {

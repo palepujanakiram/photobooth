@@ -52,9 +52,11 @@ class FakeCamera extends DirectPtpCameraService {
 
   DirectPtpDevice? device;
   bool shouldThrow;
+  int probes = 0;
 
   @override
   Future<DirectPtpDevice?> probeDevice() async {
+    probes++;
     if (shouldThrow) throw StateError('usb host unavailable');
     return device;
   }
@@ -483,6 +485,69 @@ void main() {
           vm.readinessRows.firstWhere((r) => r.kind == ReadinessKind.queue);
       expect(row.tone, ReadinessTone.warn);
       expect(row.detail, 'Paused');
+    });
+  });
+
+  group('probe cadence', () {
+    test('counters re-read every refresh without touching the hardware',
+        () async {
+      final vm = build(initial: synced);
+      await vm.start();
+      addTearDown(vm.dispose);
+      final afterStart = camera.probes;
+
+      await vm.refresh();
+      await vm.refresh();
+
+      // Enumerating USB and querying the printer on the counter's tick is
+      // contention the box does not need to spend all night.
+      expect(camera.probes, afterStart);
+    });
+
+    test('the hardware is re-read once its interval has passed', () async {
+      var now = 1000;
+      final vm = EventHubViewModel(
+        config: config,
+        events: events,
+        sync: FakeSync(initial: synced),
+        stats: EventPipelineStatsReader(openDb: () async => db),
+        printer: printer,
+        storage: storage,
+        mediaStore: EventMediaStore(resolveDirectory: () async => mediaDir),
+        camera: camera,
+        openDb: () async => db,
+        runner: EventPipelineRunner(
+          config: config,
+          mediaStore: EventMediaStore(resolveDirectory: () async => mediaDir),
+          openDb: () async => null,
+        ),
+        refreshInterval: const Duration(minutes: 5),
+        hardwareInterval: const Duration(seconds: 20),
+        nowMs: () => now,
+      );
+      await vm.start();
+      addTearDown(vm.dispose);
+      final afterStart = camera.probes;
+
+      now += 5000;
+      await vm.refresh();
+      expect(camera.probes, afterStart, reason: 'too soon');
+
+      now += 20000;
+      await vm.refresh();
+      expect(camera.probes, afterStart + 1);
+    });
+
+    test('a sync looks at the hardware straight away', () async {
+      final vm = build(initial: synced);
+      await vm.start();
+      addTearDown(vm.dispose);
+      final afterStart = camera.probes;
+
+      // Syncing is the moment an operator is setting the event up, so waiting
+      // out the interval would show them stale hardware.
+      await vm.resync();
+      expect(camera.probes, greaterThan(afterStart));
     });
   });
 
