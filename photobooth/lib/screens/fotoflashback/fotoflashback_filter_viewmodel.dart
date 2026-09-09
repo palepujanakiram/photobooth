@@ -981,7 +981,7 @@ if (graded.length == _expectedCaptureCount) {
     );
     await _sessionManager.attachDeliverableImageUrls(
       imageUrls: [persisted],
-      stripCompositeUrl: persisted,
+      stripCompositeUrl: isSingleClassic ? null : persisted,
     );
     final printSize = resolveClassicComposePrintSize(
       imageCount: _imageDataUrls.length,
@@ -1184,7 +1184,7 @@ if (graded.length == _expectedCaptureCount) {
       final printUrl = await _persistStripPrintUrl(sessionId, result.printImageUrl);
       await _sessionManager.attachDeliverableImageUrls(
         imageUrls: [printUrl],
-        stripCompositeUrl: printUrl,
+        stripCompositeUrl: isSingleClassic ? null : printUrl,
       );
       return GeneratedImage(
         id: 'strip_${_selectedFilterId}_${DateTime.now().millisecondsSinceEpoch}',

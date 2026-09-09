@@ -24,6 +24,19 @@ void main() {
       );
     });
 
+    test('Classic 1-shot staff reprint never enables the 2-inch cutter', () {
+      expect(
+        resolveStaffDnpPrintSize(
+          imageUrl: 'https://cdn/single.jpg',
+          stripCompositeUrl: 'https://cdn/single.jpg',
+          sessionPrintSize: AppConstants.kPrintSizeStripDual2x6,
+          classicComposeShotCount: 1,
+          orientedDimensions: (width: 1200, height: 1800),
+        ),
+        AppConstants.kPrintSizePortrait4x6,
+      );
+    });
+
     test('uses portrait 4x6 for upright AI aspect when session token is ambiguous', () {
       expect(
         resolveStaffDnpPrintSize(

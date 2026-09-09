@@ -208,10 +208,10 @@ class DnpPrintBridge {
       _usbReady = true;
     }
     try {
-      await _usb.print(
+      await _sendUsbPrintJobs(
         filePath: filePath,
-        paperSize: size.usbLabel,
-        printSize: networkPrintSize,
+        size: size,
+        networkPrintSize: networkPrintSize,
         copies: copies,
       );
     } on PlatformException catch (e) {
@@ -223,11 +223,30 @@ class DnpPrintBridge {
       _usbReady = false;
       await _usb.ensureConnected();
       _usbReady = true;
+      await _sendUsbPrintJobs(
+        filePath: filePath,
+        size: size,
+        networkPrintSize: networkPrintSize,
+        copies: copies,
+      );
+    }
+  }
+
+  /// 2-inch cutter jobs ignore CNTRL QTY — send one USB job per copy.
+  Future<void> _sendUsbPrintJobs({
+    required String filePath,
+    required DnpPrintSize size,
+    required String networkPrintSize,
+    required int copies,
+  }) async {
+    final jobs = dnpUsbCopyJobCount(networkPrintSize, copies);
+    final perJob = jobs > 1 ? 1 : copies;
+    for (var i = 0; i < jobs; i++) {
       await _usb.print(
         filePath: filePath,
         paperSize: size.usbLabel,
         printSize: networkPrintSize,
-        copies: copies,
+        copies: perJob,
       );
     }
   }

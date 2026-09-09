@@ -105,7 +105,15 @@ String resolveNetworkPrintSizeForImage({
   required String? imagePrintSize,
   required PrintOrientation orientation,
   String? sessionOverride,
+  int? classicComposeShotCount,
 }) {
+  if (classicComposeShotCount == 1) {
+    return _oneShotNetworkPrintSize(
+      imagePrintSize: imagePrintSize,
+      orientation: orientation,
+    );
+  }
+
   final own = imagePrintSize?.trim() ?? '';
   if (own.isNotEmpty && !isOrientationSelectablePrintSize(own)) {
     return own;
@@ -122,6 +130,63 @@ String resolveNetworkPrintSizeForImage({
     return session;
   }
   return orientation.printSize;
+}
+
+String _oneShotNetworkPrintSize({
+  required String? imagePrintSize,
+  required PrintOrientation orientation,
+}) {
+  final own = imagePrintSize?.trim() ?? '';
+  if (own == AppConstants.kPrintSizeLandscape6x4 ||
+      own == AppConstants.kPrintSizePortrait4x6) {
+    return own;
+  }
+  return orientation.printSize;
+}
+
+/// Checkout session hint — Classic 1-shot is never dual-strip cutter.
+String? resolveClassicCheckoutSessionPrintSize({
+  required List<GeneratedImage> selected,
+  String? stripPrintSize,
+  int? classicComposeShotCount,
+  required PrintOrientation orientation,
+}) {
+  if (classicComposeShotCount == 1) {
+    return orientation.printSize;
+  }
+  if (selected.isEmpty) return null;
+  final sizes = selected
+      .map((e) => e.printSize?.trim() ?? '')
+      .where((s) => s.isNotEmpty)
+      .toSet();
+  if (sizes.length == 1) return sizes.single;
+  if (sizes.contains(AppConstants.kPrintSizeLandscape6x4) &&
+      !sizes.contains(AppConstants.kPrintSizeStripDual2x6)) {
+    return AppConstants.kPrintSizeLandscape6x4;
+  }
+  final hint = stripPrintSize?.trim() ?? '';
+  return hint.isNotEmpty ? hint : null;
+}
+
+/// Cart token after Classic compose when the image omitted [printSize].
+String resolveFlashbackCartPrintSize({
+  required String? imagePrintSize,
+  String? fallbackPrintSize,
+  int? classicComposeShotCount,
+  PrintOrientation orientation = PrintOrientation.portrait,
+}) {
+  if (classicComposeShotCount == 1) {
+    return resolveClassicComposePrintSize(
+      imageCount: 1,
+      apiPrintSize: imagePrintSize ?? fallbackPrintSize,
+      orientation: orientation,
+    );
+  }
+  final own = imagePrintSize?.trim() ?? '';
+  if (own.isNotEmpty) return own;
+  final fallback = fallbackPrintSize?.trim() ?? '';
+  if (fallback.isNotEmpty) return fallback;
+  return AppConstants.kPrintSizeStripDual2x6;
 }
 
 /// Fills missing [GeneratedImage.printSize] before pay/print (AI → orientation).
@@ -151,9 +216,9 @@ bool imageUrlsReferToSameDeliverable(String? a, String? b) =>
 
 /// Staff / reprint: infer WCM token from deliverable URLs and session hints.
 ///
-/// When [sessionPrintSize] is set (from session or generatedImages), it wins.
-/// URL equality with [stripCompositeUrl] alone must not force dual-strip cut for
-/// Classic 1-shot sessions where the API reused the same URL for both fields.
+/// Classic 1-shot is never the dual-strip cutter — even when the session
+/// catalog default (`s6x2_2`) or [stripCompositeUrl] was copied onto the
+/// deliverable. JPEG aspect in [resolveStaffDnpPrintSize] then picks 4×6 vs 6×4.
 String resolveStaffNetworkPrintSize({
   required String imageUrl,
   String? stripCompositeUrl,
@@ -161,6 +226,14 @@ String resolveStaffNetworkPrintSize({
   String? sessionPrintSize,
   int? classicComposeShotCount,
 }) {
+  if (classicComposeShotCount == 1) {
+    return _staffOneShotPrintSize(
+      imageUrl: imageUrl,
+      single6x4Url: single6x4Url,
+      sessionPrintSize: sessionPrintSize,
+    );
+  }
+
   final explicit = _normalizeStaffPrintSizeToken(sessionPrintSize);
   if (explicit != null) return explicit;
 
@@ -169,12 +242,27 @@ String resolveStaffNetworkPrintSize({
   }
 
   if (_urlsReferToSameImage(imageUrl, stripCompositeUrl)) {
-    if (classicComposeShotCount == 1) {
-      return AppConstants.kPrintSizeLandscape6x4;
-    }
     return AppConstants.kPrintSizeStripDual2x6;
   }
 
+  return AppConstants.kPrintSizePortrait4x6;
+}
+
+String _staffOneShotPrintSize({
+  required String imageUrl,
+  String? single6x4Url,
+  String? sessionPrintSize,
+}) {
+  final explicit = _normalizeStaffPrintSizeToken(sessionPrintSize);
+  if (explicit == AppConstants.kPrintSizeLandscape6x4) {
+    return AppConstants.kPrintSizeLandscape6x4;
+  }
+  if (explicit == AppConstants.kPrintSizePortrait4x6) {
+    return AppConstants.kPrintSizePortrait4x6;
+  }
+  if (_urlsReferToSameImage(imageUrl, single6x4Url)) {
+    return AppConstants.kPrintSizeLandscape6x4;
+  }
   return AppConstants.kPrintSizePortrait4x6;
 }
 

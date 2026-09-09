@@ -1767,6 +1767,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       imagePrintSize: image.printSize,
       orientation: _r._printOrientation,
       sessionOverride: _r._printSizeOverride,
+      classicComposeShotCount: _r._classicComposeShotCount,
     );
     try {
       await _r._printService.printDnpPhoto(

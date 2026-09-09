@@ -134,6 +134,26 @@ void main() {
       );
     });
 
+    test('Classic 1-shot never uses dual-strip cutter', () {
+      expect(
+        resolveNetworkPrintSizeForImage(
+          imagePrintSize: AppConstants.kPrintSizeStripDual2x6,
+          orientation: PrintOrientation.portrait,
+          sessionOverride: AppConstants.kPrintSizeStripDual2x6,
+          classicComposeShotCount: 1,
+        ),
+        AppConstants.kPrintSizePortrait4x6,
+      );
+      expect(
+        resolveNetworkPrintSizeForImage(
+          imagePrintSize: AppConstants.kPrintSizeLandscape6x4,
+          orientation: PrintOrientation.portrait,
+          classicComposeShotCount: 1,
+        ),
+        AppConstants.kPrintSizeLandscape6x4,
+      );
+    });
+
     test('uses non-strip session override when image has no size', () {
       expect(
         resolveNetworkPrintSizeForImage(
@@ -257,6 +277,58 @@ void main() {
     });
   });
 
+  group('resolveFlashbackCartPrintSize', () {
+    test('Classic 1-shot defaults to uncut orientation size', () {
+      expect(
+        resolveFlashbackCartPrintSize(
+          imagePrintSize: null,
+          fallbackPrintSize: AppConstants.kPrintSizeStripDual2x6,
+          classicComposeShotCount: 1,
+          orientation: PrintOrientation.portrait,
+        ),
+        AppConstants.kPrintSizePortrait4x6,
+      );
+    });
+
+    test('3-shot keeps dual strip when printSize omitted', () {
+      expect(
+        resolveFlashbackCartPrintSize(
+          imagePrintSize: null,
+          classicComposeShotCount: 3,
+        ),
+        AppConstants.kPrintSizeStripDual2x6,
+      );
+    });
+  });
+
+  group('resolveClassicCheckoutSessionPrintSize', () {
+    test('Classic 1-shot checkout hint is never dual-strip', () {
+      final theme = ThemeModel(
+        id: 't1',
+        categoryId: 'c',
+        name: 'Theme',
+        description: '',
+        promptText: '',
+      );
+      expect(
+        resolveClassicCheckoutSessionPrintSize(
+          selected: [
+            GeneratedImage(
+              id: 'g',
+              imageUrl: 'https://cdn/one.jpg',
+              theme: theme,
+              printSize: AppConstants.kPrintSizeStripDual2x6,
+            ),
+          ],
+          stripPrintSize: AppConstants.kPrintSizeStripDual2x6,
+          classicComposeShotCount: 1,
+          orientation: PrintOrientation.portrait,
+        ),
+        AppConstants.kPrintSizePortrait4x6,
+      );
+    });
+  });
+
   group('resolveStaffNetworkPrintSize', () {
     test('prefers explicit strip session printSize over URL heuristics', () {
       expect(
@@ -296,7 +368,19 @@ void main() {
           stripCompositeUrl: 'https://cdn/single.jpg',
           classicComposeShotCount: 1,
         ),
-        AppConstants.kPrintSizeLandscape6x4,
+        AppConstants.kPrintSizePortrait4x6,
+      );
+    });
+
+    test('single-shot Classic ignores catalog dual-strip session token', () {
+      expect(
+        resolveStaffNetworkPrintSize(
+          imageUrl: 'https://cdn/single.jpg',
+          stripCompositeUrl: 'https://cdn/single.jpg',
+          sessionPrintSize: AppConstants.kPrintSizeStripDual2x6,
+          classicComposeShotCount: 1,
+        ),
+        AppConstants.kPrintSizePortrait4x6,
       );
     });
 

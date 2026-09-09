@@ -1,5 +1,6 @@
 import '../../models/strip_models.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/constants.dart';
 import '../../utils/print_size_helpers.dart';
 import '../../utils/secure_image_url.dart';
 import 'staff_payments_payload_utils.dart';
@@ -168,7 +169,16 @@ abstract final class StaffPaymentsSessionImages {
       imageUrl: imageUrl,
       sessionId: sessionId,
     );
-    if (generatedMatch != null) return generatedMatch;
+    if (generatedMatch != null) {
+      if (_isOneShotSession(raw) && isStripDualPrintSize(generatedMatch)) {
+        return AppConstants.kPrintSizePortrait4x6;
+      }
+      return generatedMatch;
+    }
+
+    if (_isOneShotSession(raw)) {
+      return null;
+    }
 
     final printBlock = raw['print'];
     if (printBlock is Map) {
@@ -196,8 +206,24 @@ abstract final class StaffPaymentsSessionImages {
     if (shotCount is int && isValidClassicComposeShotCount(shotCount)) {
       return shotCount;
     }
+    if (shotCount is String) {
+      final parsed = int.tryParse(shotCount.trim());
+      if (parsed != null && isValidClassicComposeShotCount(parsed)) {
+        return parsed;
+      }
+    }
+    final mode = StaffPaymentsPayloadUtils.pickString(raw, const [
+      'classicShotMode',
+      'classic_shot_mode',
+    ]).trim();
+    if (mode == '1' || mode == 'single6x4' || mode == 'single') return 1;
+    if (mode == '3' || mode == 'threeShot') return 3;
+    if (mode == '4' || mode == 'fourShot') return 4;
     return null;
   }
+
+  static bool _isOneShotSession(Map<String, dynamic> raw) =>
+      classicComposeShotCountFromSession(raw) == 1;
 
   static String? _printSizeFromGeneratedImages(
     Map<String, dynamic> raw, {

@@ -92,6 +92,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   final PhotoModel? _originalPhoto;
   final PrintOrientation _printOrientation;
   final String? _printSizeOverride;
+  final int? _classicComposeShotCount;
   final PrintService _printService;
   final ShareService _shareService;
   final ApiService _apiService;
@@ -335,6 +336,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
     PhotoModel? originalPhoto,
     PrintOrientation printOrientation = PrintOrientation.portrait,
     String? printSize,
+    int? classicComposeShotCount,
     PrintService? printService,
     ShareService? shareService,
     ApiService? apiService,
@@ -351,6 +353,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
         _printOrientation = printOrientation,
         _printSizeOverride =
             (printSize?.trim().isNotEmpty ?? false) ? printSize!.trim() : null,
+        _classicComposeShotCount = classicComposeShotCount,
         _printService = printService ?? PrintService(),
         _shareService = shareService ?? ShareService(),
         _apiService = apiService ?? ApiService(),

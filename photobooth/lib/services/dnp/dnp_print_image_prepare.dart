@@ -43,7 +43,8 @@ String resolveStaffDnpPrintSize({
     classicComposeShotCount: classicComposeShotCount,
   );
 
-  if (!isOrientationSelectablePrintSize(fromSession)) {
+  if (classicComposeShotCount != 1 &&
+      !isOrientationSelectablePrintSize(fromSession)) {
     return fromSession;
   }
   if (orientedDimensions == null) {

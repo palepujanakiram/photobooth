@@ -117,6 +117,17 @@ void main() {
     expect(
       StaffPaymentsSessionImages.printSizeForImageUrl(
         {
+          'print': {'size': 's6x2_2'},
+          'capturedImages': ['https://cdn/shot.jpg'],
+        },
+        imageUrl: 'https://cdn/single.jpg',
+        sessionId: 's1',
+      ),
+      isNull,
+    );
+    expect(
+      StaffPaymentsSessionImages.printSizeForImageUrl(
+        {
           'generatedImages': [
             {'imageUrl': 'https://cdn/other.jpg'},
           ],
@@ -153,6 +164,18 @@ void main() {
         {'shot_count': 4},
       ),
       4,
+    );
+    expect(
+      StaffPaymentsSessionImages.classicComposeShotCountFromSession(
+        {'classicShotMode': 'single6x4'},
+      ),
+      1,
+    );
+    expect(
+      StaffPaymentsSessionImages.classicComposeShotCountFromSession(
+        {'shotCount': '1'},
+      ),
+      1,
     );
   });
 

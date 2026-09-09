@@ -85,6 +85,7 @@ class _ResultScreenState extends State<ResultScreen> {
       originalPhoto: originalPhoto,
       printOrientation: parsed.printOrientation,
       printSize: parsed.printSize,
+      classicComposeShotCount: parsed.classicComposeShotCount,
       appSettingsManager: context.read<AppSettingsManager>(),
       contact: parsed.contact,
     );
