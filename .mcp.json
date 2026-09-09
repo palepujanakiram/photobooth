@@ -5,7 +5,7 @@
       "command": "node",
       "args": ["/Users/janakiram/.claude/bugsnag-mcp/server.js"],
       "env": {
-        "BUGSNAG_AUTH_TOKEN": "80f7ddc5-30bf-420e-b54e-6849a8550cbd"
+        "BUGSNAG_AUTH_TOKEN": "${BUGSNAG_AUTH_TOKEN}"
       }
     }
   }
