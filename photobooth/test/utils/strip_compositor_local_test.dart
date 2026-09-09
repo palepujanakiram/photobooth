@@ -107,6 +107,21 @@ void main() {
       expect(await composeLocalStripSheet(mismatched), isNull);
     });
 
+    test('composes from preloaded jpeg bytes without source URLs', () async {
+      final jpeg = await composeLocalStripSheet(
+        LocalStripComposeRequest(
+          sources: const [],
+          jpegBytes: [_solidJpeg(40, 80, 160)],
+          filterId: 'clean',
+          frameId: 'classic',
+          single: true,
+          orientation: PrintOrientation.portrait,
+        ),
+      );
+      expect(jpeg, isNotNull);
+      expect(jpeg, isNotEmpty);
+    });
+
     test('loads a file and persists a landscape single sheet', () async {
       final temp = await Directory.systemTemp.createTemp('local-strip-test');
       addTearDown(() => temp.delete(recursive: true));
@@ -234,7 +249,7 @@ void main() {
       expect(tall.top, 450);
     });
 
-    test('keeps the top of a portrait capture in a landscape 6x4 hole', () {
+    test('contain-fits a portrait capture in a landscape 6x4 hole', () {
       final overlay = _overlayPng(
         width: 180,
         height: 120,
@@ -263,17 +278,13 @@ void main() {
       final holeTop = 8 / 120 * decoded.height;
       final holeW = 164 / 180 * decoded.width;
       final holeH = 90 / 120 * decoded.height;
-      final head = decoded.getPixel(
-        (holeLeft + holeW / 2).round(),
-        (holeTop + holeH * 0.12).round(),
-      );
+      final hx = (holeLeft + holeW / 2).round();
+      final head = decoded.getPixel(hx, (holeTop + holeH * 0.12).round());
       expect(head.g, greaterThan(150));
       expect(head.b, lessThan(100));
-      final mid = decoded.getPixel(
-        (holeLeft + holeW / 2).round(),
-        (holeTop + holeH * 0.5).round(),
-      );
-      expect(mid.g, greaterThan(150));
+      final mid = decoded.getPixel(hx, (holeTop + holeH * 0.5).round());
+      expect(mid.b, greaterThan(150));
+      expect(mid.g, lessThan(80));
     });
 
     test('fills 6x4 occasion chrome on a landscape sheet', () {
@@ -589,7 +600,7 @@ void main() {
     }
   });
 
-  test('1-shot occasion cover-fills a landscape capture in a portrait hole', () {
+  test('1-shot occasion contain-fits a landscape capture in a portrait hole', () {
     const holeLeft = 9;
     const holeTop = 32;
     const holeWidth = 102;
@@ -609,7 +620,7 @@ void main() {
       single: true,
       overlay: LocalStripOverlay(
         pngBytes: overlay,
-        slots: [
+        slots: const [
           StripTemplateSlot(
             left: holeLeft / 120,
             top: holeTop / 180,
@@ -620,12 +631,21 @@ void main() {
       ),
     );
     final decoded = img.decodeJpg(jpeg)!;
-    final nearTop = decoded.getPixel(
-      ((holeLeft + holeWidth / 2) / 120 * decoded.width).round(),
-      ((holeTop + 8) / 180 * decoded.height).round(),
+    int sample(double nx, double ny) {
+      final pixel = decoded.getPixel(
+        (nx * decoded.width).round().clamp(0, decoded.width - 1),
+        (ny * decoded.height).round().clamp(0, decoded.height - 1),
+      );
+      return pixel.r.toInt();
+    }
+
+    const holeMidX = (holeLeft + holeWidth / 2) / 120;
+    // Landscape still letterboxes the top of a tall hole instead of cropping.
+    expect(sample(holeMidX, (holeTop + 8) / 180), lessThan(80));
+    expect(
+      sample(holeMidX, (holeTop + holeHeight / 2) / 180),
+      greaterThan(150),
     );
-    expect(nearTop.r, greaterThan(150));
-    expect(nearTop.g, lessThan(80));
   });
 
   test('Classic 1-shot contain-fits a landscape capture on 4x6', () {

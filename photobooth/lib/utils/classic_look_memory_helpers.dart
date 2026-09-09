@@ -79,6 +79,11 @@ bool shouldBakeClassicLooksSequentially({
 /// the isolate. Four Canon plates are well above it.
 const int kClassicComposeCompactPayloadChars = 200000;
 
+/// Event-local 4-shot still skips idle bake (Mini PC RAM). 1-shot / 3-shot
+/// warm on-device so Continue is a join, not a 30s dart-image decode.
+bool shouldDeferLocalClassicComposeWarm({required int shotCount}) =>
+    shotCount >= 4;
+
 /// True when compose uploads are large enough to stall Mini PC Continue.
 bool shouldCompactClassicComposeUploads({
   required List<String> imageDataUrls,

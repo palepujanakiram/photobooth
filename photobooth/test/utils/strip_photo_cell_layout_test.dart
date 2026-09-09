@@ -101,11 +101,11 @@ void main() {
       );
       expect(
         stripPhotoCellUsesContainFit('ai:dps', shotCount: 1),
-        isFalse,
+        isTrue,
       );
       expect(
         stripPhotoCellUsesContainFit('fr:dps', shotCount: 1),
-        isFalse,
+        isTrue,
       );
       expect(
         stripPhotoCellUsesContainFit('noir', shotCount: 1),

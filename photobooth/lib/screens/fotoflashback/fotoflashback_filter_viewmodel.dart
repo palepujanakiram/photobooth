@@ -22,6 +22,7 @@ import '../../utils/logger.dart';
 import '../../utils/print_orientation.dart';
 import '../../utils/print_size_helpers.dart';
 import '../../utils/strip_compositor_local.dart';
+import '../../utils/strip_local_print_compact.dart';
 import '../../utils/strip_filters_catalog_fallback.dart';
 import '../../utils/strip_preview_grade_compress.dart';
 import '../photo_generate/photo_generate_viewmodel.dart';
@@ -958,11 +959,73 @@ if (graded.length == _expectedCaptureCount) {
     }
   }
 
+  Future<List<Uint8List>> _rawJpegBytesForLocalCompose() async {
+    if (_lookPreviewJpegBytes.length == _expectedCaptureCount) {
+      return List<Uint8List>.from(_lookPreviewJpegBytes);
+    }
+    final out = <Uint8List>[];
+    for (final source in _imageDataUrls) {
+      final loaded = await loadLocalStripSourceBytes(source, null);
+      if (loaded == null || loaded.isEmpty) return const [];
+      out.add(loaded);
+    }
+    return out;
+  }
+
+  Future<GeneratedImage?> _generatedImageFromLocalPrint(String printUrl) async {
+    final persisted = await persistClassicPrintDeliverable(
+      sessionId: _sessionManager.sessionId ?? '',
+      imageUrl: printUrl,
+      persistLocal: persistClassicPrintLocally,
+      upload: _api.registerStripDeliverable,
+    );
+    await _sessionManager.attachDeliverableImageUrls(
+      imageUrls: [persisted],
+      stripCompositeUrl: persisted,
+    );
+    final printSize = resolveClassicComposePrintSize(
+      imageCount: _imageDataUrls.length,
+      apiPrintSize: null,
+      orientation: _printOrientation,
+    );
+    final result = localLookComposeResult(
+      imageUrl: persisted,
+      filterId: _selectedFilterId,
+      printSize: printSize,
+    );
+    _composeResult = result;
+    _composePreview = result;
+    _composePreviewFingerprint = _lookComposeFingerprint();
+    return GeneratedImage(
+      id: 'local_look_$_selectedFilterId',
+      imageUrl: persisted,
+      theme: theme,
+      isSelected: true,
+      printSize: printSize,
+    );
+  }
+
   Future<GeneratedImage?> _completeLocalLook() async {
+    final started = DateTime.now();
+    CaptureFlowLog.event(
+      'classic.local_compose_start',
+      fields: {
+        'shots': _imageDataUrls.length,
+        'filter': _selectedFilterId,
+      },
+    );
     final overlay = await _overlayForLocalCompose();
+    final jpegBytes = await compactJpegsForLocalStripPrint(
+      await _rawJpegBytesForLocalCompose(),
+    );
+    if (jpegBytes.length != _expectedCaptureCount) {
+      _errorMessage = AppStrings.flashbackComposeFailed;
+      return null;
+    }
     final persisted = await composeLocalStripSheet(
       LocalStripComposeRequest(
         sources: List<String>.from(_imageDataUrls),
+        jpegBytes: jpegBytes,
         filterId: _selectedFilterId,
         frameId: _selectedFrameId,
         single: isSingleClassic,
@@ -971,39 +1034,40 @@ if (graded.length == _expectedCaptureCount) {
         overlay: overlay,
       ),
     );
+    CaptureFlowLog.event(
+      'classic.local_compose_done',
+      fields: {
+        'shots': _imageDataUrls.length,
+        'ms': DateTime.now().difference(started).inMilliseconds,
+      },
+    );
     if (persisted == null || persisted.isEmpty) {
       _errorMessage = AppStrings.flashbackComposeFailed;
       return null;
     }
-    final printUrl = await persistClassicPrintDeliverable(
-      sessionId: _sessionManager.sessionId ?? '',
-      imageUrl: persisted,
-      persistLocal: persistClassicPrintLocally,
-      upload: _api.registerStripDeliverable,
-    );
-    await _sessionManager.attachDeliverableImageUrls(
-      imageUrls: [printUrl],
-      stripCompositeUrl: printUrl,
-    );
-    final printSize = resolveClassicComposePrintSize(
-      imageCount: _imageDataUrls.length,
-      apiPrintSize: null,
-      orientation: _printOrientation,
-    );
-    final result = localLookComposeResult(
-      imageUrl: printUrl,
-      filterId: _selectedFilterId,
-      printSize: printSize,
-    );
-    _composeResult = result;
-    _composePreview = result;
-    return GeneratedImage(
-      id: 'local_look_$_selectedFilterId',
-      imageUrl: printUrl,
-      theme: theme,
-      isSelected: true,
-      printSize: printSize,
-    );
+    return _generatedImageFromLocalPrint(persisted);
+  }
+
+  Future<GeneratedImage?> _composeLocalLookJoiningWarm() async {
+    _commitActiveScribble();
+    _sessionManager.setPrintOrientation(_printOrientation);
+    final fingerprint = _lookComposeFingerprint();
+    final warm = _composeWarmInFlight;
+    if (warm != null && _composeWarmFingerprint == fingerprint) {
+      await warm.timeout(
+        composeWarmJoinTimeoutForTest,
+        onTimeout: () {
+          AppLogger.warning('Classic local compose warm join timed out');
+        },
+      );
+    }
+    final ready = _composePreview != null &&
+        _composePreviewFingerprint == fingerprint &&
+        (_composePreview!.printImageUrl.trim().isNotEmpty);
+    if (ready) {
+      return _generatedImageFromLocalPrint(_composePreview!.printImageUrl);
+    }
+    return _completeLocalLook();
   }
 
   /// Composes the strip and returns a selected [GeneratedImage] for Result.
@@ -1026,11 +1090,12 @@ if (graded.length == _expectedCaptureCount) {
       sessionOffline: _sessionManager.isOfflineSession,
       eventPrintIsLocal: _eventPrintIsLocal,
     )) {
+      _composePreviewDebounce?.cancel();
       _composing = true;
       _errorMessage = null;
       notifyListeners();
       try {
-        return _completeLocalLook();
+        return _composeLocalLookJoiningWarm();
       } finally {
         _composing = false;
         notifyListeners();
@@ -1195,14 +1260,19 @@ if (graded.length == _expectedCaptureCount) {
     bool allowLargePayloadWarm = false,
     Duration? delay,
   }) {
-    if (_eventPrintIsLocal) return;
     if (!_hasComposableShotCount) return;
-    // 4-shot / huge payloads: never background-warm. Sequential bake + compose
-    // of strip-quality JPEGs freezes / LMKs Mini PC Pick-a-look (felt "stuck").
-    if (shouldDeferClassicComposePreviewWarm(
+    // Event-local 4-shot still skips idle bake. 1-/3-shot warm on-device even
+    // when data URLs are huge — Skia compact keeps Mini PC RAM in check.
+    if (_eventPrintIsLocal) {
+      if (shouldDeferLocalClassicComposeWarm(shotCount: stripShotCount)) {
+        _composePreviewDebounce?.cancel();
+        return;
+      }
+    } else if (shouldDeferClassicComposePreviewWarm(
       imageDataUrls: _imageDataUrls,
       captureUploadsAlreadyCompact: _captureUploadsAlreadyCompact,
     )) {
+      // Fly 4-shot / huge payloads: idle bake freezes Pick-a-look.
       _composePreviewDebounce?.cancel();
       return;
     }
@@ -1216,10 +1286,46 @@ if (graded.length == _expectedCaptureCount) {
     });
   }
 
+  Future<void> _refreshLocalComposePreview() async {
+    if (!_hasComposableShotCount || _composing) return;
+    final fingerprint = _lookComposeFingerprint();
+    if (_composePreviewFingerprint == fingerprint &&
+        (_composePreview?.printImageUrl.trim().isNotEmpty ?? false)) {
+      return;
+    }
+    final seq = ++_composePreviewSeq;
+    _warmingPrintPreview = true;
+    notifyListeners();
+    final done = Completer<void>();
+    _composeWarmInFlight = done.future;
+    _composeWarmFingerprint = fingerprint;
+    try {
+      _commitActiveScribble();
+      _sessionManager.setPrintOrientation(_printOrientation);
+      await _completeLocalLook();
+      if (seq != _composePreviewSeq) return;
+      _composePreviewFingerprint = fingerprint;
+    } catch (_) {
+      // Continue still bakes on demand.
+    } finally {
+      if (!done.isCompleted) done.complete();
+      if (identical(_composeWarmInFlight, done.future)) {
+        _composeWarmInFlight = null;
+      }
+      if (seq == _composePreviewSeq) {
+        _warmingPrintPreview = false;
+        notifyListeners();
+      }
+    }
+  }
+
   /// Background: bake print-sized Flutter look + compose so Continue / Your
   /// prints / DNP reuse the same JPEG. Does not block the look browser.
   Future<void> refreshComposePreview() async {
-    if (_eventPrintIsLocal) return;
+    if (_eventPrintIsLocal) {
+      await _refreshLocalComposePreview();
+      return;
+    }
     if (!_hasComposableShotCount || _composing) return;
     final sessionId = _sessionManager.sessionId?.trim() ?? '';
     if (sessionId.isEmpty) return;

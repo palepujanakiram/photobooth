@@ -227,6 +227,11 @@ void main() {
     );
   });
 
+  test('downscaleJpegBytesToMaxLongEdge leaves small stills unchanged', () async {
+    final out = await ImageHelper.downscaleJpegBytesToMaxLongEdge(kTinyJpegBytes);
+    expect(identical(out, kTinyJpegBytes), isTrue);
+  });
+
   test('downscaleJpegToMaxLongEdge leaves small stills unchanged', () async {
     final raw = XFile.fromData(
       kTinyJpegBytes,
@@ -268,6 +273,13 @@ void main() {
     expect(portDecoded, isNotNull);
     expect(portDecoded!.height, 80);
     expect(portDecoded.width, 20);
+  });
+
+  test('downscaleJpegBytesToMaxLongEdge throws on empty bytes', () async {
+    await expectLater(
+      ImageHelper.downscaleJpegBytesToMaxLongEdge(Uint8List(0)),
+      throwsA(isA<Exception>()),
+    );
   });
 
   test('downscaleJpegToMaxLongEdge throws on empty bytes', () async {

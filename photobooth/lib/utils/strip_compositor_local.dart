@@ -50,6 +50,7 @@ class LocalStripComposeRequest {
     this.shotCount,
     this.mediaStore,
     this.overlay,
+    this.jpegBytes,
   });
 
   final List<String> sources;
@@ -64,9 +65,12 @@ class LocalStripComposeRequest {
   final LocalMediaStore? mediaStore;
   final LocalStripOverlay? overlay;
 
+  /// Preloaded JPEG plates (skips data-URL / file load).
+  final List<Uint8List>? jpegBytes;
+
   /// Sources this request must receive before it can compose.
   int get expectedSourceCount =>
-      single ? 1 : (shotCount ?? sources.length);
+      single ? 1 : (shotCount ?? jpegBytes?.length ?? sources.length);
 }
 
 class _LocalStripIsolateInput {
@@ -95,16 +99,24 @@ class _LocalStripIsolateInput {
 /// existing compose error UX. Disk-write failures return an inline JPEG URL.
 Future<String?> composeLocalStripSheet(LocalStripComposeRequest request) async {
   final expected = request.expectedSourceCount;
-  if (request.sources.length != expected) return null;
-  if (!request.single && !kClassicStripShotCounts.contains(expected)) {
+  if (request.single) {
+    if (expected != 1) return null;
+  } else if (!kClassicStripShotCounts.contains(expected)) {
     return null;
   }
   try {
     final bytes = <Uint8List>[];
-    for (final source in request.sources) {
-      final loaded = await _loadSourceBytes(source, request.mediaStore);
-      if (loaded == null || loaded.isEmpty) return null;
-      bytes.add(loaded);
+    final supplied = request.jpegBytes;
+    if (supplied != null && supplied.length == expected) {
+      bytes.addAll(supplied);
+    } else {
+      if (request.sources.length != expected) return null;
+      for (final source in request.sources) {
+        final loaded =
+            await loadLocalStripSourceBytes(source, request.mediaStore);
+        if (loaded == null || loaded.isEmpty) return null;
+        bytes.add(loaded);
+      }
     }
     final jpeg = await compute(
       _composeLocalStripSheetIsolate,
@@ -136,7 +148,7 @@ Future<String?> composeLocalStripSheet(LocalStripComposeRequest request) async {
   }
 }
 
-Future<Uint8List?> _loadSourceBytes(
+Future<Uint8List?> loadLocalStripSourceBytes(
   String source,
   LocalMediaStore? mediaStore,
 ) async {
@@ -301,7 +313,7 @@ void _drawOccasionSingle(
       0,
       0,
     ),
-    contain: false,
+    contain: true,
     letterbox: img.ColorRgb8(18, 18, 18),
   );
   _compositeOverlay(
