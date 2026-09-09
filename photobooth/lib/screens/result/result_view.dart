@@ -51,6 +51,7 @@ class _ResultScreenState extends State<ResultScreen> {
   /// Prevents double-taps on slow connections and lets us swap the button
   /// label for an inline spinner.
   bool _refreshingPolling = false;
+  bool _offlineCashAutoSettled = false;
 
   /// Guards [WidgetsBinding.addPostFrameCallback] so we do not queue duplicate
   /// thank-you navigations on every [Consumer] rebuild (same as pre-refactor intent).
@@ -125,6 +126,7 @@ class _ResultScreenState extends State<ResultScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(PaymentPushCoordinator.instance.flushPendingStoragePayment());
+      unawaited(_maybeAutoSettleOfflineCash());
       _viewModel?.loadPaymentQr(customerPhone: _customerPhone);
     });
   }
@@ -155,6 +157,42 @@ class _ResultScreenState extends State<ResultScreen> {
     if (success == false) {
       _lastPaymentSuccessForNav = false;
     }
+  }
+
+  Future<void> _maybeAutoSettleOfflineCash() async {
+    if (_offlineCashAutoSettled || kIsWeb) return;
+    final vm = _viewModel;
+    if (vm == null || !vm.cashOnlyOffline) return;
+    final skip =
+        context.read<AppSettingsManager>().settings?.skipOfflineCashPin == true;
+    if (!skip) return;
+    await _settleOfflineCashWithoutPin(vm);
+  }
+
+  Future<void> _onStaffCashConfirm(ResultViewModel viewModel) async {
+    final skip =
+        context.read<AppSettingsManager>().settings?.skipOfflineCashPin == true;
+    if (skip) {
+      await _settleOfflineCashWithoutPin(viewModel);
+      return;
+    }
+    if (!mounted) return;
+    await showOfflineCashConfirmSheet(
+      context: context,
+      viewModel: viewModel,
+    );
+  }
+
+  Future<void> _settleOfflineCashWithoutPin(ResultViewModel viewModel) async {
+    if (_offlineCashAutoSettled) return;
+    _offlineCashAutoSettled = true;
+    final ok = await viewModel.confirmOfflineCashReceived(skipPin: true);
+    if (!mounted) return;
+    if (!ok) {
+      _offlineCashAutoSettled = false;
+      return;
+    }
+    await viewModel.publishOfflineCashApproval();
   }
 
   void _onPaymentSucceeded(ResultViewModel viewModel) {
@@ -818,16 +856,8 @@ class _ResultScreenState extends State<ResultScreen> {
                 onGetHelp: () => _showGetHelpDialog(viewModel),
                 refreshPollingChild: _buildRefreshPollingChild(),
                 buildQrArea: _buildPaymentQrArea,
-                onStaffCashConfirm: payScreenShowsStaffPinConfirm(
-                  sessionOffline: viewModel.cashOnlyOffline,
-                  isWeb: kIsWeb,
-                )
-                    ? () => unawaited(
-                          showOfflineCashConfirmSheet(
-                            context: context,
-                            viewModel: viewModel,
-                          ),
-                        )
+                onStaffCashConfirm: viewModel.cashOnlyOffline && !kIsWeb
+                    ? () => unawaited(_onStaffCashConfirm(viewModel))
                     : null,
               );
             },

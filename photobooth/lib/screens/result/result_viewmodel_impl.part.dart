@@ -506,7 +506,10 @@ mixin _ResultViewModelImpl on ChangeNotifier {
   ///
   /// Does **not** start print/share/navigation — call [publishOfflineCashApproval]
   /// after the PIN sheet is dismissed so the modal does not race Scan & Share.
-  Future<bool> confirmOfflineCashReceived({required String pin}) async {
+  Future<bool> confirmOfflineCashReceived({
+    String pin = '',
+    bool skipPin = false,
+  }) async {
     if (!_r.cashOnlyOffline) {
       _r._errorMessage = AppStrings.offlineCashConfirmFailed;
       notifyListeners();
@@ -518,11 +521,13 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     if (_r._pendingOfflineCashApproval != null) {
       return true;
     }
-    final ok = await OfflineOperatorPinStore.verifyPin(pin);
-    if (!ok) {
-      _r._errorMessage = AppStrings.offlineCashConfirmBadPin;
-      notifyListeners();
-      return false;
+    if (!skipPin) {
+      final ok = await OfflineOperatorPinStore.verifyPin(pin);
+      if (!ok) {
+        _r._errorMessage = AppStrings.offlineCashConfirmBadPin;
+        notifyListeners();
+        return false;
+      }
     }
     try {
       final settled = await settleOfflineCashForCurrentSession(

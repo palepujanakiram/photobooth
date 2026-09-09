@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/screens/staff/staff_payments_session_images.dart';
+import 'package:photobooth/utils/constants.dart';
 
 void main() {
   test('fromPaymentPayload reads sessionImages list', () {
@@ -113,6 +114,52 @@ void main() {
         sessionId: 's1',
       ),
       's6x2_2',
+    );
+    expect(
+      StaffPaymentsSessionImages.printSizeForImageUrl(
+        {
+          'print': {'size': 's6x2_2'},
+          'capturedImages': ['a', 'b', 'c'],
+          'generatedImages': [
+            {
+              'imageUrl': 'https://cdn/strip.jpg',
+              'printSize': 's6x2_2',
+            },
+          ],
+        },
+        imageUrl: 'https://cdn/strip.jpg',
+        sessionId: 's1',
+      ),
+      AppConstants.kPrintSizeStripDual2x6,
+    );
+    expect(
+      StaffPaymentsSessionImages.printSizeForImageUrl(
+        {
+          'print': {'size': 's6x2_2'},
+          'capturedImages': ['a', 'b', 'c'],
+          'stripCompositeUrl': 'https://cdn/strip.jpg',
+        },
+        imageUrl: 'https://cdn/ai.jpg',
+        sessionId: 's1',
+      ),
+      isNull,
+    );
+    expect(
+      StaffPaymentsSessionImages.printSizeForImageUrl(
+        {
+          'print': {'size': 's6x2_2'},
+          'capturedImages': ['https://cdn/shot.jpg'],
+          'generatedImages': [
+            {
+              'imageUrl': 'https://cdn/single.jpg',
+              'printSize': 's6x2_2',
+            },
+          ],
+        },
+        imageUrl: 'https://cdn/single.jpg',
+        sessionId: 's1',
+      ),
+      AppConstants.kPrintSizePortrait4x6,
     );
     expect(
       StaffPaymentsSessionImages.printSizeForImageUrl(

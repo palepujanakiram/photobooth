@@ -154,6 +154,38 @@ void main() {
       );
     });
 
+    test('Classic 3-shot strip keeps the 2-inch cutter', () {
+      expect(
+        resolveNetworkPrintSizeForImage(
+          imagePrintSize: AppConstants.kPrintSizeStripDual2x6,
+          orientation: PrintOrientation.portrait,
+          classicComposeShotCount: 3,
+        ),
+        AppConstants.kPrintSizeStripDual2x6,
+      );
+    });
+
+    test('AI in a 3-shot session is never dual-strip cutter', () {
+      expect(
+        resolveNetworkPrintSizeForImage(
+          imagePrintSize: AppConstants.kPrintSizePortrait4x6,
+          orientation: PrintOrientation.portrait,
+          sessionOverride: AppConstants.kPrintSizeStripDual2x6,
+          classicComposeShotCount: 3,
+        ),
+        AppConstants.kPrintSizePortrait4x6,
+      );
+      expect(
+        resolveNetworkPrintSizeForImage(
+          imagePrintSize: AppConstants.kPrintSizePortrait4x6,
+          orientation: PrintOrientation.landscape,
+          sessionOverride: AppConstants.kPrintSizeStripDual2x6,
+          classicComposeShotCount: 3,
+        ),
+        AppConstants.kPrintSizeLandscape6x4,
+      );
+    });
+
     test('uses non-strip session override when image has no size', () {
       expect(
         resolveNetworkPrintSizeForImage(
@@ -248,11 +280,18 @@ void main() {
       );
     });
 
-    test('four-shot Classic uses API printSize when present', () {
+    test('three-shot Classic is always dual 6x2', () {
       expect(
         resolveClassicComposePrintSize(
-          imageCount: 4,
+          imageCount: 3,
           apiPrintSize: AppConstants.kPrintSizeStripDual2x6,
+        ),
+        AppConstants.kPrintSizeStripDual2x6,
+      );
+      expect(
+        resolveClassicComposePrintSize(
+          imageCount: 3,
+          orientation: PrintOrientation.landscape,
         ),
         AppConstants.kPrintSizeStripDual2x6,
       );
@@ -265,14 +304,14 @@ void main() {
       );
     });
 
-    test('four-shot Classic landscape uses 6x4', () {
+    test('four-shot Classic stays dual 6x2 even in landscape', () {
       expect(
         resolveClassicComposePrintSize(
           imageCount: 4,
           orientation: PrintOrientation.landscape,
-          apiPrintSize: AppConstants.kPrintSizeStripDual2x6,
+          apiPrintSize: AppConstants.kPrintSizeLandscape6x4,
         ),
-        AppConstants.kPrintSizeLandscape6x4,
+        AppConstants.kPrintSizeStripDual2x6,
       );
     });
   });
@@ -330,11 +369,22 @@ void main() {
   });
 
   group('resolveStaffNetworkPrintSize', () {
-    test('prefers explicit strip session printSize over URL heuristics', () {
+    test('session dual token without strip URL does not cut AI', () {
       expect(
         resolveStaffNetworkPrintSize(
           imageUrl: 'https://cdn/ai.jpg',
           sessionPrintSize: AppConstants.kPrintSizeStripDual2x6,
+        ),
+        AppConstants.kPrintSizePortrait4x6,
+      );
+    });
+
+    test('3-shot session dual token keeps cutter on the strip JPEG', () {
+      expect(
+        resolveStaffNetworkPrintSize(
+          imageUrl: 'https://cdn/strip.jpg',
+          sessionPrintSize: AppConstants.kPrintSizeStripDual2x6,
+          classicComposeShotCount: 3,
         ),
         AppConstants.kPrintSizeStripDual2x6,
       );
@@ -384,13 +434,46 @@ void main() {
       );
     });
 
-    test('matches strip composite ignoring trailing slash', () {
+    test('three-shot Classic strip keeps dual-strip cutter', () {
+      expect(
+        resolveStaffNetworkPrintSize(
+          imageUrl: 'https://cdn/strip.jpg',
+          stripCompositeUrl: 'https://cdn/strip.jpg',
+          sessionPrintSize: AppConstants.kPrintSizeStripDual2x6,
+          classicComposeShotCount: 3,
+        ),
+        AppConstants.kPrintSizeStripDual2x6,
+      );
+    });
+
+    test('matches strip composite ignoring a trailing slash', () {
       expect(
         resolveStaffNetworkPrintSize(
           imageUrl: 'https://cdn/strip.jpg/',
           stripCompositeUrl: 'https://cdn/strip.jpg',
         ),
         AppConstants.kPrintSizeStripDual2x6,
+      );
+    });
+
+    test('AI page in a 3-shot session is never dual-strip cutter', () {
+      expect(
+        resolveStaffNetworkPrintSize(
+          imageUrl: 'https://cdn/ai.jpg',
+          stripCompositeUrl: 'https://cdn/strip.jpg',
+          sessionPrintSize: AppConstants.kPrintSizeStripDual2x6,
+          classicComposeShotCount: 3,
+        ),
+        AppConstants.kPrintSizePortrait4x6,
+      );
+      expect(
+        resolveStaffNetworkPrintSize(
+          imageUrl: 'https://cdn/ai.jpg',
+          stripCompositeUrl: 'https://cdn/strip.jpg',
+          sessionPrintSize: AppConstants.kPrintSizeLandscape6x4,
+          classicComposeShotCount: 3,
+        ),
+        AppConstants.kPrintSizeLandscape6x4,
       );
     });
 
@@ -424,6 +507,13 @@ void main() {
         AppConstants.kPrintSizeLandscape6x4,
       );
     });
+  });
+
+  test('classicComposeUsesDualStripCutter is 3-shot and 4-shot only', () {
+    expect(classicComposeUsesDualStripCutter(1), isFalse);
+    expect(classicComposeUsesDualStripCutter(3), isTrue);
+    expect(classicComposeUsesDualStripCutter(4), isTrue);
+    expect(classicComposeUsesDualStripCutter(null), isFalse);
   });
 
   test('isStripDualPrintSize', () {

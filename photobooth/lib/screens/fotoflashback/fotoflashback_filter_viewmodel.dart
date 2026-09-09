@@ -360,11 +360,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       final jpegBytes = <Uint8List>[];
       for (final path in paths) {
         if (gen != _hydrateGeneration) return;
-        final bytes = await XFile(path).readAsBytes();
-        if (bytes.isEmpty) {
-          throw Exception(AppStrings.imageFileEmpty);
-        }
-        jpegBytes.add(bytes);
+        jpegBytes.add(await _readCompactLookJpeg(path));
       }
       if (gen != _hydrateGeneration) return;
       _lookPreviewJpegBytes = jpegBytes;
@@ -972,6 +968,18 @@ if (graded.length == _expectedCaptureCount) {
     return out;
   }
 
+  Future<Uint8List> _readCompactLookJpeg(String path) async {
+    final bytes = await XFile(path).readAsBytes();
+    if (bytes.isEmpty) {
+      throw Exception(AppStrings.imageFileEmpty);
+    }
+    final compacted = await compactJpegsForLocalStripPrint([bytes]);
+    if (compacted.isEmpty) {
+      throw Exception(AppStrings.imageFileEmpty);
+    }
+    return compacted.single;
+  }
+
   Future<GeneratedImage?> _generatedImageFromLocalPrint(String printUrl) async {
     final persisted = await persistClassicPrintDeliverable(
       sessionId: _sessionManager.sessionId ?? '',
@@ -979,14 +987,14 @@ if (graded.length == _expectedCaptureCount) {
       persistLocal: persistClassicPrintLocally,
       upload: _api.registerStripDeliverable,
     );
-    await _sessionManager.attachDeliverableImageUrls(
-      imageUrls: [persisted],
-      stripCompositeUrl: isSingleClassic ? null : persisted,
-    );
     final printSize = resolveClassicComposePrintSize(
       imageCount: _imageDataUrls.length,
       apiPrintSize: null,
       orientation: _printOrientation,
+    );
+    await _sessionManager.attachDeliverableImageUrls(
+      imageUrls: [persisted],
+      stripCompositeUrl: isSingleClassic ? null : persisted,
     );
     final result = localLookComposeResult(
       imageUrl: persisted,
@@ -1014,7 +1022,11 @@ if (graded.length == _expectedCaptureCount) {
         'filter': _selectedFilterId,
       },
     );
-    final overlay = await _overlayForLocalCompose();
+    final overlay = await compactOverlayForLocalStripPrint(
+      await _overlayForLocalCompose(),
+      single: isSingleClassic,
+      landscape: _printOrientation == PrintOrientation.landscape,
+    );
     final jpegBytes = await compactJpegsForLocalStripPrint(
       await _rawJpegBytesForLocalCompose(),
     );
@@ -1052,8 +1064,21 @@ if (graded.length == _expectedCaptureCount) {
     _commitActiveScribble();
     _sessionManager.setPrintOrientation(_printOrientation);
     final fingerprint = _lookComposeFingerprint();
-    final warm = _composeWarmInFlight;
-    if (warm != null && _composeWarmFingerprint == fingerprint) {
+    final alreadyReady = _composePreview != null &&
+        _composePreviewFingerprint == fingerprint &&
+        (_composePreview!.printImageUrl.trim().isNotEmpty);
+    // Start / join idle warm before [_composing] — refresh bails if composing.
+    var warm = _composeWarmInFlight;
+    if (!alreadyReady &&
+        (warm == null || _composeWarmFingerprint != fingerprint)) {
+      unawaited(_refreshLocalComposePreview());
+      warm = _composeWarmInFlight;
+    }
+    _composing = true;
+    notifyListeners();
+    if (!alreadyReady &&
+        warm != null &&
+        _composeWarmFingerprint == fingerprint) {
       await warm.timeout(
         composeWarmJoinTimeoutForTest,
         onTimeout: () {
@@ -1065,6 +1090,10 @@ if (graded.length == _expectedCaptureCount) {
         _composePreviewFingerprint == fingerprint &&
         (_composePreview!.printImageUrl.trim().isNotEmpty);
     if (ready) {
+      CaptureFlowLog.event(
+        'classic.local_compose_reuse',
+        fields: {'shots': _imageDataUrls.length},
+      );
       return _generatedImageFromLocalPrint(_composePreview!.printImageUrl);
     }
     return _completeLocalLook();
@@ -1091,11 +1120,10 @@ if (graded.length == _expectedCaptureCount) {
       eventPrintIsLocal: _eventPrintIsLocal,
     )) {
       _composePreviewDebounce?.cancel();
-      _composing = true;
       _errorMessage = null;
       notifyListeners();
       try {
-        return _composeLocalLookJoiningWarm();
+        return await _composeLocalLookJoiningWarm();
       } finally {
         _composing = false;
         notifyListeners();

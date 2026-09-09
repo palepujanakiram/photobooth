@@ -201,8 +201,8 @@ class AppConstants {
   ///   preview vs JPEG mismatch; enable **clean HDMI** on the DSLR and match 1080p progressive when possible.
   /// - Prefer powered USB hubs and one external webcam; avoid enumerating many unused devices.
   /// - Close other apps using the camera; reboot kiosk if enumeration hangs after OOM.
-  /// - For extreme OOM only, consider `android:largeHeap="true"` in the Android manifest
-  ///   (trade-off: harder to catch real leaks).
+  /// - 4 GB Android TV kiosks enable `android:largeHeap="true"` so Classic print
+  ///   match can hold a 4×6 sheet without the process being LMK'd.
 
   /// When true, shows an overlay above Cancel/Continue with photo metadata (size, format).
   /// Off when [kLowMemoryKioskMode] is true (avoids full-image decode on the UI isolate).

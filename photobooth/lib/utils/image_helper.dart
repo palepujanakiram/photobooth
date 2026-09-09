@@ -363,6 +363,37 @@ class ImageHelper {
     }
   }
 
+  /// Skia-decode [bytes] into a PNG at [width]×[height] (occasion overlays).
+  ///
+  /// [ui.instantiateImageCodec] samples during decode so a print-resolution
+  /// overlay never becomes a full-size RGBA buffer on 4GB Android TV.
+  static Future<Uint8List> resizeImageBytesToPng({
+    required Uint8List bytes,
+    required int width,
+    required int height,
+  }) async {
+    if (bytes.isEmpty || width <= 0 || height <= 0) {
+      throw Exception('Overlay resize input is empty');
+    }
+    final codec = await ui.instantiateImageCodec(
+      bytes,
+      targetWidth: width,
+      targetHeight: height,
+    );
+    final frame = await codec.getNextFrame();
+    final image = frame.image;
+    try {
+      final bd = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (bd == null) {
+        throw Exception('Skia overlay resize produced empty pixels');
+      }
+      return bd.buffer.asUint8List();
+    } finally {
+      image.dispose();
+      codec.dispose();
+    }
+  }
+
   static Future<XFile> downscaleJpegToMaxLongEdge(
     XFile sourceFile, {
     int maxLongEdge = kCapturedPhotoMaxDimension,

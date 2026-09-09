@@ -96,6 +96,13 @@ void main() {
     expect(m.cameraSidecarPath, '/');
   });
 
+  test('AppSettingsModel.fromJson parses skipOfflineCashPin', () {
+    expect(
+      AppSettingsModel.fromJson({'skipOfflineCashPin': true}).skipOfflineCashPin,
+      isTrue,
+    );
+  });
+
   test('AppSettingsModel.fromJson parses offlineCashPins', () {
     final m = AppSettingsModel.fromJson({
       'offlineCashPins': ['1357', '9999', 'nope', 2468],

@@ -280,6 +280,14 @@ void main() {
         payScreenShowsStaffPinConfirm(sessionOffline: false, isWeb: false),
         isFalse,
       );
+      expect(
+        payScreenShowsStaffPinConfirm(
+          sessionOffline: true,
+          isWeb: false,
+          skipOfflineCashPin: true,
+        ),
+        isFalse,
+      );
     });
   });
 

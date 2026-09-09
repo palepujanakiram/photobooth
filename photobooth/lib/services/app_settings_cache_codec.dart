@@ -71,6 +71,8 @@ Map<String, dynamic> appSettingsToCacheJson(AppSettingsModel s) {
     },
     if (s.classicPoseCountdownSeconds != null)
       'classicPoseCountdownSeconds': s.classicPoseCountdownSeconds,
+    if (s.skipOfflineCashPin != null)
+      'skipOfflineCashPin': s.skipOfflineCashPin,
     if (s.offlineCashPins != null) 'offlineCashPins': s.offlineCashPins,
     if (s.receiptMerchant != null)
       'receiptMerchant': s.receiptMerchant!.toJson(),

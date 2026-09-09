@@ -290,4 +290,38 @@ void main() {
       throwsA(isA<Exception>()),
     );
   });
+
+  test('resizeImageBytesToPng throws on empty input', () async {
+    await expectLater(
+      ImageHelper.resizeImageBytesToPng(
+        bytes: Uint8List(0),
+        width: 10,
+        height: 10,
+      ),
+      throwsA(isA<Exception>()),
+    );
+    await expectLater(
+      ImageHelper.resizeImageBytesToPng(
+        bytes: Uint8List.fromList([1, 2, 3]),
+        width: 0,
+        height: 10,
+      ),
+      throwsA(isA<Exception>()),
+    );
+  });
+
+  test('resizeImageBytesToPng samples a PNG to the target size', () async {
+    final src = img.Image(width: 40, height: 60, numChannels: 4);
+    img.fill(src, color: img.ColorRgba8(0, 160, 40, 255));
+    final png = Uint8List.fromList(img.encodePng(src));
+    final out = await ImageHelper.resizeImageBytesToPng(
+      bytes: png,
+      width: 20,
+      height: 30,
+    );
+    final decoded = img.decodePng(out);
+    expect(decoded, isNotNull);
+    expect(decoded!.width, 20);
+    expect(decoded.height, 30);
+  });
 }

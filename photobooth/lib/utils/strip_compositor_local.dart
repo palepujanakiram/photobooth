@@ -23,6 +23,26 @@ const int kLocalStripGutter = 10;
 const int kLocalStripCenterGutter = 16;
 const int kLocalStripJpegQuality = 92;
 
+/// Long-edge cap for Skia compact before the dart-image isolate (4×6 at 300dpi).
+const int kLocalPrintJpegMaxLongEdge = kLocalStripSheetHeight;
+
+/// Occasion overlay pixel size on the print sheet (1-shot full sheet, strip = one 2×6).
+({int width, int height}) localStripOverlayDestSize({
+  required bool single,
+  required bool landscape,
+}) {
+  if (!single) {
+    return (
+      width: (kLocalStripSheetWidth - kLocalStripCenterGutter) ~/ 2,
+      height: kLocalStripSheetHeight,
+    );
+  }
+  if (landscape) {
+    return (width: kLocalStripSheetHeight, height: kLocalStripSheetWidth);
+  }
+  return (width: kLocalStripSheetWidth, height: kLocalStripSheetHeight);
+}
+
 const int _filmRailWidth = 36;
 const int _filmHoleWidth = 18;
 const int _filmHoleHeight = 24;
@@ -389,10 +409,12 @@ void _drawOccasionDualStrip(
       );
     }
   }
+  final overlayImage = _decodeOverlayImage(overlay.pngBytes);
+  if (overlayImage == null) return;
   for (final stripLeft in stripOffsets) {
-    _compositeOverlay(
+    _blitOverlay(
       sheet,
-      overlay.pngBytes,
+      overlayImage,
       stripLeft,
       0,
       stripDrawWidth,
@@ -426,21 +448,38 @@ void _compositeOverlay(
   int width,
   int height,
 ) {
-  img.Image? decoded;
-  try {
-    decoded = img.decodeImage(png);
-  } catch (_) {
-    return;
-  }
+  final decoded = _decodeOverlayImage(png);
   if (decoded == null) return;
+  _blitOverlay(sheet, decoded, dstX, dstY, width, height);
+}
+
+img.Image? _decodeOverlayImage(Uint8List png) {
+  if (png.isEmpty) return null;
+  try {
+    return img.decodeImage(png);
+  } catch (_) {
+    return null;
+  }
+}
+
+void _blitOverlay(
+  img.Image sheet,
+  img.Image decoded,
+  int dstX,
+  int dstY,
+  int width,
+  int height,
+) {
   final src =
       decoded.numChannels < 4 ? decoded.convert(numChannels: 4) : decoded;
-  final resized = img.copyResize(
-    src,
-    width: width,
-    height: height,
-    interpolation: img.Interpolation.average,
-  );
+  final resized = (src.width == width && src.height == height)
+      ? src
+      : img.copyResize(
+          src,
+          width: width,
+          height: height,
+          interpolation: img.Interpolation.average,
+        );
   img.compositeImage(
     sheet,
     resized,

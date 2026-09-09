@@ -1,6 +1,12 @@
 import 'dart:typed_data';
 
 import 'image_helper.dart';
+import 'png_ihdr_peek.dart';
+import 'strip_compositor_local.dart';
+
+/// Drop overlays larger than this if Skia compact fails — dart-image decode of
+/// a print-resolution PNG OOMs 4GB Android TV during "Preparing print match…".
+const int kLocalOverlayIsolateMaxBytes = 2 * 1024 * 1024;
 
 /// Skia-downscale capture plates before the local compose isolate.
 ///
@@ -27,7 +33,53 @@ Future<List<Uint8List>> compactJpegsForLocalStripPrint(
 Future<Uint8List> _downscaleForLocalStrip(Uint8List shot) {
   return ImageHelper.downscaleJpegBytesToMaxLongEdge(
     shot,
-    maxLongEdge: kStripCapturedPhotoMaxDimension,
+    maxLongEdge: kLocalPrintJpegMaxLongEdge,
     jpegQuality: kStripCapturedPhotoJpegQuality,
   );
+}
+
+/// Skia-resize an occasion overlay to the print sheet before dart-image.
+///
+/// Fail-open: keep a small PNG; drop a huge PNG so the isolate cannot allocate
+/// a full-resolution RGBA buffer on 4GB TV boxes.
+Future<LocalStripOverlay?> compactOverlayForLocalStripPrint(
+  LocalStripOverlay? overlay, {
+  required bool single,
+  required bool landscape,
+  Future<Uint8List> Function(Uint8List bytes, int width, int height)? resize,
+}) async {
+  if (overlay == null || overlay.pngBytes.isEmpty) return overlay;
+  final dest = localStripOverlayDestSize(single: single, landscape: landscape);
+  final peeked = peekPngIhhrDimensions(overlay.pngBytes);
+  if (peeked != null &&
+      peeked.width <= dest.width &&
+      peeked.height <= dest.height) {
+    return overlay;
+  }
+  try {
+    final scaled = await (resize ?? _skiaResizeOverlay)(
+      overlay.pngBytes,
+      dest.width,
+      dest.height,
+    );
+    if (scaled.isEmpty) return _overlayIfIsolateSafe(overlay);
+    return LocalStripOverlay(pngBytes: scaled, slots: overlay.slots);
+  } catch (_) {
+    return _overlayIfIsolateSafe(overlay);
+  }
+}
+
+Future<Uint8List> _skiaResizeOverlay(Uint8List bytes, int width, int height) {
+  return ImageHelper.resizeImageBytesToPng(
+    bytes: bytes,
+    width: width,
+    height: height,
+  );
+}
+
+LocalStripOverlay? _overlayIfIsolateSafe(LocalStripOverlay overlay) {
+  if (overlay.pngBytes.lengthInBytes <= kLocalOverlayIsolateMaxBytes) {
+    return overlay;
+  }
+  return null;
 }

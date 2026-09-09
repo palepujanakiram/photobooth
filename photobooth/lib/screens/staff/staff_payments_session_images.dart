@@ -170,13 +170,23 @@ abstract final class StaffPaymentsSessionImages {
       sessionId: sessionId,
     );
     if (generatedMatch != null) {
-      if (_isOneShotSession(raw) && isStripDualPrintSize(generatedMatch)) {
+      if (_sessionIsClassicOneShot(raw) &&
+          isStripDualPrintSize(generatedMatch)) {
         return AppConstants.kPrintSizePortrait4x6;
       }
       return generatedMatch;
     }
 
-    if (_isOneShotSession(raw)) {
+    if (_sessionIsClassicOneShot(raw)) {
+      return null;
+    }
+
+    final stripUrl = StaffPaymentsPayloadUtils.pickString(raw, const [
+      'stripCompositeUrl',
+      'strip_composite_url',
+    ]).trim();
+    if (stripUrl.isNotEmpty &&
+        !imageUrlsReferToSameDeliverable(imageUrl, stripUrl)) {
       return null;
     }
 
@@ -196,7 +206,7 @@ abstract final class StaffPaymentsSessionImages {
     return top.isEmpty ? null : top;
   }
 
-  /// Classic compose shot count from the session payload (1 → 6×4, 3/4 → strip).
+  /// Classic compose shot count from the session payload (1 → 4×6/6×4, 3/4 → 6×2).
   static int? classicComposeShotCountFromSession(Map<String, dynamic> raw) {
     final captured = raw['capturedImages'] ?? raw['captured_images'];
     if (captured is List && isValidClassicComposeShotCount(captured.length)) {
@@ -222,8 +232,9 @@ abstract final class StaffPaymentsSessionImages {
     return null;
   }
 
-  static bool _isOneShotSession(Map<String, dynamic> raw) =>
-      classicComposeShotCountFromSession(raw) == 1;
+  static bool _sessionIsClassicOneShot(Map<String, dynamic> raw) {
+    return classicComposeShotCountFromSession(raw) == 1;
+  }
 
   static String? _printSizeFromGeneratedImages(
     Map<String, dynamic> raw, {

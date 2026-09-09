@@ -109,8 +109,9 @@ String payScreenCashStatus({required bool sessionOffline}) {
 bool payScreenShowsStaffPinConfirm({
   required bool sessionOffline,
   required bool isWeb,
+  bool skipOfflineCashPin = false,
 }) =>
-    sessionOffline && !isWeb;
+    sessionOffline && !isWeb && !skipOfflineCashPin;
 
 /// Navigates to pre-payment or generation based on account payment timing.
 Future<void> navigateToGenerationOrPrePayment({

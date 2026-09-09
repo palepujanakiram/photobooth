@@ -320,6 +320,22 @@ void main() {
       expect(photo.r, greaterThan(photo.g));
     });
 
+    test('reports overlay dest size for 1-shot and dual-strip', () {
+      expect(
+        localStripOverlayDestSize(single: true, landscape: false),
+        (width: kLocalStripSheetWidth, height: kLocalStripSheetHeight),
+      );
+      expect(
+        localStripOverlayDestSize(single: true, landscape: true),
+        (width: kLocalStripSheetHeight, height: kLocalStripSheetWidth),
+      );
+      expect(
+        localStripOverlayDestSize(single: false, landscape: false).width,
+        (kLocalStripSheetWidth - kLocalStripCenterGutter) ~/ 2,
+      );
+      expect(kLocalPrintJpegMaxLongEdge, kLocalStripSheetHeight);
+    });
+
     test('stamps a 1-shot occasion overlay into the photo hole', () {
       final overlay = _overlayPng(
         width: 120,

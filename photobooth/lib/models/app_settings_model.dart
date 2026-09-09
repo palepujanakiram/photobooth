@@ -72,6 +72,9 @@ class AppSettingsModel {
   final bool? enableOsdScrub;
   /// Per-kiosk Classic pose countdown in seconds (5–15). Null = use default 10.
   final int? classicPoseCountdownSeconds;
+  /// When true, offline cash checkout records the session paid and prints
+  /// without a staff booth PIN (`/api/settings` → `skipOfflineCashPin`).
+  final bool? skipOfflineCashPin;
   /// Test-only: burn AF brackets into Classic captures (`injectAfMarkers`).
   final bool? injectAfMarkers;
   /// Classic Surprise Me AI teaser (`settings.photoStripConfig.enableSurpriseMeAi`).
@@ -137,6 +140,7 @@ class AppSettingsModel {
     this.c2paSigningEnabled,
     this.enableOsdScrub,
     this.classicPoseCountdownSeconds,
+    this.skipOfflineCashPin,
     this.injectAfMarkers,
     this.enableSurpriseMeAi,
     this.offlineCashPins,
@@ -227,6 +231,9 @@ class AppSettingsModel {
         json['classicPoseCountdownSeconds'] ??
             json['classic_pose_countdown_seconds'],
       ),
+      skipOfflineCashPin: JsonParseHelpers.boolOrNull(
+            json['skipOfflineCashPin'] ?? json['skip_offline_cash_pin'],
+          ),
       injectAfMarkers: JsonParseHelpers.boolOrNull(
             stripMap?['injectAfMarkers'],
           ) ??
