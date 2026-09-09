@@ -329,6 +329,9 @@ class DirectPtpCaptureRequest {
     this.subtitleText,
     this.shutterText,
     this.cancelText,
+    this.inkColor,
+    this.accentColor,
+    this.backgroundColor,
   });
 
   /// Stills to collect. 1 for AI, 4 for a Classic strip.
@@ -390,6 +393,15 @@ class DirectPtpCaptureRequest {
   final String? shutterText;
   final String? cancelText;
 
+  /// Event chrome, as `#RRGGBB`. Null leaves the layout's own colours alone.
+  ///
+  /// Passed rather than themed natively because the colours belong to the
+  /// event, which only Dart knows about — `CaptureScreenStyle` is a build-time
+  /// switch between two layouts, not a per-event thing.
+  final String? inkColor;
+  final String? accentColor;
+  final String? backgroundColor;
+
   Map<String, Object?> toArguments() => <String, Object?>{
         'shotCount': shotCount,
         'countdownSeconds': countdownSeconds,
@@ -407,6 +419,9 @@ class DirectPtpCaptureRequest {
         'subtitleText': subtitleText,
         'shutterText': shutterText,
         'cancelText': cancelText,
+        'inkColor': inkColor,
+        'accentColor': accentColor,
+        'backgroundColor': backgroundColor,
       };
 }
 

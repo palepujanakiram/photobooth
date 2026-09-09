@@ -1,6 +1,8 @@
 package com.srisarani.fotozenai.canoncapture
 
+import android.content.res.ColorStateList
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.media.AudioManager
 import android.media.MediaActionSound
 import android.media.ToneGenerator
@@ -205,6 +207,7 @@ class CanonCaptureActivity : ComponentActivity() {
         }
         request.shutterText?.let { shutterButton.text = it }
         request.cancelText?.let { cancelButton.text = it }
+        applyEventChrome()
 
         shutterButton.setOnClickListener { onShutter() }
         val cancel =
@@ -419,6 +422,38 @@ class CanonCaptureActivity : ComponentActivity() {
      * press therefore runs a whole Classic strip, which is what the guest wants — walking
      * back to the screen between shots of a 4-shot strip is not a booth experience.
      */
+    /**
+     * Dresses the screen in the event's colours.
+     *
+     * Only the chrome — never the viewfinder or the review still, which must
+     * show what the sensor actually recorded rather than something tinted.
+     *
+     * Each colour is applied independently and a bad value is ignored, so a
+     * malformed hex from the backend costs one tinted view rather than a
+     * capture screen that will not open.
+     */
+    private fun applyEventChrome() {
+        parseColor(request.inkColor)?.let { ink ->
+            titleText.setTextColor(ink)
+            findViewById<TextView?>(R.id.canon_subtitle)?.setTextColor(ink)
+            findViewById<TextView?>(R.id.canon_status)?.setTextColor(ink)
+        }
+        parseColor(request.accentColor)?.let { accent ->
+            shutterButton.backgroundTintList = ColorStateList.valueOf(accent)
+        }
+        parseColor(request.backgroundColor)?.let { background ->
+            findViewById<View?>(R.id.canon_body_chrome)?.setBackgroundColor(background)
+        }
+    }
+
+    private fun parseColor(raw: String?): Int? {
+        val value = raw?.trim().orEmpty()
+        if (value.isEmpty()) return null
+        return runCatching { Color.parseColor(value) }
+            .onFailure { CanonLog.d("Ignoring bad event colour: %s", value) }
+            .getOrNull()
+    }
+
     private fun onShutter() = startShotSequence()
 
     /**

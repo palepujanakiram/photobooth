@@ -26,16 +26,13 @@ class RecentShot {
 
 /// Where the capture screen is.
 enum CapturePhase {
-  /// Waiting on the shutter.
+  /// Waiting for the operator to open the viewfinder.
   ready,
 
-  /// The shutter is open, or the frame is coming back over USB.
+  /// The native viewfinder is up: live view, shutter, and its own review.
   shooting,
 
-  /// A frame is on screen awaiting Confirm or Retake.
-  reviewing,
-
-  /// Confirm is running — registering and queueing.
+  /// The accepted frame is being registered and queued.
   committing,
 
   /// No camera on the bus.
@@ -44,10 +41,16 @@ enum CapturePhase {
 
 /// Tethered capture straight into the event queue.
 ///
-/// **Confirm is the commit point.** It registers the item and queues it with
-/// the steps frozen at that moment. Retake writes nothing at all — no ledger
-/// row, no derivative, no job — so a photographer can fire freely and only what
-/// they accept becomes work (spec §6).
+/// **The viewfinder is the native screen.** It owns live view, the shutter and
+/// the retake/accept review, because live view draws into a `SurfaceView` —
+/// a hardware overlay plane, and the cheapest path Android has. This model
+/// runs what happens either side of it: opening the viewfinder, and committing
+/// what comes back.
+///
+/// **Accepting is the commit point.** A frame that comes back is registered and
+/// queued with the steps frozen at that moment. A retake never reaches here at
+/// all — the native review discards it — so a photographer can fire freely and
+/// only what they accept becomes work (spec §6).
 class EventCaptureViewModel extends ChangeNotifier {
   EventCaptureViewModel({
     EventCaptureSource? source,
@@ -72,16 +75,12 @@ class EventCaptureViewModel extends ChangeNotifier {
 
   CapturePhase _phase = CapturePhase.noCamera;
   String? _cameraName;
-  CapturedShot? _pending;
   String? _error;
   String? _eventId;
   final List<RecentShot> _recent = <RecentShot>[];
 
   CapturePhase get phase => _phase;
   String? get cameraName => _cameraName;
-
-  /// The frame awaiting Confirm or Retake. Nothing has been written for it.
-  CapturedShot? get pendingShot => _pending;
 
   String? get errorMessage => _error;
   bool get isBusy =>
@@ -98,7 +97,32 @@ class EventCaptureViewModel extends ChangeNotifier {
   Future<void> start() async {
     await _runner.ensureStarted();
     _eventId = await _events.getEventId();
+    await _dressViewfinder();
     await refreshCamera();
+  }
+
+  /// Puts the event's name and colours on the native viewfinder.
+  ///
+  /// The screen a photographer looks at all evening should belong to the event
+  /// they are shooting, not read as a generic booth. The skin already arrives
+  /// with the event, so this costs nothing but passing it along.
+  Future<void> _dressViewfinder() async {
+    final source = _source;
+    if (source is! DirectPtpCaptureSource) return;
+    try {
+      final event = await _events.readBoundEvent();
+      final skin = event?.chrome.skin;
+      source.request = DirectPtpCaptureSource.requestFor(
+        title: event?.name,
+        subtitle: event?.description,
+        ink: skin?.ink,
+        accent: skin?.bannerFrom,
+        background: skin?.bannerTo,
+      );
+    } catch (e) {
+      // Chrome is dressing; a capture screen in default colours still works.
+      AppLogger.debug('Could not dress the viewfinder: $e');
+    }
   }
 
   Future<void> refreshCamera() async {
@@ -112,46 +136,35 @@ class EventCaptureViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Fires the shutter and holds the result for review.
-  Future<void> shoot() async {
-    if (!canShoot) return;
+  /// Opens the native viewfinder and commits whatever comes back.
+  ///
+  /// One call covers the whole interaction: live view, the shutter, and the
+  /// retake/accept review all happen inside it. A retake never returns here —
+  /// the native review loops back to live view on its own — so anything this
+  /// receives is a frame the operator accepted.
+  Future<bool> openViewfinder() async {
+    if (!canShoot) return false;
     _phase = CapturePhase.shooting;
     _error = null;
     notifyListeners();
+    CapturedShot? shot;
     try {
-      final shot = await _source.shoot();
-      if (shot == null) {
-        _error = 'The camera did not return a photo. Check it is awake.';
-        _phase = CapturePhase.ready;
-        return;
-      }
-      _pending = shot;
-      _phase = CapturePhase.reviewing;
+      shot = await _source.shoot();
     } catch (e, st) {
       AppLogger.error('Capture failed', error: e, stackTrace: st);
       _error = 'Capture failed. Check the cable and try again.';
       _phase = CapturePhase.ready;
-    } finally {
       notifyListeners();
+      return false;
     }
-  }
-
-  /// Discards the frame. Writes nothing at all.
-  ///
-  /// The file the camera stack left behind goes too: a retake the operator
-  /// rejected must not quietly fill the disk, and it has no ledger row to find
-  /// it by later.
-  Future<void> retake() async {
-    final shot = _pending;
-    _pending = null;
-    _phase = CapturePhase.ready;
-    notifyListeners();
-    if (shot == null) return;
-    await _deleteQuietly(shot.originalPath);
-    final preview = shot.previewPath;
-    if (preview != null && preview != shot.originalPath) {
-      await _deleteQuietly(preview);
+    if (shot == null) {
+      // Cancelled, or the camera returned nothing. Neither is an error worth
+      // shouting about: the operator closed the viewfinder.
+      _phase = CapturePhase.ready;
+      notifyListeners();
+      return false;
     }
+    return _commit(shot);
   }
 
   /// Registers the frame and queues it, with the chain frozen at this moment.
@@ -159,10 +172,12 @@ class EventCaptureViewModel extends ChangeNotifier {
   /// Runs through [IngestWorker], the same path a card import takes, so a
   /// captured frame gets identical dedupe, downscale, thumbnail and ledger
   /// handling rather than a second implementation that can drift.
-  Future<bool> confirm() async {
-    final shot = _pending;
+  Future<bool> _commit(CapturedShot shot) async {
     final ledger = _runner.ledger;
-    if (shot == null || ledger == null || _phase == CapturePhase.committing) {
+    if (ledger == null) {
+      _error = 'Storage is unavailable, so the photo was not queued.';
+      _phase = CapturePhase.ready;
+      notifyListeners();
       return false;
     }
     _phase = CapturePhase.committing;
@@ -178,7 +193,7 @@ class EventCaptureViewModel extends ChangeNotifier {
       final candidates = await source.listAll();
       if (candidates.isEmpty) {
         _error = 'The captured file was not where the camera said it was.';
-        _phase = CapturePhase.reviewing;
+        _phase = CapturePhase.ready;
         return false;
       }
       final report = await worker.import(
@@ -191,18 +206,17 @@ class EventCaptureViewModel extends ChangeNotifier {
         _error = report.duplicates > 0
             ? 'That photo is already in the queue.'
             : 'Could not store the photo.';
-        _phase = CapturePhase.reviewing;
+        _phase = CapturePhase.ready;
         return false;
       }
       await _runner.queueItems(report.mediaIds);
       await _addRecent(report.mediaIds.first, shot);
-      _pending = null;
       _phase = CapturePhase.ready;
       return true;
     } catch (e, st) {
       AppLogger.error('Capture confirm failed', error: e, stackTrace: st);
       _error = 'Could not queue the photo. Nothing was lost — try again.';
-      _phase = CapturePhase.reviewing;
+      _phase = CapturePhase.ready;
       return false;
     } finally {
       notifyListeners();
@@ -227,15 +241,6 @@ class EventCaptureViewModel extends ChangeNotifier {
       RecentShot(mediaId: mediaId, name: shot.fileName, thumbnail: thumb),
     );
     if (_recent.length > _recentLimit) _recent.removeRange(_recentLimit, _recent.length);
-  }
-
-  Future<void> _deleteQuietly(String path) async {
-    try {
-      final file = File(path);
-      if (await file.exists()) await file.delete();
-    } catch (e) {
-      AppLogger.debug('Could not delete a retaken frame: $e');
-    }
   }
 
   @override

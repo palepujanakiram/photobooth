@@ -127,6 +127,17 @@ object CaptureSessionContract {
         val subtitleText: String? = null,
         val shutterText: String? = null,
         val cancelText: String? = null,
+        /**
+         * Event chrome as `#RRGGBB`, or null to leave the layout's own colours.
+         *
+         * Passed from Dart rather than themed here because the colours belong to
+         * the event, which only Dart knows about. [CaptureScreenStyle] stays a
+         * build-time choice between two layouts; this is per-event dressing on
+         * top of whichever one is in use.
+         */
+        val inkColor: String? = null,
+        val accentColor: String? = null,
+        val backgroundColor: String? = null,
     ) {
         fun toJson(): String = JSONObject().apply {
             put("shotCount", shotCount)
@@ -145,6 +156,9 @@ object CaptureSessionContract {
             put("subtitleText", subtitleText ?: JSONObject.NULL)
             put("shutterText", shutterText ?: JSONObject.NULL)
             put("cancelText", cancelText ?: JSONObject.NULL)
+            put("inkColor", inkColor ?: JSONObject.NULL)
+            put("accentColor", accentColor ?: JSONObject.NULL)
+            put("backgroundColor", backgroundColor ?: JSONObject.NULL)
         }.toString()
 
         companion object {
@@ -177,6 +191,9 @@ object CaptureSessionContract {
                         subtitleText = json.optNullableString("subtitleText"),
                         shutterText = json.optNullableString("shutterText"),
                         cancelText = json.optNullableString("cancelText"),
+                        inkColor = json.optNullableString("inkColor"),
+                        accentColor = json.optNullableString("accentColor"),
+                        backgroundColor = json.optNullableString("backgroundColor"),
                     )
                 }.getOrDefault(Request())
             }
@@ -219,6 +236,9 @@ object CaptureSessionContract {
                     subtitleText = args["subtitleText"] as? String,
                     shutterText = args["shutterText"] as? String,
                     cancelText = args["cancelText"] as? String,
+                    inkColor = args["inkColor"] as? String,
+                    accentColor = args["accentColor"] as? String,
+                    backgroundColor = args["backgroundColor"] as? String,
                 )
             }
         }

@@ -8,6 +8,7 @@ import 'package:photobooth/models/event_pipeline/media_item.dart';
 import 'package:photobooth/models/event_pipeline/media_rendition.dart';
 import 'package:photobooth/screens/event_pipeline/event_capture_viewmodel.dart';
 import 'package:photobooth/services/event_manager.dart';
+import 'package:photobooth/services/event_pipeline/capture/direct_ptp_capture_source.dart';
 import 'package:photobooth/services/event_pipeline/capture/event_capture_source.dart';
 import 'package:photobooth/services/event_pipeline/event_media_store.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_config.dart';
@@ -176,33 +177,44 @@ void main() {
     });
   });
 
-  group('shutter', () {
-    test('a shot lands in review without writing anything', () async {
+  group('viewfinder', () {
+    test('an accepted frame is committed without a second review', () async {
       source.next = await frameOnDisk();
       final vm = build();
       await vm.start();
       addTearDown(vm.dispose);
 
-      await vm.shoot();
-
-      expect(vm.phase, CapturePhase.reviewing);
-      expect(vm.pendingShot, isNotNull);
-      final ledger = EventPipelineLedger(db: db);
-      expect(await ledger.stageCounts(eventId: 'EVT1'), isEmpty,
-          reason: 'nothing is committed until Confirm');
-      expect(downscaler.calls, 0);
+      // The native review already asked; anything that comes back was
+      // accepted, so asking again in Dart was the double-confirm this removed.
+      expect(await vm.openViewfinder(), isTrue);
+      expect(vm.phase, CapturePhase.ready);
+      expect(vm.recentShots, hasLength(1));
     });
 
-    test('a camera that returns nothing says so and stays usable', () async {
+    test('a retake never reaches Dart at all', () async {
+      // The native review discards it and loops back to live view, so nothing
+      // comes back and nothing is written.
       source.next = null;
       final vm = build();
       await vm.start();
       addTearDown(vm.dispose);
 
-      await vm.shoot();
-
+      expect(await vm.openViewfinder(), isFalse);
       expect(vm.phase, CapturePhase.ready);
-      expect(vm.errorMessage, contains('did not return a photo'));
+      final ledger = EventPipelineLedger(db: db);
+      expect(await ledger.stageCounts(eventId: 'EVT1'), isEmpty);
+      expect(downscaler.calls, 0);
+    });
+
+    test('closing the viewfinder is not an error', () async {
+      source.next = null;
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      await vm.openViewfinder();
+      expect(vm.errorMessage, isNull,
+          reason: 'the operator closed it; nothing went wrong');
     });
 
     test('a camera that throws does not take the screen down', () async {
@@ -211,77 +223,34 @@ void main() {
       await vm.start();
       addTearDown(vm.dispose);
 
-      await vm.shoot();
+      await vm.openViewfinder();
 
       expect(vm.phase, CapturePhase.ready);
       expect(vm.errorMessage, isNotNull);
     });
 
-    test('the shutter is ignored while a frame is under review', () async {
-      source.next = await frameOnDisk();
+    test('the viewfinder can be reopened for the next shot', () async {
       final vm = build();
       await vm.start();
       addTearDown(vm.dispose);
 
-      await vm.shoot();
-      await vm.shoot();
-      expect(source.shots, 1);
+      for (var i = 0; i < 3; i++) {
+        source.next = await frameOnDisk(fill: 20 + i);
+        expect(await vm.openViewfinder(), isTrue);
+      }
+      expect(source.shots, 3);
+      expect(vm.recentShots, hasLength(3));
     });
   });
 
-  group('retake', () {
-    test('writes nothing at all', () async {
-      final shot = await frameOnDisk();
-      source.next = shot;
-      final vm = build();
-      await vm.start();
-      addTearDown(vm.dispose);
-
-      await vm.shoot();
-      await vm.retake();
-
-      expect(vm.phase, CapturePhase.ready);
-      expect(vm.pendingShot, isNull);
-      final ledger = EventPipelineLedger(db: db);
-      expect(await ledger.knownSourceRefs(MediaSource.ptp), isEmpty);
-      expect(await ledger.stageCounts(eventId: 'EVT1'), isEmpty);
-      expect(vm.recentShots, isEmpty);
-    });
-
-    test('the rejected frame does not stay on disk', () async {
-      final shot = await frameOnDisk();
-      source.next = shot;
-      final vm = build();
-      await vm.start();
-      addTearDown(vm.dispose);
-
-      await vm.shoot();
-      await vm.retake();
-
-      // A rejected retake must not quietly fill the disk: it has no ledger row
-      // to find it by later.
-      expect(File(shot.originalPath).existsSync(), isFalse);
-      expect(File(shot.previewPath!).existsSync(), isFalse);
-    });
-
-    test('retaking with nothing pending is harmless', () async {
-      final vm = build();
-      await vm.start();
-      addTearDown(vm.dispose);
-      await vm.retake();
-      expect(vm.phase, CapturePhase.ready);
-    });
-  });
-
-  group('confirm', () {
+  group('committing', () {
     test('registers the frame and queues it into the same queue', () async {
       source.next = await frameOnDisk();
       final vm = build();
       await vm.start();
       addTearDown(vm.dispose);
 
-      await vm.shoot();
-      expect(await vm.confirm(), isTrue);
+      expect(await vm.openViewfinder(), isTrue);
 
       final ledger = EventPipelineLedger(db: db);
       final counts = await ledger.stageCounts(eventId: 'EVT1');
@@ -305,8 +274,7 @@ void main() {
       await vm.start();
       addTearDown(vm.dispose);
 
-      await vm.shoot();
-      await vm.confirm();
+      await vm.openViewfinder();
 
       final ledger = EventPipelineLedger(db: db);
       final id = vm.recentShots.single.mediaId;
@@ -320,8 +288,7 @@ void main() {
       await vm.start();
       addTearDown(vm.dispose);
 
-      await vm.shoot();
-      await vm.confirm();
+      await vm.openViewfinder();
 
       final rows = await db.database.query('evp_media_items');
       expect(rows.single['source'], MediaSource.ptp);
@@ -334,8 +301,7 @@ void main() {
 
       for (var i = 0; i < 2; i++) {
         source.next = await frameOnDisk(fill: 7 + i);
-        await vm.shoot();
-        await vm.confirm();
+        await vm.openViewfinder();
       }
 
       // A photographer needs to see frames landing to trust it is working.
@@ -350,8 +316,7 @@ void main() {
 
       for (var i = 0; i < 5; i++) {
         source.next = await frameOnDisk(fill: 10 + i);
-        await vm.shoot();
-        await vm.confirm();
+        await vm.openViewfinder();
       }
       expect(vm.recentShots, hasLength(3));
     });
@@ -363,15 +328,12 @@ void main() {
       await vm.start();
       addTearDown(vm.dispose);
 
-      await vm.shoot();
-      await vm.confirm();
+      await vm.openViewfinder();
 
       source.next = shot;
-      await vm.shoot();
-      expect(await vm.confirm(), isFalse);
+      expect(await vm.openViewfinder(), isFalse);
       expect(vm.errorMessage, contains('already in the queue'));
-      expect(vm.phase, CapturePhase.reviewing,
-          reason: 'the operator still has to decide what to do with it');
+      expect(vm.phase, CapturePhase.ready);
     });
 
     test('a frame the camera stack lost is reported, not silently dropped',
@@ -384,68 +346,37 @@ void main() {
       await vm.start();
       addTearDown(vm.dispose);
 
-      await vm.shoot();
-      expect(await vm.confirm(), isFalse);
+      expect(await vm.openViewfinder(), isFalse);
       expect(vm.errorMessage, contains('not where the camera said'));
-      expect(vm.phase, CapturePhase.reviewing);
+      expect(vm.phase, CapturePhase.ready);
     });
 
-    test('confirming with nothing pending is harmless', () async {
+    test('opening the viewfinder with no camera does nothing', () async {
+      source.camera = null;
       final vm = build();
       await vm.start();
       addTearDown(vm.dispose);
-      expect(await vm.confirm(), isFalse);
+      expect(await vm.openViewfinder(), isFalse);
+      expect(source.shots, 0);
     });
   });
 
   group('resilience', () {
-    test('a queue that goes away mid-confirm is reported, not swallowed',
-        () async {
+    test('a queue that goes away is reported, not swallowed', () async {
       source.next = await frameOnDisk();
       final vm = build();
       await vm.start();
       addTearDown(vm.dispose);
-      await vm.shoot();
 
-      // The disk going away between the shutter and Confirm. The import path
-      // swallows the per-item failure, so nothing is queued and the operator is
-      // told rather than the frame silently disappearing.
+      // The disk going away while the operator was in the viewfinder. The
+      // import path swallows the per-item failure, so nothing is queued and the
+      // operator is told rather than the frame silently disappearing.
       await db.close();
-      expect(await vm.confirm(), isFalse);
+      expect(await vm.openViewfinder(), isFalse);
       expect(vm.errorMessage, 'Could not store the photo.');
-      expect(vm.phase, CapturePhase.reviewing,
-          reason: 'the frame is still on screen to try again with');
+      expect(vm.phase, CapturePhase.ready);
 
       db = (await EventPipelineDb.open(root))!;
-    });
-
-    test('a retake whose file has already gone is harmless', () async {
-      final shot = await frameOnDisk();
-      source.next = shot;
-      final vm = build();
-      await vm.start();
-      addTearDown(vm.dispose);
-      await vm.shoot();
-
-      await File(shot.originalPath).delete();
-      await vm.retake();
-      expect(vm.phase, CapturePhase.ready);
-    });
-
-    test('a shot with no separate preview is not deleted twice', () async {
-      final original = await frameOnDisk();
-      source.next = CapturedShot(
-        originalPath: original.originalPath,
-        previewPath: original.originalPath,
-        capturedAtMs: original.capturedAtMs,
-      );
-      final vm = build();
-      await vm.start();
-      addTearDown(vm.dispose);
-
-      await vm.shoot();
-      await vm.retake();
-      expect(File(original.originalPath).existsSync(), isFalse);
     });
 
     test('reconnecting a camera returns the screen to ready', () async {
@@ -459,20 +390,38 @@ void main() {
       await vm.refreshCamera();
       expect(vm.phase, CapturePhase.ready);
     });
+  });
 
-    test('a camera unplugged mid-review does not discard the frame', () async {
-      source.next = await frameOnDisk();
-      final vm = build();
-      await vm.start();
-      addTearDown(vm.dispose);
-      await vm.shoot();
+  group('event chrome', () {
+    test('the viewfinder wears the event name and colours', () async {
+      // A photographer looks at this screen all evening; it should belong to
+      // the event rather than read as a generic booth.
+      final request = DirectPtpCaptureSource.requestFor(
+        title: 'Priya & Arjun',
+        subtitle: 'Warm peach to purple',
+        ink: '#FFFFFF',
+        accent: '#E3A65C',
+        background: '#6E5391',
+      );
+      final args = request.toArguments();
 
-      source.camera = null;
-      await vm.refreshCamera();
+      expect(args['titleText'], 'Priya & Arjun');
+      expect(args['subtitleText'], 'Warm peach to purple');
+      expect(args['inkColor'], '#FFFFFF');
+      expect(args['accentColor'], '#E3A65C');
+      expect(args['backgroundColor'], '#6E5391');
+    });
 
-      expect(vm.phase, CapturePhase.noCamera);
-      expect(vm.pendingShot, isNotNull,
-          reason: 'the frame is on disk; the operator still decides');
+    test('the operator session has no countdown and no guest uploads', () {
+      final args = DirectPtpCaptureSource.requestFor().toArguments();
+      expect(args['countdownSeconds'], 0);
+      expect(args['autoStart'], isFalse);
+      expect(args['allowGalleryUpload'], isFalse);
+      expect(args['allowPhoneUpload'], isFalse);
+      expect(args['showCountdownHeadline'], isFalse);
+      // 0 holds the shot indefinitely with Retake and Accept — the confirm
+      // step, which is why Dart no longer has one.
+      expect(args['reviewHoldMs'], 0);
     });
   });
 }

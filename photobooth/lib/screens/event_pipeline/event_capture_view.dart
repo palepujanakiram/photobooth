@@ -54,9 +54,7 @@ class _CaptureBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
-    if (vm.phase == CapturePhase.noCamera) {
-      return _noCamera(colors);
-    }
+    if (vm.phase == CapturePhase.noCamera) return _noCamera(colors);
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -75,7 +73,17 @@ class _CaptureBody extends StatelessWidget {
           const SizedBox(height: 12),
           _RecentStrip(vm: vm, colors: colors),
           const SizedBox(height: 12),
-          _controls(context, colors),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.photo_camera_outlined),
+            label: Text(
+              vm.phase == CapturePhase.committing
+                  ? 'Queueing…'
+                  : vm.recentShots.isEmpty
+                      ? 'Open viewfinder'
+                      : 'Take another',
+            ),
+            onPressed: vm.canShoot ? vm.openViewfinder : null,
+          ),
         ],
       ),
     );
@@ -116,64 +124,54 @@ class _CaptureBody extends StatelessWidget {
     );
   }
 
+  /// What this screen says while the viewfinder is elsewhere.
+  ///
+  /// Live view, the shutter and the retake/accept review all belong to the
+  /// native screen, which draws into a hardware overlay plane. This screen is
+  /// the way in and the record of what has landed.
   Widget _stage(AppColors colors) {
-    final shot = vm.pendingShot;
-    if (shot != null) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(10),
-        child: Image.file(
-          File(shot.displayPath),
-          fit: BoxFit.contain,
-          // The preview copy, decoded small. The original is a 6000×4000 frame
-          // and is never decoded in Dart at all.
-          cacheWidth: 900,
-          gaplessPlayback: true,
-          errorBuilder: (_, __, ___) => Container(
-            color: colors.cardBackgroundColor,
-          ),
-        ),
-      );
-    }
+    final shooting = vm.phase == CapturePhase.shooting;
     return Container(
       decoration: BoxDecoration(
         color: colors.cardBackgroundColor,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Center(
-        child: Text(
-          vm.phase == CapturePhase.shooting ? 'Capturing…' : 'Ready',
-          style: TextStyle(color: colors.secondaryTextColor),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                shooting ? Icons.videocam_outlined : Icons.camera_outlined,
+                size: 48,
+                color: colors.secondaryTextColor,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                shooting ? 'Viewfinder is open' : 'Ready to shoot',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: colors.textColor,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                shooting
+                    ? 'Frame the shot, press Capture, then Retake or Accept.'
+                    : 'Opens the viewfinder with live view. Every photo you '
+                        'accept joins the queue; a retake is never kept.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: colors.secondaryTextColor,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
-    );
-  }
-
-  Widget _controls(BuildContext context, AppColors colors) {
-    if (vm.pendingShot == null) {
-      return ElevatedButton(
-        onPressed: vm.canShoot ? vm.shoot : null,
-        child: Text(vm.phase == CapturePhase.shooting ? '…' : 'Shutter'),
-      );
-    }
-    // Confirm is the commit point; Retake writes nothing at all.
-    return Row(
-      children: [
-        Expanded(
-          child: OutlinedButton(
-            onPressed: vm.isBusy ? null : vm.retake,
-            child: const Text('Retake'),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: ElevatedButton(
-            onPressed: vm.isBusy ? null : vm.confirm,
-            child: Text(
-              vm.phase == CapturePhase.committing ? 'Queueing…' : 'Confirm',
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
