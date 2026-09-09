@@ -532,6 +532,58 @@ Resuming costs nothing: the 50 already imported dedupe away on the next scan.
 
 ---
 
+## 9B. Everything is scoped to one event
+
+Every screen shows **only the bound event's photos**. The queue, the counters,
+the hub totals and the item detail all filter on `event_id`.
+
+This matters more than it sounds. The ledger is durable across events, so
+without scoping an operator opening the queue at a wedding would see last
+weekend's corporate party mixed in — counts wrong, "Retry all failed" reaching
+into a finished event, and a real chance of reprinting the wrong couple's photos.
+
+Concretely:
+
+- `evp_media_items.event_id` is already recorded at import; every read filters on
+  the currently bound event
+- Items with a **null** `event_id` (imported before an event was bound) are shown
+  only under an explicit "Unassigned" filter, never mixed into an event's counts
+- Dedupe stays **global**, not per-event. The tier-1 and content keys are about
+  *this photograph*, and re-importing the same card into a second event should
+  still be recognised — the operator is told it is already imported rather than
+  silently duplicating it
+
+## 9C. Pre-event and post-event activities
+
+Two phases exist around the event that this spec has so far ignored, and both
+need their own design pass.
+
+**Pre-event** — everything that must be true before guests arrive: event bound
+and synced, frames downloaded, printer loaded and reachable, camera connected,
+enough free storage. The hub's readiness block is the beginning of this, but a
+deliberate "set up this event" flow that walks an operator through it would catch
+more than a passive panel.
+
+**Post-event** — the event is finished and the device has to be handed on:
+
+- Confirm nothing is unprinted or failed
+- Ensure everything has mirrored, if it is going to
+- **Clear the local database and images**: the event's `evp_media_items`,
+  renditions, jobs, cached settings, banners and frames
+- Leave the device clean for the next event
+
+The cleanup is the part with teeth. A 3,000-frame event is roughly 4 GB of
+derivatives, and without a purge a box does three events and fills its disk.
+Equally it must not run while anything is unprinted or unmirrored, or it destroys
+work — so it belongs behind an explicit, checked operator action, not a timer.
+
+> **Planned, not specified.** Both phases get their own pass once the core
+> workflow is stable. Noted here so the data model keeps them possible:
+> `event_id` on every row is what makes a per-event purge a single delete rather
+> than an archaeology exercise.
+
+---
+
 ## 10. What is deliberately not here
 
 - **Guest-facing screens.** Operator/staff only for this phase.
@@ -560,16 +612,71 @@ Resuming costs nothing: the 50 already imported dedupe away on the next scan.
 | Local overrides | **None.** Settings are read-only; fix the event on ZenAI and re-sync |
 | Entry flow | Event code → **hub immediately**, sync reported on the readiness block |
 | Card pulled mid-import | **Roll the row back**, stop cleanly, tell the operator to reinsert |
+| Photo scoping | Every screen filters on `event_id`; dedupe stays global |
+| Pre/post event | Acknowledged, designed later; per-event purge kept possible |
 
-## 12. Still open
+## 12. Backend: what exists today, and what is missing
 
-1. **Which fields does `/api/event/by-code` actually carry today?** The spec
-   assumes AI on/off + theme, frame on/off + which, print size, copies and
-   auto-print all arrive from ZenAI. Until they do, the device runs on hardcoded
-   values and the settings screen shows those — honestly labelled as such.
-2. **Does a badly configured event need any on-site escape?** Read-only settings
+Read from `EventInfoModel` and the cached response for `GALA-01`.
+
+### `GET /api/event/by-code/:code` returns today
+
+| Field | Type | Used for |
+|---|---|---|
+| `id` | string | **Event scoping** — the key everything filters on |
+| `code` | string | Bind and cache key |
+| `name` | string | Hub title |
+| `photoMode` | `BOTH` / `FRAME_ONLY` / … | Currently the only signal for whether AI applies |
+| `currentlyActive` | bool | Whether the event is live |
+| `themeCount`, `themeIds` | int, string[] | Catalogue size and ids |
+| `frameCount`, `frameIds` | int, string[] | Catalogue size and ids |
+| `outputMode` | string | Output shape |
+| `description` / `tagline` | string | Hub subtitle |
+| `skin` | `{ id, name, subtitle, bannerFrom, bannerTo, ink }` | Banner gradient and ink — **the banner already arrives** |
+
+Frame **artwork** comes separately from `GET /api/kiosk/frames`, which already
+accepts an `eventCode` and returns `{ id, name, overlayUrl }`. That is enough to
+download and cache overlays, and is already working.
+
+### Missing — needed for read-only settings
+
+Without these the device cannot know how to run an event, and today falls back to
+hardcoded values.
+
+| Field | Type | Default if absent | Why it is needed |
+|---|---|---|---|
+| `aiEnabled` | bool | `photoMode != 'FRAME_ONLY'` | Whether AI is in the chain. `photoMode` is a poor proxy — it describes output, not whether to generate |
+| `themeId` | string | — | **Which** look every AI job runs under. `themeIds` gives a list with no indication which one the event uses; without it AI is dropped from the chain entirely |
+| `frameEnabled` | bool | `frameCount > 0` | Whether framing is in the chain |
+| `frameId` | string | — | **Which** frame. Same problem as `themeId`: a list of ids is not a choice |
+| `autoPrint` | bool | `printerEnabled` | Print automatically, or hold for operator release |
+| `defaultCopies` | int | `1` | Prints per photo |
+| `printSize` | `s4x6` / `s5x7` / `s6x8` / `s2x6` | kiosk default | Must match loaded media; also drives the compositing canvas |
+
+**The two that matter most are `themeId` and `frameId`.** Everything else has a
+sane default, but "here are five frame ids" does not tell the device which one to
+composite, and an event with several configured currently has no way to say.
+
+### Nice to have, not blocking
+
+| Field | Why |
+|---|---|
+| `pipelineEnabled` | Lets the backend turn the local pipeline on per event instead of per device |
+| `offlineMode` | Declares an event as offline up front rather than inferring it |
+| `qualityFactor` | Tune the derivative size for an event that wants larger prints |
+| `startsAt` / `endsAt` | Pre-event and post-event flows (§9C) need to know when an event is over |
+
+`startsAt` / `endsAt` are worth including early even though nothing uses them
+yet — post-event cleanup is much safer when the device knows the event has ended
+rather than relying on an operator to say so.
+
+---
+
+## 13. Still open
+
+1. **Does a badly configured event need any on-site escape?** Read-only settings
    mean it is fixed on the backend, which needs signal. Acceptable in most
    venues; worth revisiting if a real event gets stuck behind it.
-3. **Should `INGESTED` photos be re-queueable** once settings arrive after an
+2. **Should `INGESTED` photos be re-queueable** once settings arrive after an
    offline import? The chain is frozen at selection, so photos imported before a
    sync have no chain at all. Probably a "Queue these now" action on the hub.
