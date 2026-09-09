@@ -57,40 +57,120 @@ android/.../eventpipeline/          storage, downscaler, compositor,
 
 ---
 
-## 2. Phase 0 — Remove yesterday's scaffolding
+## 2. Start of every session
 
-**Do this first.** Several things were built before the hub design existed and
-are now either dead or actively in the way. Removing them first means later
-phases are not built on top of things that are about to go.
+Do this **before any work**, every time — not once.
 
-### 0.1 Restore the three existing station views
+```bash
+git checkout event-offline-pipeline
+git pull                       # our branch, in case it moved on the remote
+git fetch origin main          # refresh the origin/main ref
+```
 
-`EventPipelineStatusStrip` was added to Capture, Theme and Print. The hub now
-owns that job, and the spec says the old screens stay **exactly as they were**.
+`git pull` and `git fetch origin main` are **not the same thing** and both are
+needed. The first brings down anything pushed to this branch from elsewhere;
+without it you commit onto a stale local branch and diverge. The second updates
+the `origin/main` ref that Phase 0's restores and the back-merge both read from —
+restoring "from main" against a week-old ref silently gives you week-old files.
 
-- Revert the strip and its import from
-  `event_capture_station_view.dart`, `event_theme_station_view.dart`,
-  `event_print_station_view.dart` (4 lines each)
+Then merge main in — but **after** Phase 0 on the first session, and at this
+point on every session after. §2.1 explains the ordering.
 
-### 0.2 Restore the station picker
+**Main moves fast** — 28 commits in a single day during this work. A day of drift
+merges trivially; a fortnight of it does not. Merging daily is what keeps the
+one-conflict experience we have had so far.
 
-The hub replaces the picker outright when the flag is on, so the picker does not
-need an SD import card, and the scroll rework only existed to fit it.
+---
 
-- Revert `event_station_picker_view.dart` to its `origin/main` state — removes
-  `_SdImportChoice`, the `FutureBuilder`, the `SingleChildScrollView` and the
-  `EventPipelineConfig` import (~53 lines)
+## 2.1 Why Phase 0 runs before the back-merge
 
-### 0.3 Remove settings from Kiosk settings
+On the **first** session only, do the removals *before* merging main.
+
+Phase 0 shrinks our diff against main from ~11 touched files to ~6, and every
+file we stop touching is a file that can never conflict again. It also
+pre-resolves conflicts for free: once a file is restored to `origin/main`'s
+state, git sees we did not change it, so the merge takes main's newer version
+**cleanly** rather than raising a conflict.
+
+Merging first means potentially resolving a conflict by carefully preserving code
+you then delete ten minutes later. That already happened once by hand —
+`event_print_station_view.dart` conflicted, and the resolution was the same as
+Phase 0's removal.
+
+**Keep them as separate commits.** If the suite goes red you want to know whether
+it was our removal or main's changes; mixed into one commit you are bisecting
+inside a single change.
+
+```bash
+# first session only
+<Phase 0 removals>        →  commit "Remove pre-hub scaffolding"
+git merge origin/main     →  commit "Merge origin/main"
+flutter test              →  verify once; blame is unambiguous
+
+# every session after
+git merge origin/main     →  commit, verify, then build
+```
+
+---
+
+## 3. Phase 0 — Remove pre-hub scaffolding
+
+Several things were built before the hub design existed and are now either dead
+or actively in the way. Removing them first means later phases are not built on
+top of things that are about to go.
+
+### 0.1–0.3 File restores — no hand editing
+
+Five files go back to main byte for byte. Do not edit these by hand; restoring
+from the ref is both safer and what makes the later merge conflict-free.
+
+```bash
+git checkout origin/main -- \
+  photobooth/lib/screens/event_station/event_capture_station_view.dart \
+  photobooth/lib/screens/event_station/event_theme_station_view.dart \
+  photobooth/lib/screens/event_station/event_print_station_view.dart \
+  photobooth/lib/screens/event_station/event_station_picker_view.dart \
+  photobooth/lib/screens/splash/app_splash_screen_body.dart
+```
+
+That removes, in one step:
+
+- **`EventPipelineStatusStrip`** from the three station views — the hub owns that
+  job now, and the spec says those screens stay exactly as they were
+- **`_SdImportChoice`**, its `FutureBuilder`, the `SingleChildScrollView` rework
+  and the `EventPipelineConfig` import from the picker — the hub replaces the
+  picker, so none of it is needed
+- **`EventPipelineSettingsPanel`** from the splash body — settings move to their
+  own screen
+
+Then delete the two panel files:
+
+```bash
+git rm photobooth/lib/screens/event_pipeline/event_pipeline_settings_panel.dart \
+       photobooth/lib/screens/event_pipeline/event_pipeline_settings_rows.dart
+```
+
+**Before deleting**, lift `EventPipelineChainPreview.describe()` out of
+`event_pipeline_settings_rows.dart` — Phase 7 reuses it, and its tests in
+`test/screens/event_pipeline/event_pipeline_settings_rows_test.dart` should move
+with it rather than being lost.
+
+### 0.3b What is intentionally kept
 
 Event settings move to their own screen reached from the hub (spec §9).
 
-- Revert the `EventPipelineSettingsPanel` insertion and import from
-  `app_splash_screen_body.dart` (6 lines)
-- Delete `lib/screens/event_pipeline/event_pipeline_settings_panel.dart` and
-  `event_pipeline_settings_rows.dart`
-- Keep `EventPipelineChainPreview.describe()` — Phase 7 reuses it. Move it into
-  the new settings screen's widgets rather than deleting it
+These existing files stay modified — do **not** restore them:
+
+| File | Keep because |
+|---|---|
+| `MainActivity.kt` | Registers the six native channels |
+| `AndroidManifest.xml` | Foreground service + `FOREGROUND_SERVICE_DATA_SYNC` |
+| `app_routes.dart` | Pipeline routes; Phase 3 adds the hub |
+| `constants.dart` | Route constants |
+| `app_strings.dart` | Pipeline strings |
+| `local_kiosk_store.dart` | `kKioskDirName` export — without it the pipeline opens a **second database** (see §1) |
+| `app_splash_screen.dart` | Pipeline-aware routing; Phase 3 points it at the hub |
+| `pubspec.yaml` | `crypto` for the content key |
 
 ### 0.4 Drop the `sdImport` station role
 
@@ -123,15 +203,28 @@ Spec §7 replaces it with Pause/Resume.
 - Remove `runNow()` from `event_queue_viewmodel.dart` and its button
 - Keep `EventPipelineRunner.drainAll()` — Pause/Resume and tests still use it
 
-**Phase 0 done when:** `git diff origin/main -- ':!*event_pipeline*' ':!docs/*'`
-shows only `MainActivity.kt`, `AndroidManifest.xml`, `app_routes.dart`,
-`constants.dart`, `app_strings.dart`, `local_kiosk_store.dart` (the
-`kKioskDirName` export), `app_splash_screen.dart` (routing), and `pubspec.*`.
-Full suite green.
+**Phase 0 done when:**
+
+```bash
+git diff origin/main --name-only -- ':!*event_pipeline*' ':!docs/*'
+```
+
+lists only the eight files in the keep table above. Then merge main (§2.1),
+then run the full suite.
+
+Expect two pre-existing failures in `test/utils/fotoflashback_payment_flow_test.dart`
+— they fail on clean `main` too and are not ours. Verify against a worktree
+before assuming any failure is new:
+
+```bash
+git worktree add /tmp/mainchk origin/main
+cd /tmp/mainchk/photobooth && flutter test <the failing file>
+git worktree remove /tmp/mainchk --force
+```
 
 ---
 
-## 3. Phase 1 — Fix the card-removal data loss
+## 4. Phase 1 — Fix the card-removal data loss
 
 **A live bug in code that already runs.** Spec §9A has the full analysis.
 
@@ -164,7 +257,7 @@ while the screen reports success.
 
 ---
 
-## 4. Phase 2 — Config becomes sync-only
+## 5. Phase 2 — Config becomes sync-only
 
 Spec §9. Backing work for the hub.
 
@@ -184,7 +277,7 @@ Sync success, sync failure with cache, sync failure without cache, and
 
 ---
 
-## 5. Phase 3 — Event hub
+## 6. Phase 3 — Event hub
 
 Spec §3A and §4. **The new entry point.**
 
@@ -206,7 +299,7 @@ regression guard).
 
 ---
 
-## 6. Phase 4 — Import with volume picker
+## 7. Phase 4 — Import with volume picker
 
 Spec §5. Rework of the existing ingest screen.
 
@@ -219,7 +312,7 @@ Spec §5. Rework of the existing ingest screen.
 
 ---
 
-## 7. Phase 5 — Queue rework
+## 8. Phase 5 — Queue rework
 
 Spec §7. The screen most able to make the Amlogic box feel stuck.
 
@@ -241,7 +334,7 @@ selection; pause survives restart; **another event's photos never appear**.
 
 ---
 
-## 8. Phase 6 — Item detail
+## 9. Phase 6 — Item detail
 
 Spec §8. Tap any tile.
 
@@ -253,7 +346,7 @@ Spec §8. Tap any tile.
 
 ---
 
-## 9. Phase 7 — Event settings (read-only)
+## 10. Phase 7 — Event settings (read-only)
 
 Spec §9.
 
@@ -265,7 +358,7 @@ Spec §9.
 
 ---
 
-## 10. Phase 8 — Capture
+## 11. Phase 8 — Capture
 
 Spec §6. Last, because it is the only phase needing camera hardware.
 
@@ -277,7 +370,7 @@ Spec §6. Last, because it is the only phase needing camera hardware.
 
 ---
 
-## 11. Device and environment notes
+## 12. Device and environment notes
 
 The test device silently disables two things, and both look like app bugs:
 
@@ -295,7 +388,7 @@ Run the app with:
 
 ---
 
-## 12. Backend dependency
+## 13. Backend dependency
 
 **`themeId` and `frameId` on `/api/event/by-code/:code` are the blocker** for
 running an AI or frame event on real config. Full field list in spec §12.
@@ -306,7 +399,7 @@ Until they land, Phase 2's dev constants carry it.
 
 ---
 
-## 13. Deliberately not in this plan
+## 14. Deliberately not in this plan
 
 - **Guest-facing screens** — operator only for this phase
 - **CCAPI** — plugs into Phase 8 later
