@@ -45,7 +45,15 @@ class EventStationPickerScreen extends StatelessWidget {
         onBackPressed: () => _leaveToKioskSettings(context),
         child: EventStationBoundShell(
           eventManager: _eventManager,
-          child: Padding(
+          // Scrollable because a fourth station no longer fits a phone screen.
+          // Spacer cannot live inside a scroll view, so the footer is pushed
+          // down by a minimum-height box instead: it still sits at the bottom on
+          // a tall screen, and scrolls out of the way on a short one.
+          child: LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -86,13 +94,16 @@ class EventStationPickerScreen extends StatelessWidget {
                     AppConstants.kRouteEventIngestStation,
                   ),
                 ),
-                const Spacer(),
+                const SizedBox(height: 28),
                 Text(
                   'Printer, camera, and copies come from this kiosk.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: colors.secondaryTextColor),
                 ),
               ],
+            ),
+                ),
+              ),
             ),
           ),
         ),

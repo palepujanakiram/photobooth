@@ -53,9 +53,32 @@ class IngestScanResult {
 
   bool get hasNew => newCandidates.isNotEmpty;
 
+  /// True when the volume holds nothing importable at all — a fresh format.
+  ///
+  /// Distinct from "all already imported", which is what a rescan looks like.
+  /// Reporting an empty card as "all 0 photos have been imported" is nonsense
+  /// the operator cannot act on.
+  bool get isEmptyCard =>
+      newCandidates.isEmpty &&
+      alreadyImported == 0 &&
+      skippedRaw == 0 &&
+      skippedOtherType == 0 &&
+      outsideScanFolders == 0;
+
   /// True when a card holds only RAW — the case that most looks like a bug.
   bool get isRawOnly =>
       newCandidates.isEmpty && alreadyImported == 0 && skippedRaw > 0;
+
+  /// Photos exist, but every one is outside the folders being scanned.
+  ///
+  /// The operator must still be offered the folder list here, or a photographer
+  /// who dropped files outside DCIM has produced an unreachable card.
+  bool get onlyOutsideScope =>
+      newCandidates.isEmpty && alreadyImported == 0 && outsideScanFolders > 0;
+
+  /// Folders the operator could add that are not already in scope.
+  List<IngestFolderSummary> get widenableFolders =>
+      [for (final f in folders) if (!f.selectedByDefault) f];
 }
 
 /// The tier-1 diff: metadata only, no file reads.

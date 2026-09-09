@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/event_manager.dart';
+import '../../services/event_pipeline/ingest/ingest_diff.dart';
 import '../../services/event_pipeline/ingest/ingest_worker.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
@@ -39,9 +40,18 @@ class EventIngestScreen extends StatelessWidget {
         showBackButton: true,
         onBackPressed: () => _changeRole(context),
         actions: [
+          // The app bar squeezes actions when the title is long, and this label
+          // wrapped to "Ch / ang" on a phone. Scale it down rather than wrap.
           TextButton(
             onPressed: () => _changeRole(context),
-            child: const Text(AppStrings.eventStationChangeRole),
+            child: const FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                AppStrings.eventStationChangeRole,
+                maxLines: 1,
+                softWrap: false,
+              ),
+            ),
           ),
         ],
         child: EventStationBoundShell(
@@ -147,25 +157,69 @@ class _IngestBody extends StatelessWidget {
     );
   }
 
+  /// The three ways a scan can come back with nothing to import.
+  ///
+  /// They read identically to an operator unless they are told apart, and each
+  /// one calls for a different action.
+  Widget _nothingToImport(AppColors colors, IngestScanResult scan) {
+    // Photos exist but sit outside DCIM. Offering only a message here would
+    // make them unreachable, so the folder list is shown instead.
+    if (scan.onlyOutsideScope) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          IngestMessagePanel(
+            appColors: colors,
+            icon: Icons.folder_open,
+            title: 'Nothing in DCIM',
+            detail: '${scan.outsideScanFolders} photos are on this card, '
+                'but outside the folders being scanned. '
+                'Tick a folder below to include it.',
+          ),
+          IngestFolderList(
+            appColors: colors,
+            folders: scan.folders,
+            isIncluded: vm.isFolderIncluded,
+            onToggle: vm.toggleFolder,
+          ),
+          const SizedBox(height: 16),
+        ],
+      );
+    }
+
+    final (title, detail) = switch (scan) {
+      _ when scan.isEmptyCard => (
+          'Card is empty',
+          'This card has no photos on it yet.',
+        ),
+      _ when scan.isRawOnly => (
+          'Only RAW files found',
+          '${scan.skippedRaw} RAW files are on this card. '
+              'Only JPEG, HEIC and PNG can be imported.',
+        ),
+      _ => (
+          'Nothing new',
+          'All ${scan.alreadyImported} photos on this card '
+              'have already been imported.',
+        ),
+    };
+
+    return IngestMessagePanel(
+      appColors: colors,
+      icon: scan.isEmptyCard ? Icons.sd_card_outlined : Icons.done_all,
+      title: title,
+      detail: detail,
+      actionLabel: 'Scan again',
+      onAction: vm.refresh,
+    );
+  }
+
   Widget _review(AppColors colors) {
     final scan = vm.scan;
     final settings = vm.settings;
     if (scan == null || settings == null) return const SizedBox.shrink();
 
-    if (!scan.hasNew) {
-      return IngestMessagePanel(
-        appColors: colors,
-        icon: Icons.done_all,
-        title: scan.isRawOnly ? 'Only RAW files found' : 'Nothing new',
-        detail: scan.isRawOnly
-            ? '${scan.skippedRaw} RAW files are on this card. '
-                'Only JPEG, HEIC and PNG can be imported.'
-            : 'All ${scan.alreadyImported} photos on this card '
-                'have already been imported.',
-        actionLabel: 'Scan again',
-        onAction: vm.refresh,
-      );
-    }
+    if (!scan.hasNew) return _nothingToImport(colors, scan);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
