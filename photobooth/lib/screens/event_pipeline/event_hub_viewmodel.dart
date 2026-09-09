@@ -73,12 +73,17 @@ class EventHubViewModel extends ChangeNotifier {
   final Future<EventPipelineDb?> Function() _openDb;
   final Duration _refreshInterval;
 
-  /// How often the hardware is re-probed, as opposed to the counters.
+  /// How often the hardware is re-probed **once it is all present**.
   ///
   /// A camera being plugged in or a ribbon running out happens on human
   /// timescales; the counters move at queue speed. Enumerating USB and querying
   /// the printer on the counter's tick is contention the Amlogic box does not
   /// need to spend all night.
+  ///
+  /// Deliberately not applied while something is missing — see
+  /// [_hardwareIsSettled]. An operator who has just plugged a camera in is
+  /// watching the row, and making them wait out this interval to see it appear
+  /// is how a working camera looks broken.
   final Duration _hardwareInterval;
   final int Function() _nowMs;
   late final EventPipelineSync _sync;
@@ -86,6 +91,7 @@ class EventHubViewModel extends ChangeNotifier {
   static int _defaultNowMs() => DateTime.now().millisecondsSinceEpoch;
 
   int? _hardwareProbedAtMs;
+  bool _hardwareIsSettled = false;
   String? _cameraNameCache;
   PrinterConsumables? _printerCache;
   FrameCacheStatus? _frameCache;
@@ -196,13 +202,18 @@ class EventHubViewModel extends ChangeNotifier {
     _notify();
   }
 
-  /// Re-probes the hardware, but only as often as hardware actually changes.
+  /// Re-probes the hardware, as often as it is actually worth doing.
+  ///
+  /// Backs off to [_hardwareInterval] only once everything is present. While
+  /// something is missing the probe runs on every tick, because that is exactly
+  /// when an operator is plugging things in and waiting to see the row change.
   Future<void> _refreshHardware(
     EventPipelineSettings settings, {
     required bool force,
   }) async {
     final last = _hardwareProbedAtMs;
     if (!force &&
+        _hardwareIsSettled &&
         last != null &&
         _nowMs() - last < _hardwareInterval.inMilliseconds) {
       return;
@@ -212,6 +223,8 @@ class EventHubViewModel extends ChangeNotifier {
     _frameCache = await _frameStatus(settings);
     _freeBytesCache = await _freeBytes();
     _hardwareProbedAtMs = _nowMs();
+    _hardwareIsSettled = (_cameraNameCache?.trim().isNotEmpty ?? false) &&
+        (_printerCache?.canPrint ?? false);
   }
 
   Future<void> _loadEvent() async {

@@ -538,6 +538,57 @@ void main() {
       expect(camera.probes, afterStart + 1);
     });
 
+    test('a missing camera is re-probed every tick, not once a interval',
+        () async {
+      // The operator plugging a camera in is watching this row. Making them
+      // wait out the back-off is how a working camera looks broken.
+      camera.device = null;
+      var now = 1000;
+      final vm = EventHubViewModel(
+        config: config,
+        events: events,
+        sync: FakeSync(initial: synced),
+        stats: EventPipelineStatsReader(openDb: () async => db),
+        printer: printer,
+        storage: storage,
+        mediaStore: EventMediaStore(resolveDirectory: () async => mediaDir),
+        camera: camera,
+        openDb: () async => db,
+        runner: EventPipelineRunner(
+          config: config,
+          mediaStore: EventMediaStore(resolveDirectory: () async => mediaDir),
+          openDb: () async => null,
+        ),
+        refreshInterval: const Duration(minutes: 5),
+        hardwareInterval: const Duration(seconds: 20),
+        nowMs: () => now,
+      );
+      await vm.start();
+      addTearDown(vm.dispose);
+      final afterStart = camera.probes;
+
+      now += 1000;
+      await vm.refresh();
+      expect(camera.probes, afterStart + 1, reason: 'still missing, keep looking');
+
+      // It appears, and the row picks it up on the very next tick.
+      camera.device = const DirectPtpDevice(
+        deviceName: '/dev/bus/usb/001/004',
+        vendorId: 0x04a9,
+        productId: 0x32e9,
+        product: 'Canon EOS R',
+      );
+      now += 1000;
+      await vm.refresh();
+      expect(vm.canCapture, isTrue);
+
+      // Now that everything is present, it backs off.
+      final settled = camera.probes;
+      now += 1000;
+      await vm.refresh();
+      expect(camera.probes, settled);
+    });
+
     test('a sync looks at the hardware straight away', () async {
       final vm = build(initial: synced);
       await vm.start();
