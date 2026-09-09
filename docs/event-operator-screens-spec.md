@@ -76,6 +76,36 @@ Five screens plus one detail view. Every one returns to the hub.
 
 ---
 
+## 3A. Entering an event
+
+Event code entered on the bind screen → **straight to the hub**. The hub renders
+immediately and fills in as the sync lands.
+
+```
+  bind screen        hub (0s)              hub (2s)
+  ┌──────────┐      ┌──────────────┐      ┌──────────────┐
+  │ GALA-01  │  →   │ Syncing…     │  →   │ READY TO RUN │
+  │ [Enter]  │      │ ⟳ event      │      │ ✓ Camera     │
+  └──────────┘      │ ⟳ frames     │      │ ✓ Frames  1  │
+                    └──────────────┘      └──────────────┘
+```
+
+**Not a blocking fetch before the hub appears.** A slow venue link would leave
+the operator on a spinner with nothing to look at, and a failed fetch needs a
+screen to report itself on anyway. The readiness block already exists to say
+"this part is not ready yet" — the first sync is simply another row in it.
+
+While syncing, actions that depend on config are disabled with the reason
+visible: Capture and card rows stay available (they need no server data), but the
+chain preview reads "Waiting for event settings".
+
+If the sync fails and **nothing is cached**, the hub says so plainly and offers
+Retry; the operator can still import, and those photos sit at `INGESTED` until
+settings arrive to give them a chain. If a **previous cache exists**, the event
+runs on it and the row reads "Using settings from 8 Sep".
+
+---
+
 ## 4. Screen 1 — Event hub
 
 The screen an operator can leave open all night. Lands here on entering an event.
@@ -364,35 +394,49 @@ a fresh generation that might come out different.
 Currently buried in Kiosk settings, which is the wrong place: it is event
 configuration, and the operator reaches for it from the event.
 
-### ZenAI is the source; the device holds a cache
+### Read-only. ZenAI is the only source
 
 Event settings, banners and frames are configured on the backend. The device
 **syncs once when the event is bound** and uses that for the rest of the event,
 so nothing on any screen waits on a request and a venue with no usable link still
 runs correctly.
 
+**There are no local overrides.** One source of truth means a device can never
+silently disagree with the backend, and an operator can never "fix" an event into
+a state nobody can reproduce. The screen is a readable record of what this device
+is running, plus `Sync`.
+
+The practical consequence: getting an event wrong is fixed on ZenAI and re-synced,
+not worked around on the box. That is the right place for it to be fixed, but it
+does mean a badly configured event is blocked on backend access — worth knowing
+before a venue with no signal.
+
+> **During development** these values are hardcoded on the device so the flow can
+> be exercised before the backend carries them. That scaffold comes out once
+> `/api/event/by-code` returns the real fields.
+
 ```
 ┌────────────────────────────────────────────────┐
-│  ‹   Event settings                            │
+│  ‹   Event settings              (read only)   │
 │      Synced from ZenAI · 9 Sep 09:12  [Sync]   │
 ├────────────────────────────────────────────────┤
-│  AI generation                          [ on ] │
+│  AI generation                              on │
 │  Restyles each photo before framing.           │
 │  Theme · Warm Peach                            │
 │                                                │
-│  Apply frame                            [ on ] │
+│  Apply frame                                on │
 │  Adds the event's border to the finished       │
 │  photo. Downloaded once, then works offline.   │
 │  Frame · Feriya y Fiesta   ✓ cached            │
 │                                                │
-│  Auto print                             [ on ] │
+│  Auto print                                 on │
 │  Prints each photo as soon as it is ready.     │
 │  Off means you release prints yourself.        │
 │                                                │
-│  Copies per photo                        [1]   │
+│  Copies per photo                            1 │
 │  How many prints of each finished photo.       │
 │                                                │
-│  Print size                          [ 4x6 ]   │
+│  Print size                                4x6 │
 │  Must match the media loaded in the printer.   │
 ├────────────────────────────────────────────────┤
 │  Each photo will run                           │
@@ -406,10 +450,85 @@ labelled "Apply frame" does not tell them that turning it off means the prints
 come out plain.
 
 `Sync` re-fetches on demand, for when something changed on the backend
-mid-event. The timestamp is the same one shown on the hub.
+mid-event. It is the only control on the screen. The timestamp is the same one
+shown on the hub.
 
 The frame row doubles as the fix for the hub's "frames not cached" warning: it
 shows cache state and downloads on demand.
+
+---
+
+## 9A. Card removed mid-import
+
+An operator will pull a card early — misreading progress, needing the card back,
+or simply knocking the reader. This has to be safe, because the current
+behaviour loses photographs.
+
+### The failure as it stands
+
+`_importOne` inserts the ledger row **first**, then writes the derivative. When
+the volume disappears, every remaining photo goes:
+
+```
+insertIfNew       → row created      ✓
+_storeDerivative  → source gone      ✗
+                  → row marked FAILED
+```
+
+And the tier-1 dedupe (`knownSourceRefs`) matches on **every row regardless of
+stage**. So:
+
+1. Card pulled at photo 50 of 400
+2. Photos 51–400 each get a FAILED row with no image behind it
+3. Operator reinserts and rescans → **"0 new · 400 already imported"**
+4. Those 350 photographs are now invisible to import, and Retry cannot help —
+   there is no derivative to work from and ingest is not a queue job
+
+**350 photos lost, while the screen reports success.** For a product whose entire
+promise is "hand the card back safely", that is the worst failure available.
+
+### The fix: roll back, do not fail
+
+Distinguish **"the source went away"** from **"this photo is bad"**.
+
+- Source gone → **delete the ledger row.** The photo returns to unknown, so a
+  rescan finds it as new and the operator simply continues.
+- A photo that genuinely will not decode → **FAILED**, as now. That is a real
+  fault and deserves to stay visible.
+
+Only the second is a failure. Recording the first as one is what converts a
+recoverable interruption into silent loss.
+
+### Stopping cleanly
+
+`IngestWorker.import()` already takes a `shouldContinue` hook, checked before
+each photo. Wiring the card-detect unmount stream into it turns 350 individual
+failures into one clean stop, with the report carrying
+`stoppedEarly: true, stopReason: 'Card removed'`.
+
+A per-item volume check is available as a belt-and-braces addition if the
+broadcast ever proves unreliable, at a few milliseconds per photo.
+
+### What the operator sees
+
+```
+┌────────────────────────────────────────────────┐
+│                    ⚠                           │
+│              Card removed                      │
+│                                                │
+│   Imported 50 of 400. The rest are still on    │
+│   the card — reinsert it and scan again to     │
+│   continue.                                    │
+│                                                │
+│                 [ Done ]                       │
+└────────────────────────────────────────────────┘
+```
+
+One honest message rather than a wall of failures. It is **truthful only because
+of the rollback** — without it, "scan again to continue" would be a lie, since
+the rescan would report nothing new.
+
+Resuming costs nothing: the 50 already imported dedupe away on the next scan.
 
 ---
 
@@ -438,15 +557,19 @@ shows cache state and downloads on demand.
 | Card scanning | **Never automatic** — the operator taps a specific volume |
 | Queue actions | **Selection only**, never a bare act-on-everything |
 | Event config | **ZenAI is the source**, synced once per event and cached |
+| Local overrides | **None.** Settings are read-only; fix the event on ZenAI and re-sync |
+| Entry flow | Event code → **hub immediately**, sync reported on the readiness block |
+| Card pulled mid-import | **Roll the row back**, stop cleanly, tell the operator to reinsert |
 
 ## 12. Still open
 
-1. **Do local overrides survive at all?** With ZenAI authoritative, the settings
-   screen could be read-only apart from `Sync`. Keeping overrides helps an
-   operator work around a misconfigured event on site; removing them means one
-   source of truth and no chance of a device silently disagreeing with the
-   backend. The spec currently assumes overrides remain, marked as overriding.
-2. **What does the hub show while the first sync is running**, on a device that
-   has never seen this event? Every other state assumes a cache exists.
-3. **Does a card removed mid-import abort cleanly?** The ledger is consistent
-   either way, but the operator should be told rather than seeing a stalled bar.
+1. **Which fields does `/api/event/by-code` actually carry today?** The spec
+   assumes AI on/off + theme, frame on/off + which, print size, copies and
+   auto-print all arrive from ZenAI. Until they do, the device runs on hardcoded
+   values and the settings screen shows those — honestly labelled as such.
+2. **Does a badly configured event need any on-site escape?** Read-only settings
+   mean it is fixed on the backend, which needs signal. Acceptable in most
+   venues; worth revisiting if a real event gets stuck behind it.
+3. **Should `INGESTED` photos be re-queueable** once settings arrive after an
+   offline import? The chain is frozen at selection, so photos imported before a
+   sync have no chain at all. Probably a "Queue these now" action on the hub.
