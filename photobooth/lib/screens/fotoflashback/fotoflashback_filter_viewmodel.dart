@@ -358,9 +358,14 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     notifyListeners();
     try {
       final jpegBytes = <Uint8List>[];
+      final maxLongEdge = localStripPrintJpegMaxLongEdge(
+        single: isSingleClassic,
+      );
       for (final path in paths) {
         if (gen != _hydrateGeneration) return;
-        jpegBytes.add(await _readCompactLookJpeg(path));
+        jpegBytes.add(
+          await _readCompactLookJpeg(path, maxLongEdge: maxLongEdge),
+        );
       }
       if (gen != _hydrateGeneration) return;
       _lookPreviewJpegBytes = jpegBytes;
@@ -968,12 +973,18 @@ if (graded.length == _expectedCaptureCount) {
     return out;
   }
 
-  Future<Uint8List> _readCompactLookJpeg(String path) async {
+  Future<Uint8List> _readCompactLookJpeg(
+    String path, {
+    required int maxLongEdge,
+  }) async {
     final bytes = await XFile(path).readAsBytes();
     if (bytes.isEmpty) {
       throw Exception(AppStrings.imageFileEmpty);
     }
-    final compacted = await compactJpegsForLocalStripPrint([bytes]);
+    final compacted = await compactJpegsForLocalStripPrint(
+      [bytes],
+      maxLongEdge: maxLongEdge,
+    );
     if (compacted.isEmpty) {
       throw Exception(AppStrings.imageFileEmpty);
     }
@@ -1029,6 +1040,7 @@ if (graded.length == _expectedCaptureCount) {
     );
     final jpegBytes = await compactJpegsForLocalStripPrint(
       await _rawJpegBytesForLocalCompose(),
+      maxLongEdge: localStripPrintJpegMaxLongEdge(single: isSingleClassic),
     );
     if (jpegBytes.length != _expectedCaptureCount) {
       _errorMessage = AppStrings.flashbackComposeFailed;
@@ -1289,8 +1301,8 @@ if (graded.length == _expectedCaptureCount) {
     Duration? delay,
   }) {
     if (!_hasComposableShotCount) return;
-    // Event-local 4-shot still skips idle bake. 1-/3-shot warm on-device even
-    // when data URLs are huge — Skia compact keeps Mini PC RAM in check.
+    // Event-local 1-/3-/4-shot warm on-device even when data URLs are huge —
+    // cell-sized Skia compact keeps Mini PC RAM in check.
     if (_eventPrintIsLocal) {
       if (shouldDeferLocalClassicComposeWarm(shotCount: stripShotCount)) {
         _composePreviewDebounce?.cancel();

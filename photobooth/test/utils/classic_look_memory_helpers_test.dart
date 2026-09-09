@@ -42,10 +42,11 @@ void main() {
   });
 
   group('shouldDeferLocalClassicComposeWarm', () {
-    test('warms 1-shot and 3-shot; defers 4-shot', () {
+    test('warms 1-shot, 3-shot, and 4-shot', () {
       expect(shouldDeferLocalClassicComposeWarm(shotCount: 1), isFalse);
       expect(shouldDeferLocalClassicComposeWarm(shotCount: 3), isFalse);
-      expect(shouldDeferLocalClassicComposeWarm(shotCount: 4), isTrue);
+      expect(shouldDeferLocalClassicComposeWarm(shotCount: 4), isFalse);
+      expect(shouldDeferLocalClassicComposeWarm(shotCount: 0), isTrue);
     });
   });
 

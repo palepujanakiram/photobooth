@@ -35,6 +35,22 @@ void main() {
     expect(out.single, same(kTinyJpegBytes));
   });
 
+  test('compactJpegsForLocalStripPrint accepts a cell-sized long edge',
+      () async {
+    var calls = 0;
+    final out = await compactJpegsForLocalStripPrint(
+      [kTinyJpegBytes],
+      maxLongEdge: kLocalStripCellJpegMaxLongEdge,
+      downscale: (shot) async {
+        calls++;
+        expect(shot, same(kTinyJpegBytes));
+        return shot;
+      },
+    );
+    expect(calls, 1);
+    expect(out.single, same(kTinyJpegBytes));
+  });
+
   test('compactOverlayForLocalStripPrint uses landscape and strip dest sizes',
       () async {
     final png = _pngHeader(width: 2000, height: 3000);

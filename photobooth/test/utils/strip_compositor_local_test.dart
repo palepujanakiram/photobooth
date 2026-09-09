@@ -334,6 +334,15 @@ void main() {
         (kLocalStripSheetWidth - kLocalStripCenterGutter) ~/ 2,
       );
       expect(kLocalPrintJpegMaxLongEdge, kLocalStripSheetHeight);
+      expect(kLocalStripCellJpegMaxLongEdge, 720);
+      expect(
+        localStripPrintJpegMaxLongEdge(single: true),
+        kLocalPrintJpegMaxLongEdge,
+      );
+      expect(
+        localStripPrintJpegMaxLongEdge(single: false),
+        kLocalStripCellJpegMaxLongEdge,
+      );
     });
 
     test('stamps a 1-shot occasion overlay into the photo hole', () {

@@ -26,6 +26,14 @@ const int kLocalStripJpegQuality = 92;
 /// Long-edge cap for Skia compact before the dart-image isolate (4×6 at 300dpi).
 const int kLocalPrintJpegMaxLongEdge = kLocalStripSheetHeight;
 
+/// Dual 2×6 cells are ~590×580 (3-shot) / ~590×430 (4-shot). Compact plates to
+/// this long edge so dart-image decode on Continue stays cheap.
+const int kLocalStripCellJpegMaxLongEdge = 720;
+
+/// 1-shot needs the full 4×6 sheet; strips only need one cell.
+int localStripPrintJpegMaxLongEdge({required bool single}) =>
+    single ? kLocalPrintJpegMaxLongEdge : kLocalStripCellJpegMaxLongEdge;
+
 /// Occasion overlay pixel size on the print sheet (1-shot full sheet, strip = one 2×6).
 ({int width, int height}) localStripOverlayDestSize({
   required bool single,
@@ -390,25 +398,21 @@ void _drawOccasionDualStrip(
   final slots = overlay.slots.length == sources.length
       ? overlay.slots
       : defaultOccasionStripSlots(sources.length);
-  for (var i = 0; i < sources.length; i++) {
-    final slot = slots[i];
-    for (final stripLeft in stripOffsets) {
-      _drawSourceIntoCell(
-        sheet,
-        sources[i],
-        matrix,
-        _normalizedCell(
-          stripDrawWidth,
-          kLocalStripSheetHeight,
-          slot,
-          stripLeft,
-          0,
-        ),
-        contain: true,
-        letterbox: img.ColorRgb8(18, 18, 18),
-      );
-    }
-  }
+  // Prepare each plate once, then blit onto both 2×6 halves. Decoding the
+  // same JPEG per half made 3-/4-shot Continue sit on "Building your strip…".
+  final prepared = _prepareOccasionStripCells(
+    sources,
+    matrix,
+    slots,
+    stripDrawWidth,
+  );
+  _blitOccasionCellsOntoStrips(
+    sheet,
+    prepared,
+    slots,
+    stripDrawWidth,
+    stripOffsets,
+  );
   final overlayImage = _decodeOverlayImage(overlay.pngBytes);
   if (overlayImage == null) return;
   for (final stripLeft in stripOffsets) {
@@ -420,6 +424,58 @@ void _drawOccasionDualStrip(
       stripDrawWidth,
       kLocalStripSheetHeight,
     );
+  }
+}
+
+List<img.Image?> _prepareOccasionStripCells(
+  List<Uint8List> sources,
+  List<double>? matrix,
+  List<StripTemplateSlot> slots,
+  int stripDrawWidth,
+) {
+  final prepared = <img.Image?>[];
+  for (var i = 0; i < sources.length; i++) {
+    final rect = _normalizedCell(
+      stripDrawWidth,
+      kLocalStripSheetHeight,
+      slots[i],
+      0,
+      0,
+    );
+    prepared.add(
+      _prepareCell(
+        sources[i],
+        matrix,
+        rect.width,
+        rect.height,
+        contain: true,
+        letterbox: img.ColorRgb8(18, 18, 18),
+      ),
+    );
+  }
+  return prepared;
+}
+
+void _blitOccasionCellsOntoStrips(
+  img.Image sheet,
+  List<img.Image?> prepared,
+  List<StripTemplateSlot> slots,
+  int stripDrawWidth,
+  List<int> stripOffsets,
+) {
+  for (var i = 0; i < prepared.length; i++) {
+    final cell = prepared[i];
+    if (cell == null) continue;
+    for (final stripLeft in stripOffsets) {
+      final rect = _normalizedCell(
+        stripDrawWidth,
+        kLocalStripSheetHeight,
+        slots[i],
+        stripLeft,
+        0,
+      );
+      img.compositeImage(sheet, cell, dstX: rect.left, dstY: rect.top);
+    }
   }
 }
 

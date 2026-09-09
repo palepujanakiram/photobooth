@@ -833,6 +833,26 @@ void main() {
     vm.dispose();
   });
 
+  test('FotoFlashbackFilterViewModel 4-shot local warm then Continue skips Fly',
+      () async {
+    SessionManager().setSessionFromResponse(_sessionJson('sess-event-4shot'));
+    final api = _StripFakeApi();
+    final vm = FotoFlashbackFilterViewModel(
+      eventPrintIsLocal: true,
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, _tinyJpegDataUrl()),
+      apiService: api,
+      overlayCleanupBuildGate: true,
+    );
+    await vm.loadFilters();
+    await vm.refreshComposePreview();
+    expect(api.composeCalls, 0);
+    final image = await vm.compose();
+    expect(image, isNotNull);
+    expect(api.composeCalls, 0);
+    vm.dispose();
+  });
+
   test('FotoFlashbackFilterViewModel 1-shot local warm then Continue skips Fly',
       () async {
     SessionManager().setSessionFromResponse(_sessionJson('sess-event-1shot'));
