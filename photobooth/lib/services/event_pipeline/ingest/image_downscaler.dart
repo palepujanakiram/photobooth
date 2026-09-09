@@ -6,11 +6,25 @@ class DownscaleResult {
     required this.bytes,
     required this.width,
     required this.height,
+    this.thumbBytes,
+    this.thumbWidth,
+    this.thumbHeight,
   });
 
   final Uint8List bytes;
   final int width;
   final int height;
+
+  /// Grid thumbnail encoded from the same decode, when one was asked for.
+  ///
+  /// Null when [DownscaleTarget.thumbShortSide] was not requested, or when the
+  /// original is already smaller than the thumbnail target — upscaling would
+  /// spend bytes for no extra detail.
+  final Uint8List? thumbBytes;
+  final int? thumbWidth;
+  final int? thumbHeight;
+
+  bool get hasThumb => thumbBytes != null && thumbBytes!.isNotEmpty;
 }
 
 /// Produces the print-ready derivative the device keeps.
@@ -29,11 +43,15 @@ abstract class ImageDownscaler {
   /// photo onto the print raster: at 300 dpi the DS-RX1's native width is
   /// 1920 px, so a derivative whose short side reaches 1920 has full native
   /// quality at every size the printer offers.
+  ///
+  /// Pass [thumbShortSide] to also get the grid thumbnail out of the same
+  /// decode. Zero skips it.
   Future<DownscaleResult> downscale({
     required String sourceUri,
     required int targetShortSide,
     int maxLongSide = 4096,
     int quality = 88,
+    int thumbShortSide = 0,
   });
 }
 

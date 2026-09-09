@@ -1,7 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../services/event_manager.dart';
 import '../../services/event_pipeline/ingest/ingest_diff.dart';
 import '../../services/event_pipeline/ingest/ingest_worker.dart';
 import '../../utils/app_strings.dart';
@@ -13,62 +14,54 @@ import 'event_ingest_view_widgets.dart';
 import 'event_pipeline_status_strip.dart';
 import 'event_ingest_viewmodel.dart';
 
-/// SD import station: detect a card, scan, select, import.
+/// Import from card: choose a volume, scan, select, import.
 ///
-/// A fourth station role rather than a control inside Capture. The two screens
-/// have opposite designs — Capture is fire-and-forget with no local queue and
-/// navigates away to `/capture` between guests, while an import is stateful and
-/// has to survive minutes on screen.
+/// Reached from the hub, and returns to it. There is no station role to change
+/// any more — three sources feed one queue on one device — so the header shows
+/// which card is being read instead, which is the thing an operator with two
+/// cards seated actually needs to know.
 class EventIngestScreen extends StatelessWidget {
   const EventIngestScreen({super.key, this.viewModel});
 
   final EventIngestViewModel? viewModel;
 
-  Future<void> _changeRole(BuildContext context) async {
-    await EventManager().setStationRole(null);
-    if (!context.mounted) return;
-    await Navigator.of(context)
-        .pushReplacementNamed(AppConstants.kRouteEventStation);
-  }
-
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider<EventIngestViewModel>(
       create: (_) => (viewModel ?? EventIngestViewModel())..start(),
-      child: AppScaffold(
-        title: AppStrings.eventStationSdImport,
-        showBackButton: true,
-        onBackPressed: () => _changeRole(context),
-        actions: [
-          // Imported photos have to be reachable, or they look lost the moment
-          // the import finishes.
-          IconButton(
-            tooltip: AppStrings.eventQueueTitle,
-            icon: const Icon(Icons.photo_library_outlined),
-            onPressed: () => Navigator.of(context)
-                .pushNamed(AppConstants.kRouteEventQueue),
-          ),
-          // The app bar squeezes actions when the title is long, and this label
-          // wrapped to "Ch / ang" on a phone. Scale it down rather than wrap.
-          TextButton(
-            onPressed: () => _changeRole(context),
-            child: const FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                AppStrings.eventStationChangeRole,
-                maxLines: 1,
-                softWrap: false,
-              ),
+      child: Consumer<EventIngestViewModel>(
+        builder: (context, vm, _) => AppScaffold(
+          // Names the chosen card once there is one, so the title answers
+          // "which card am I looking at" without a second glance.
+          title: vm.volume?.displayLabel ?? AppStrings.eventHubImport,
+          showBackButton: true,
+          onBackPressed: () => _back(context, vm),
+          actions: [
+            // Imported photos have to be reachable, or they look lost the
+            // moment the import finishes.
+            IconButton(
+              tooltip: AppStrings.eventQueueTitle,
+              icon: const Icon(Icons.photo_library_outlined),
+              onPressed: () => Navigator.of(context)
+                  .pushNamed(AppConstants.kRouteEventQueue),
             ),
-          ),
-        ],
-        child: EventStationBoundShell(
-          child: Consumer<EventIngestViewModel>(
-            builder: (context, vm, _) => _IngestBody(vm: vm),
-          ),
+          ],
+          child: EventStationBoundShell(child: _IngestBody(vm: vm)),
         ),
       ),
     );
+  }
+
+  /// Back steps out of a chosen card first, and only then off the screen.
+  ///
+  /// Otherwise an operator who tapped the wrong one of two seated cards has to
+  /// leave to the hub and come back in to correct it.
+  void _back(BuildContext context, EventIngestViewModel vm) {
+    if (vm.volume != null && vm.phase != IngestPhase.importing) {
+      unawaited(vm.backToVolumes());
+      return;
+    }
+    Navigator.of(context).pop();
   }
 }
 
@@ -86,6 +79,12 @@ class _IngestBody extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       child: switch (vm.phase) {
         IngestPhase.noCard => _noCard(colors),
+        IngestPhase.pickVolume => IngestVolumePicker(
+            appColors: colors,
+            volumes: vm.volumes,
+            enabled: !vm.isBusy,
+            onSelect: vm.selectVolume,
+          ),
         IngestPhase.needsPermission => _needsPermission(colors),
         IngestPhase.unreadable => _unreadable(colors),
         IngestPhase.scanning =>
@@ -111,11 +110,11 @@ class _IngestBody extends StatelessWidget {
     return IngestMessagePanel(
       appColors: colors,
       icon: Icons.sd_card_outlined,
-      title: 'Insert a card',
+      title: 'Insert a card in the reader',
       detail: vm.errorMessage ??
-          'Put the photographer\'s card in the reader. '
-              'It will be scanned automatically.',
-      actionLabel: vm.isBusy ? null : 'Scan card',
+          'Cards appear here as they are seated. '
+              'Nothing is read until you choose one.',
+      actionLabel: vm.isBusy ? null : 'Look again',
       onAction: vm.refresh,
     );
   }
@@ -142,8 +141,8 @@ class _IngestBody extends StatelessWidget {
       title: 'Card not readable',
       detail: 'The card mounted but the system has not indexed it. '
           'Reseat it, or try a different card.',
-      actionLabel: 'Try again',
-      onAction: vm.refresh,
+      actionLabel: 'Back to cards',
+      onAction: vm.backToVolumes,
     );
   }
 
@@ -234,7 +233,7 @@ class _IngestBody extends StatelessWidget {
       title: title,
       detail: detail,
       actionLabel: 'Scan again',
-      onAction: vm.refresh,
+      onAction: vm.rescan,
     );
   }
 

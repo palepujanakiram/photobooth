@@ -132,15 +132,105 @@ class EventPipelineLedger {
     return MediaItem.fromRow(rows.first);
   }
 
-  Future<List<MediaItem>> listByStage(String stage, {int? limit}) async {
+  Future<List<MediaItem>> listByStage(
+    String stage, {
+    int? limit,
+    String? eventId,
+  }) async {
+    final scope = _eventScope(eventId);
     final rows = await _db.query(
       'evp_media_items',
-      where: 'stage = ?',
-      whereArgs: [stage],
+      where: 'stage = ?${scope.clause}',
+      whereArgs: [stage, ...scope.args],
       orderBy: 'created_at_ms ASC',
       limit: limit,
     );
     return [for (final r in rows) MediaItem.fromRow(r)];
+  }
+
+  /// One page of the queue, newest first within each stage.
+  ///
+  /// Ordered by how urgent a stage is to the operator rather than by time
+  /// alone: failures first, then work in flight, then what is finished. A
+  /// single ordered query rather than one per stage, so pagination is a real
+  /// offset instead of seven interleaved limits.
+  Future<List<MediaItem>> listPage({
+    required int limit,
+    int offset = 0,
+    String? eventId,
+    String? stage,
+    List<String>? stages,
+  }) async {
+    final scope = _eventScope(eventId);
+    final where = StringBuffer('1 = 1${scope.clause}');
+    final args = <Object?>[...scope.args];
+    if (stage != null) {
+      where.write(' AND stage = ?');
+      args.add(stage);
+    } else if (stages != null && stages.isNotEmpty) {
+      where.write(' AND stage IN (${List.filled(stages.length, '?').join(',')})');
+      args.addAll(stages);
+    }
+    final rows = await _db.query(
+      'evp_media_items',
+      where: where.toString(),
+      whereArgs: args,
+      orderBy: '$_stageRank, created_at_ms DESC',
+      limit: limit,
+      offset: offset,
+    );
+    return [for (final r in rows) MediaItem.fromRow(r)];
+  }
+
+  /// How many items the current scope holds, for "load more" to know when to
+  /// stop offering itself.
+  Future<int> countItems({
+    String? eventId,
+    String? stage,
+    List<String>? stages,
+  }) async {
+    final scope = _eventScope(eventId);
+    final where = StringBuffer('1 = 1${scope.clause}');
+    final args = <Object?>[...scope.args];
+    if (stage != null) {
+      where.write(' AND stage = ?');
+      args.add(stage);
+    } else if (stages != null && stages.isNotEmpty) {
+      where.write(' AND stage IN (${List.filled(stages.length, '?').join(',')})');
+      args.addAll(stages);
+    }
+    final rows = await _db.rawQuery(
+      'SELECT COUNT(*) AS n FROM evp_media_items WHERE ${where.toString()}',
+      args,
+    );
+    return (rows.first['n'] as int?) ?? 0;
+  }
+
+  /// Stage ordering for the queue grid: what is wrong, then what is working,
+  /// then what is done.
+  static const String _stageRank = '''
+CASE stage
+  WHEN 'FAILED' THEN 0
+  WHEN 'PRINTING' THEN 1
+  WHEN 'FRAMING' THEN 2
+  WHEN 'AI' THEN 3
+  WHEN 'QUEUED' THEN 4
+  WHEN 'INGESTED' THEN 5
+  ELSE 6
+END''';
+
+  /// Scopes a read to one event.
+  ///
+  /// The ledger is durable across events, so an unscoped read at a wedding
+  /// would mix in last weekend's corporate party — wrong counts, and a real
+  /// chance of reprinting the wrong couple's photos (spec §9B). A null
+  /// [eventId] means the **unassigned** rows, not "everything": items imported
+  /// before an event was bound are shown only under their own filter, never
+  /// folded into an event's totals.
+  _EventScope _eventScope(String? eventId) {
+    final id = eventId?.trim() ?? '';
+    if (id.isEmpty) return const _EventScope(' AND event_id IS NULL', []);
+    return _EventScope(' AND event_id = ?', [id]);
   }
 
   /// Imported but not yet selected — what the review grid shows.
@@ -154,10 +244,16 @@ class EventPipelineLedger {
     return [for (final r in rows) MediaItem.fromRow(r)];
   }
 
-  /// Item counts per stage, for the status strip every station carries.
-  Future<Map<String, int>> stageCounts() async {
+  /// Item counts per stage, for the hub's counters and the queue's chips.
+  ///
+  /// Scoped like every other read: a count that includes another event is worse
+  /// than no count, because it looks authoritative.
+  Future<Map<String, int>> stageCounts({String? eventId}) async {
+    final scope = _eventScope(eventId);
     final rows = await _db.rawQuery(
-      'SELECT stage, COUNT(*) AS n FROM evp_media_items GROUP BY stage',
+      'SELECT stage, COUNT(*) AS n FROM evp_media_items '
+      'WHERE 1 = 1${scope.clause} GROUP BY stage',
+      scope.args,
     );
     return {
       for (final r in rows)
@@ -323,4 +419,12 @@ class EventPipelineLedger {
       whereArgs: [mediaId],
     );
   }
+}
+
+/// A `WHERE` fragment and its arguments, for scoping a read to one event.
+class _EventScope {
+  const _EventScope(this.clause, this.args);
+
+  final String clause;
+  final List<Object?> args;
 }

@@ -21,6 +21,7 @@ class PlatformImageDownscaler implements ImageDownscaler {
     required int targetShortSide,
     int maxLongSide = DownscaleTarget.maxLongSide,
     int quality = DownscaleTarget.jpegQuality,
+    int thumbShortSide = 0,
   }) async {
     final result = await _channel.invokeMapMethod<Object?, Object?>(
       'downscale',
@@ -29,16 +30,21 @@ class PlatformImageDownscaler implements ImageDownscaler {
         'targetShortSide': targetShortSide,
         'maxLongSide': maxLongSide,
         'quality': quality,
+        'thumbShortSide': thumbShortSide,
       },
     );
     final bytes = result?['bytes'];
     if (bytes is! Uint8List || bytes.isEmpty) {
       throw StateError('Downscale returned no image data for $sourceUri');
     }
+    final thumb = result?['thumbBytes'];
     return DownscaleResult(
       bytes: bytes,
       width: _int(result?['width']) ?? 0,
       height: _int(result?['height']) ?? 0,
+      thumbBytes: thumb is Uint8List && thumb.isNotEmpty ? thumb : null,
+      thumbWidth: _int(result?['thumbWidth']),
+      thumbHeight: _int(result?['thumbHeight']),
     );
   }
 

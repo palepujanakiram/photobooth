@@ -2,7 +2,10 @@
 import 'package:flutter/material.dart';
 
 import 'screens/event_pipeline/event_ingest_view.dart';
+import 'screens/event_pipeline/event_capture_view.dart';
 import 'screens/event_pipeline/event_hub_view.dart';
+import 'screens/event_pipeline/event_item_detail_view.dart';
+import 'screens/event_pipeline/event_settings_view.dart';
 import 'screens/event_pipeline/event_queue_view.dart';
 import 'screens/event_station/event_capture_station_view.dart';
 import 'screens/event_station/event_print_station_view.dart';
@@ -95,6 +98,12 @@ Map<String, WidgetBuilder> buildAppRoutes() {
     AppConstants.kRouteEventIngestStation: (context) =>
         const EventIngestScreen(),
     AppConstants.kRouteEventHub: (context) => const EventHubScreen(),
+    AppConstants.kRouteEventCapture: (context) => const EventCaptureScreen(),
+    AppConstants.kRouteEventSettings: (context) => const EventSettingsScreen(),
+    AppConstants.kRouteEventItemDetail: (context) => EventItemDetailScreen(
+          mediaId:
+              (ModalRoute.of(context)?.settings.arguments as String?) ?? '',
+        ),
     AppConstants.kRouteEventQueue: (context) => EventQueueScreen(
           // The hub's counters open the queue already filtered to the stage
           // that was tapped.

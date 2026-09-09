@@ -123,6 +123,10 @@ class EventPipelineQueue {
   /// Paused jobs are skipped without consuming attempts — a printer out of
   /// ribbon must not exhaust the retry budget and fail a whole event.
   Future<List<PipelineJob>> claimReady(String kind, {int limit = 4}) async {
+    // The operator's hold. One chokepoint suspends every stage at once, which
+    // is what Pause has to mean — a ribbon change or a printer being moved is
+    // not a per-stage event.
+    if (await isPaused()) return const <PipelineJob>[];
     final now = _nowMs();
     final rows = await _db.query(
       'evp_pipeline_jobs',
@@ -276,6 +280,38 @@ class EventPipelineQueue {
     );
   }
 
+  /// Requeues one item's failed job of [kind] — the selection-scoped retry.
+  ///
+  /// Distinct from [retryFailed], which reaches every failure of a kind. The
+  /// queue screen only ever acts on what the operator ticked, so it needs a
+  /// per-item form.
+  Future<int> retryFor({
+    required String kind,
+    required String mediaId,
+  }) async {
+    return _db.update(
+      'evp_pipeline_jobs',
+      <String, Object?>{
+        'status': PipelineJobStatus.pending,
+        'attempts': 0,
+        'next_attempt_at_ms': 0,
+        'last_error': null,
+        'updated_at_ms': _nowMs(),
+      },
+      where: 'kind = ? AND media_id = ? AND status = ?',
+      whereArgs: [kind, mediaId, PipelineJobStatus.failed],
+    );
+  }
+
+  /// Deletes every job belonging to [mediaId], for an item being removed.
+  Future<int> deleteFor(String mediaId) async {
+    return _db.delete(
+      'evp_pipeline_jobs',
+      where: 'media_id = ?',
+      whereArgs: [mediaId],
+    );
+  }
+
   // -------------------------------------------------------------------- reads
 
   Future<PipelineJob?> findById(String id) async {
@@ -324,6 +360,43 @@ class EventPipelineQueue {
         (r['status'] ?? '').toString(): (r['n'] as int?) ?? 0,
     });
   }
+
+  /// Whether the operator has held the whole queue.
+  ///
+  /// Stored in `evp_meta` rather than derived from job rows, and that is the
+  /// point: it is **queue state, not screen state**, so it survives a restart,
+  /// and pausing an empty queue still holds the work that arrives next. Reading
+  /// it off the rows would make both of those silently untrue.
+  Future<bool> isPaused() async {
+    final rows = await _db.query(
+      'evp_meta',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: [_kPausedKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) return false;
+    return (rows.first['value'] ?? '').toString() == '1';
+  }
+
+  /// Holds or releases every stage. Returns the new state.
+  Future<bool> setPaused(bool paused) async {
+    await _db.insert(
+      'evp_meta',
+      <String, Object?>{'key': _kPausedKey, 'value': paused ? '1' : '0'},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    if (!paused) {
+      // Clear any backoff so resuming actually resumes, rather than waiting out
+      // a delay set before the operator paused.
+      for (final kind in const <String>['ai', 'frame', 'print']) {
+        await resumeKind(kind);
+      }
+    }
+    return paused;
+  }
+
+  static const String _kPausedKey = 'queue_paused';
 
   /// True when at least one job of [kind] is waiting on a pause.
   Future<bool> isKindPaused(String kind) async {

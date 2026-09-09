@@ -22,6 +22,7 @@ class FakeDownscaler implements ImageDownscaler {
   });
 
   final Set<String> failOn;
+  final List<int> requestedThumbSides = <int>[];
 
   /// Once this many downscales have been attempted, every later one fails the
   /// way a pulled card fails: the native side cannot open the item at all.
@@ -36,9 +37,11 @@ class FakeDownscaler implements ImageDownscaler {
     required int targetShortSide,
     int maxLongSide = 4096,
     int quality = 88,
+    int thumbShortSide = 0,
   }) async {
     calls++;
     requestedShortSides.add(targetShortSide);
+    requestedThumbSides.add(thumbShortSide);
     if (vanishFrom != null && calls > vanishFrom!) {
       // Exactly what EventImageDownscaler.kt reports when the volume has gone.
       throw PlatformException(
@@ -50,11 +53,17 @@ class FakeDownscaler implements ImageDownscaler {
     if (failOn.any(sourceUri.endsWith)) {
       throw StateError('cannot decode $sourceUri');
     }
-    // Stand-in for a real encode: a small deterministic buffer.
+    // Stand-in for a real encode: a small deterministic buffer, plus the
+    // second encode the native side emits off the same decode.
     return DownscaleResult(
       bytes: Uint8List.fromList(List<int>.filled(2048, 7)),
       width: targetShortSide * 3 ~/ 2,
       height: targetShortSide,
+      thumbBytes: thumbShortSide <= 0
+          ? null
+          : Uint8List.fromList(List<int>.filled(128, 9)),
+      thumbWidth: thumbShortSide <= 0 ? null : thumbShortSide * 3 ~/ 2,
+      thumbHeight: thumbShortSide <= 0 ? null : thumbShortSide,
     );
   }
 }
@@ -472,6 +481,81 @@ void main() {
       expect(failed.single.originalFilename, 'B.JPG');
     });
 
+    test('a grid thumbnail is produced from the same decode', () async {
+      await writePhoto('DCIM/A.JPG');
+      final scan = await worker.scan(source(), scanFolders: const ['DCIM']);
+      final report = await worker.import(source(), scan.newCandidates,
+          settings: settingsWith());
+
+      expect(downscaler.calls, 1, reason: 'one decode, two encodes');
+      expect(downscaler.requestedThumbSides.single,
+          RenditionKind.thumbShortSide);
+
+      final renditions = await ledger.renditionsFor(report.mediaIds.single);
+      final thumb =
+          renditions.firstWhere((r) => r.kind == RenditionKind.thumb);
+      expect(await mediaStore.getFile(thumb.path), isNotNull);
+      expect(thumb.width, isNotNull);
+      expect(thumb.bytes, 128);
+    });
+
+    test('a thumbnail is never offered to the printer', () async {
+      await writePhoto('DCIM/A.JPG');
+      final scan = await worker.scan(source(), scanFolders: const ['DCIM']);
+      final report = await worker.import(source(), scan.newCandidates,
+          settings: settingsWith());
+
+      final best = await ledger.bestRenditionForPrint(report.mediaIds.single);
+      expect(best!.kind, RenditionKind.source,
+          reason: 'a 320px thumbnail must never reach a printer');
+    });
+
+    test('a decode too small for a thumbnail still imports', () async {
+      // The native side returns no thumbnail rather than upscaling one.
+      await writePhoto('DCIM/A.JPG');
+      worker = IngestWorker(
+        ledger: ledger,
+        mediaStore: mediaStore,
+        downscaler: _NoThumbDownscaler(),
+        nowMs: () => 1,
+      );
+      final scan = await worker.scan(source(), scanFolders: const ['DCIM']);
+      final report = await worker.import(source(), scan.newCandidates,
+          settings: settingsWith());
+
+      expect(report.imported, 1);
+      final kinds = [
+        for (final r in await ledger.renditionsFor(report.mediaIds.single))
+          r.kind,
+      ];
+      expect(kinds, [RenditionKind.source]);
+    });
+
+    test('a thumbnail that cannot be written does not fail the import',
+        () async {
+      await writePhoto('DCIM/A.JPG');
+      worker = IngestWorker(
+        ledger: ledger,
+        mediaStore: _ThumbHostileStore(mediaDir),
+        downscaler: downscaler,
+        nowMs: () => 1,
+      );
+
+      final scan = await worker.scan(source(), scanFolders: const ['DCIM']);
+      final report = await worker.import(source(), scan.newCandidates,
+          settings: settingsWith());
+
+      // A missing thumbnail costs a blank tile. Failing the whole import over
+      // one would be losing a photograph to save a preview.
+      expect(report.imported, 1);
+      expect(report.failed, 0);
+      final kinds = [
+        for (final r in await ledger.renditionsFor(report.mediaIds.single))
+          r.kind,
+      ];
+      expect(kinds, [RenditionKind.source]);
+    });
+
     test('an empty candidate list is a no-op', () async {
       final report = await worker.import(
         source(),
@@ -595,5 +679,38 @@ class _VanishingSource extends FolderIngestSource {
       '/storage/VOL-1/DCIM/A.JPG',
       OSError('No such file or directory', 2),
     );
+  }
+}
+
+/// A downscaler whose source is already smaller than the thumbnail target, so
+/// the native side returns no second encode.
+class _NoThumbDownscaler implements ImageDownscaler {
+  @override
+  Future<DownscaleResult> downscale({
+    required String sourceUri,
+    required int targetShortSide,
+    int maxLongSide = 4096,
+    int quality = 88,
+    int thumbShortSide = 0,
+  }) async {
+    return DownscaleResult(
+      bytes: Uint8List.fromList(List<int>.filled(512, 3)),
+      width: 200,
+      height: 150,
+    );
+  }
+}
+
+/// A store that refuses thumbnails, so the best-effort path is exercised.
+class _ThumbHostileStore extends EventMediaStore {
+  _ThumbHostileStore(Directory dir)
+      : super(resolveDirectory: () async => dir);
+
+  @override
+  Future<File?> putBytes(String relativePath, List<int> bytes) {
+    if (relativePath.contains(RenditionKind.thumb)) {
+      throw const FileSystemException('read-only');
+    }
+    return super.putBytes(relativePath, bytes);
   }
 }

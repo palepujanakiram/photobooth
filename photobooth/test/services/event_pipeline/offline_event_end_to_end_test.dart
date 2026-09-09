@@ -38,6 +38,7 @@ class StubDownscaler implements ImageDownscaler {
     required int targetShortSide,
     int maxLongSide = 4096,
     int quality = 88,
+    int thumbShortSide = 0,
   }) async {
     return DownscaleResult(
       bytes: Uint8List.fromList(List<int>.filled(1024, 4)),
@@ -56,6 +57,7 @@ class StubCompositor implements FrameCompositor {
     required String? framePath,
     required EventPrintSize size,
     int quality = 88,
+    int thumbShortSide = 0,
   }) async {
     calls++;
     return CompositeResult(

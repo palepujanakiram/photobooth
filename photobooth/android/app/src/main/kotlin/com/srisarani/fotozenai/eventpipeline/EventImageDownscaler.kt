@@ -36,6 +36,9 @@ object EventImageDownscaler {
     private const val TAG = "EventDownscaler"
     const val CHANNEL_NAME = "com.srisarani.fotozenai/event_downscale"
 
+    /** Grid thumbnails are ~30 KB; 80 is where a 320 px JPEG stops improving. */
+    private const val THUMB_QUALITY = 80
+
     private val mainHandler = Handler(Looper.getMainLooper())
 
 
@@ -64,13 +67,16 @@ object EventImageDownscaler {
             val targetShortSide = call.argument<Int>("targetShortSide") ?: 1920
             val maxLongSide = call.argument<Int>("maxLongSide") ?: 4096
             val quality = call.argument<Int>("quality") ?: 88
+            // 0 or absent means "print derivative only" — the frame compositor
+            // re-emits the thumbnail later, so not every call needs one.
+            val thumbShortSide = call.argument<Int>("thumbShortSide") ?: 0
 
             EventPipelineExecutors.import.execute {
                 try {
                     // Holds a full-resolution bitmap, so it takes its turn with
                     // frame compositing rather than racing it into an OOM.
                     val output = EventPipelineExecutors.withBitmapMemory("downscale") {
-                        downscale(appContext, uri, targetShortSide, maxLongSide, quality)
+                        downscale(appContext, uri, targetShortSide, maxLongSide, quality, thumbShortSide)
                     }
                     mainHandler.post { result.success(output) }
                 } catch (e: Throwable) {
@@ -83,12 +89,21 @@ object EventImageDownscaler {
         }
     }
 
+    /**
+     * Decodes once and encodes up to twice.
+     *
+     * The grid thumbnail is produced from the bitmap already in hand rather than
+     * by re-reading the original: a second decode of a 6 MB JPEG costs far more
+     * than the few milliseconds this adds, and at 400 photos that difference is
+     * the whole of the queue's responsiveness on a weak box.
+     */
     fun downscale(
         context: Context,
         uri: String,
         targetShortSide: Int,
         maxLongSide: Int,
         quality: Int,
+        thumbShortSide: Int = 0,
     ): Map<String, Any?> {
         val source = decodeSource(context, uri)
         var bitmap =
@@ -115,12 +130,43 @@ object EventImageDownscaler {
         bitmap.compress(Bitmap.CompressFormat.JPEG, quality, stream)
         val width = bitmap.width
         val height = bitmap.height
+
+        val thumb = encodeThumb(bitmap, thumbShortSide)
         bitmap.recycle()
 
         return mapOf(
             "bytes" to stream.toByteArray(),
             "width" to width,
             "height" to height,
+            "thumbBytes" to thumb?.get("bytes"),
+            "thumbWidth" to thumb?.get("width"),
+            "thumbHeight" to thumb?.get("height"),
+        )
+    }
+
+    /**
+     * A small JPEG off a bitmap that is already decoded.
+     *
+     * Returns null when no thumbnail was asked for, or when the source is
+     * already smaller than the target — upscaling a thumbnail would cost bytes
+     * for no extra detail.
+     */
+    fun encodeThumb(bitmap: Bitmap, thumbShortSide: Int): Map<String, Any?>? {
+        if (thumbShortSide <= 0) return null
+        val shortSide = minOf(bitmap.width, bitmap.height)
+        if (shortSide <= 0) return null
+        val scale = thumbShortSide.toFloat() / shortSide.toFloat()
+        if (scale >= 1f) return null
+        val w = maxOf(1, Math.round(bitmap.width * scale))
+        val h = maxOf(1, Math.round(bitmap.height * scale))
+        val scaled = Bitmap.createScaledBitmap(bitmap, w, h, true)
+        val out = ByteArrayOutputStream()
+        scaled.compress(Bitmap.CompressFormat.JPEG, THUMB_QUALITY, out)
+        if (scaled != bitmap) scaled.recycle()
+        return mapOf(
+            "bytes" to out.toByteArray(),
+            "width" to w,
+            "height" to h,
         )
     }
 

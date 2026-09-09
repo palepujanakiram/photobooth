@@ -13,6 +13,7 @@ class ExternalVolume {
     this.mediaStoreVolumeName,
     this.directRead = false,
     this.state,
+    this.totalBytes,
   });
 
   final String uuid;
@@ -36,7 +37,31 @@ class ExternalVolume {
 
   final String? state;
 
+  /// Capacity of the volume, or null when it could not be stat-ed.
+  ///
+  /// On the picker this is how an operator tells two seated cards apart: a UUID
+  /// is not something anyone recognises, but "64 GB" and "119 GB" are.
+  final int? totalBytes;
+
   bool get isUsable => isRemovable && isIndexed && mediaStoreVolumeName != null;
+
+  /// What the picker calls this card, e.g. `SD card 2609-0353`.
+  ///
+  /// The UUID is included because two cards from the same reader carry the same
+  /// description, and the operator has to be able to say which row is which.
+  String get displayLabel {
+    final desc = description.trim();
+    final id = uuid.trim();
+    if (desc.isEmpty) return id.isEmpty ? 'Card' : id;
+    if (id.isEmpty) return desc;
+    return '$desc $id';
+  }
+
+  static int? _int(Object? raw) {
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    return null;
+  }
 
   static ExternalVolume fromMap(Map<Object?, Object?> map) {
     return ExternalVolume(
@@ -48,6 +73,7 @@ class ExternalVolume {
       mediaStoreVolumeName: map['mediaStoreVolumeName'] as String?,
       directRead: map['directRead'] == true,
       state: map['state'] as String?,
+      totalBytes: _int(map['totalBytes']),
     );
   }
 }

@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../utils/app_strings.dart';
+import '../../utils/constants.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/app_scaffold.dart';
 import '../event_station/event_station_chrome_view_widgets.dart';
+import 'event_queue_view_widgets.dart';
 import 'event_queue_viewmodel.dart';
 
 /// Shows every photo the pipeline is holding, and where each one has got to.
@@ -29,6 +33,16 @@ class EventQueueScreen extends StatelessWidget {
       child: AppScaffold(
         title: AppStrings.eventQueueTitle,
         showBackButton: true,
+        actions: [
+          Consumer<EventQueueViewModel>(
+            builder: (context, vm, _) => vm.selectionMode || vm.isEmpty
+                ? const SizedBox.shrink()
+                : TextButton(
+                    onPressed: vm.enterSelection,
+                    child: const Text('Select'),
+                  ),
+          ),
+        ],
         child: EventStationBoundShell(
           child: Consumer<EventQueueViewModel>(
             builder: (context, vm, _) => _QueueBody(vm: vm),
@@ -82,14 +96,7 @@ class _QueueBody extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            vm.stats.summary,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: colors.textColor,
-            ),
-          ),
+          QueueRunBar(appColors: colors, vm: vm),
           if (vm.stats.printPaused)
             Padding(
               padding: const EdgeInsets.only(top: 4),
@@ -109,25 +116,99 @@ class _QueueBody extends StatelessWidget {
                       style: TextStyle(color: colors.secondaryTextColor),
                     ),
                   )
-                : GridView.builder(
-              gridDelegate:
-                  const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                childAspectRatio: 0.78,
-                crossAxisSpacing: 8,
-                mainAxisSpacing: 8,
-              ),
-                    itemCount: vm.visibleEntries.length,
-                    itemBuilder: (context, i) => _QueueTile(
-                      entry: vm.visibleEntries[i],
-                      colors: colors,
-                    ),
-                  ),
+                : _QueueGrid(vm: vm, colors: colors),
           ),
           const SizedBox(height: 8),
-          _QueueActions(vm: vm),
+          if (vm.selectionMode)
+            QueueSelectionActions(appColors: colors, vm: vm)
+          else
+            _QueueActions(vm: vm),
         ],
       ),
+    );
+  }
+}
+
+/// The paged grid, with load-more on scroll.
+///
+/// Pagination is not a preference: a 3,000-photo event would otherwise build
+/// 3,000 tiles, and on the Amlogic box that is the difference between a screen
+/// that scrolls and one that looks broken.
+class _QueueGrid extends StatefulWidget {
+  const _QueueGrid({required this.vm, required this.colors});
+
+  final EventQueueViewModel vm;
+  final AppColors colors;
+
+  @override
+  State<_QueueGrid> createState() => _QueueGridState();
+}
+
+class _QueueGridState extends State<_QueueGrid> {
+  final _controller = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    if (!_controller.hasClients) return;
+    final position = _controller.position;
+    // A screenful of headroom, so the next page is already in when the operator
+    // reaches the bottom rather than after it.
+    if (position.pixels >= position.maxScrollExtent - 600) {
+      unawaited(widget.vm.loadMore());
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_onScroll);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final vm = widget.vm;
+    final entries = vm.visibleEntries;
+    return GridView.builder(
+      controller: _controller,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        childAspectRatio: 0.78,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
+      ),
+      itemCount: entries.length + (vm.hasMore ? 1 : 0),
+      itemBuilder: (context, i) {
+        if (i >= entries.length) {
+          return QueueLoadMoreTile(
+            appColors: widget.colors,
+            remaining: vm.totalInFilter - entries.length,
+            onTap: vm.loadMore,
+          );
+        }
+        final entry = entries[i];
+        return _QueueTile(
+          entry: entry,
+          colors: widget.colors,
+          selectable: vm.selectionMode,
+          selected: vm.isSelected(entry),
+          onTap: vm.selectionMode
+              ? () => vm.toggleSelected(entry)
+              : () => Navigator.of(context).pushNamed(
+                    AppConstants.kRouteEventItemDetail,
+                    arguments: entry.item.id,
+                  ),
+          onLongPress: () {
+            vm.enterSelection();
+            vm.toggleSelected(entry);
+          },
+        );
+      },
     );
   }
 }
@@ -167,21 +248,38 @@ class _QueueFilterBar extends StatelessWidget {
 }
 
 class _QueueTile extends StatelessWidget {
-  const _QueueTile({required this.entry, required this.colors});
+  const _QueueTile({
+    required this.entry,
+    required this.colors,
+    this.selectable = false,
+    this.selected = false,
+    this.onTap,
+    this.onLongPress,
+  });
 
   final QueueEntry entry;
   final AppColors colors;
+  final bool selectable;
+  final bool selected;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
     final file = entry.thumbnailFile;
-    return Column(
+    return InkWell(
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(
           child: ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: file == null
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+            file == null
                 ? Container(
                     color: colors.cardBackgroundColor,
                     child: Icon(
@@ -189,9 +287,9 @@ class _QueueTile extends StatelessWidget {
                       color: colors.secondaryTextColor,
                     ),
                   )
-                // Decoded small on purpose: the derivative is 2880px wide, and
-                // decoding dozens at full size would blow the heap the same way
-                // the old import tray did.
+                // The dedicated ~320px thumbnail, decoded small again for the
+                // tile. Never the print derivative: decoding dozens of 2880px
+                // JPEGs is the heap mistake the old import tray made.
                 : Image.file(
                     file,
                     fit: BoxFit.cover,
@@ -201,6 +299,24 @@ class _QueueTile extends StatelessWidget {
                       color: colors.cardBackgroundColor,
                     ),
                   ),
+                if (selectable)
+                  Align(
+                    alignment: Alignment.topRight,
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Icon(
+                        selected
+                            ? Icons.check_box
+                            : Icons.check_box_outline_blank,
+                        size: 20,
+                        color: selected
+                            ? colors.successColor
+                            : colors.secondaryTextColor,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
         const SizedBox(height: 4),
@@ -225,6 +341,7 @@ class _QueueTile extends StatelessWidget {
           ),
         ),
       ],
+      ),
     );
   }
 }

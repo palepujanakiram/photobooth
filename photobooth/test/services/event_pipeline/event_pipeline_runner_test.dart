@@ -20,6 +20,7 @@ class StubCompositor implements FrameCompositor {
     required String? framePath,
     required EventPrintSize size,
     int quality = 88,
+    int thumbShortSide = 0,
   }) async {
     return CompositeResult(
       bytes: Uint8List.fromList(const [1, 2, 3]),

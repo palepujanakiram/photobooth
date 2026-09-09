@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../../../models/event_pipeline/event_pipeline_settings.dart';
 import '../../../models/event_pipeline/media_item.dart';
 import '../../../models/event_pipeline/media_rendition.dart';
@@ -242,6 +244,39 @@ class IngestWorker {
     return const _Outcome(_OutcomeKind.sourceGone);
   }
 
+  /// Writes the grid thumbnail, if the decode produced one.
+  ///
+  /// Best effort by design: a missing thumbnail costs a blank tile, and failing
+  /// the whole import over one would be losing a photograph to save a preview.
+  Future<void> _storeThumb({
+    required String mediaId,
+    required String? eventId,
+    required Uint8List? bytes,
+    required int? width,
+    required int? height,
+  }) async {
+    if (bytes == null || bytes.isEmpty) return;
+    final path = EventMediaStore.relativePathFor(
+      mediaId: mediaId,
+      kind: RenditionKind.thumb,
+      eventId: eventId,
+    );
+    try {
+      if (await _media.putBytes(path, bytes) == null) return;
+      await _ledger.putRendition(MediaRendition(
+        mediaId: mediaId,
+        kind: RenditionKind.thumb,
+        path: path,
+        width: width,
+        height: height,
+        bytes: bytes.length,
+        createdAtMs: _nowMs(),
+      ));
+    } catch (e) {
+      AppLogger.debug('Thumbnail store failed for $mediaId: $e');
+    }
+  }
+
   Future<_StoreResult> _storeDerivative(
     IngestSource source,
     IngestCandidate candidate, {
@@ -259,6 +294,10 @@ class IngestWorker {
         sourceUri: candidate.uri,
         targetShortSide:
             DownscaleTarget.shortSideFor(settings.qualityFactor),
+        // Second encode off the same decode. The queue grid has to have
+        // something to draw the moment an import finishes, and decoding the
+        // print derivative per tile is the memory mistake the old tray made.
+        thumbShortSide: RenditionKind.thumbShortSide,
       );
       final file = await _media.putBytes(relativePath, scaled.bytes);
       if (file == null) return _StoreResult.failed;
@@ -272,6 +311,13 @@ class IngestWorker {
         bytes: scaled.bytes.length,
         createdAtMs: _nowMs(),
       ));
+      await _storeThumb(
+        mediaId: mediaId,
+        eventId: eventId,
+        bytes: scaled.thumbBytes,
+        width: scaled.thumbWidth,
+        height: scaled.thumbHeight,
+      );
       return _StoreResult.stored;
     } catch (e, st) {
       AppLogger.error(

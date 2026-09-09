@@ -72,6 +72,7 @@ object EventFrameCompositor {
                                 width,
                                 height,
                                 call.argument<Int>("quality") ?: 88,
+                                call.argument<Int>("thumbShortSide") ?: 0,
                             )
                         }
                     mainHandler.post { result.success(output) }
@@ -83,6 +84,13 @@ object EventFrameCompositor {
         }
     }
 
+    /**
+     * Draws the print, and optionally the grid thumbnail from the same canvas.
+     *
+     * The thumbnail is what the queue grid shows, so emitting it here is how the
+     * operator sees the *framed* result rather than the raw import — and it
+     * costs one extra encode off a bitmap already in hand, not a second decode.
+     */
     fun composite(
         context: Context,
         photoPath: String,
@@ -90,6 +98,7 @@ object EventFrameCompositor {
         width: Int,
         height: Int,
         quality: Int,
+        thumbShortSide: Int = 0,
     ): Map<String, Any?> {
         // The frame is the design; the print follows it. A portrait frame on a
         // landscape raster would letterbox, leaving the cover-fitted photo
@@ -118,12 +127,16 @@ object EventFrameCompositor {
 
         val stream = ByteArrayOutputStream()
         canvasBitmap.compress(Bitmap.CompressFormat.JPEG, quality, stream)
+        val thumb = EventImageDownscaler.encodeThumb(canvasBitmap, thumbShortSide)
         canvasBitmap.recycle()
 
         return mapOf(
             "bytes" to stream.toByteArray(),
             "width" to width,
             "height" to height,
+            "thumbBytes" to thumb?.get("bytes"),
+            "thumbWidth" to thumb?.get("width"),
+            "thumbHeight" to thumb?.get("height"),
         )
     }
 

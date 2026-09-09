@@ -3,12 +3,15 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/models/event_pipeline/event_pipeline_flags.dart';
 import 'package:photobooth/models/event_pipeline/media_item.dart';
+import 'package:photobooth/models/event_info_model.dart';
 import 'package:photobooth/models/event_pipeline/media_rendition.dart';
 import 'package:photobooth/screens/event_pipeline/event_queue_viewmodel.dart';
+import 'package:photobooth/services/event_manager.dart';
 import 'package:photobooth/services/event_pipeline/event_media_store.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_config.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_db.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_ledger.dart';
+import 'package:photobooth/services/event_pipeline/event_pipeline_queue.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_runner.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -20,17 +23,24 @@ void main() {
   late EventPipelineDb db;
   late EventPipelineRunner runner;
   late EventMediaStore media;
+  late EventPipelineLedger ledger;
   var ids = 0;
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     EventPipelineConfig.resetCacheForTests();
     EventPipelineRunner.resetInstanceForTests();
+    EventManager.resetCacheForTests();
+    // Every read is scoped to the bound event, so the queue needs one bound.
+    await EventManager().cacheVerifyResult(
+      const EventInfoModel(id: 'EVT1', code: 'GALA-01'),
+    );
     root = await Directory.systemTemp.createTemp('fz_evp_queue_');
     mediaDir = Directory('${root.path}/media')..createSync(recursive: true);
     ids = 0;
     db = (await EventPipelineDb.open(root))!;
     media = EventMediaStore(resolveDirectory: () async => mediaDir);
+    ledger = EventPipelineLedger(db: db);
 
     final config = EventPipelineConfig();
     await config.cacheFlags(
@@ -56,24 +66,27 @@ void main() {
     required String stage,
     bool withRendition = true,
     String? filename,
+    String? eventId = 'EVT1',
   }) async {
     final ledger = EventPipelineLedger(db: db, newId: () => 'm${ids++}');
     final r = await ledger.insertIfNew(
       source: MediaSource.sdCard,
       sourceRef: 'V:$ids',
       contentKey: 'ck$ids',
-      eventId: 'EVT1',
+      eventId: eventId,
       originalFilename: filename ?? 'IMG_$ids.JPG',
     );
     if (withRendition) {
-      final path = 'EVT1/${r.item.id}-source.jpg';
-      await media.putBytes(path, [1, 2, 3]);
-      await ledger.putRendition(MediaRendition(
-        mediaId: r.item.id,
-        kind: RenditionKind.source,
-        path: path,
-        createdAtMs: 1,
-      ));
+      for (final kind in const [RenditionKind.source, RenditionKind.thumb]) {
+        final path = '${eventId ?? 'unassigned'}/${r.item.id}-$kind.jpg';
+        await media.putBytes(path, [1, 2, 3]);
+        await ledger.putRendition(MediaRendition(
+          mediaId: r.item.id,
+          kind: kind,
+          path: path,
+          createdAtMs: 1,
+        ));
+      }
     }
     if (stage != MediaStage.ingested) {
       await ledger.setStage(r.item.id, stage);
@@ -81,10 +94,12 @@ void main() {
     return r.item.id;
   }
 
-  EventQueueViewModel build({String? initialFilter}) => EventQueueViewModel(
+  EventQueueViewModel build({String? initialFilter, int pageSize = 60}) =>
+      EventQueueViewModel(
         runner: runner,
         mediaStore: media,
         initialFilter: initialFilter,
+        pageSize: pageSize,
         refreshInterval: const Duration(hours: 1),
       );
 
@@ -179,7 +194,7 @@ void main() {
       addTearDown(vm.dispose);
 
       expect(vm.visibleEntries, hasLength(2));
-      vm.setFilter(MediaStage.done);
+      await vm.setFilter(MediaStage.done);
       expect(vm.visibleEntries, hasLength(1));
       expect(vm.visibleEntries.single.isDone, isTrue);
     });
@@ -236,8 +251,8 @@ void main() {
       await vm.start();
       addTearDown(vm.dispose);
 
-      vm.setFilter(MediaStage.done);
-      vm.setFilter(QueueFilter.all);
+      await vm.setFilter(MediaStage.done);
+      await vm.setFilter(QueueFilter.all);
       expect(vm.visibleEntries, hasLength(2));
     });
 
@@ -294,6 +309,375 @@ void main() {
       await vm.retryFailed();
       final reloaded = await ledger.findById(id);
       expect(reloaded!.stage, MediaStage.printing);
+    });
+  });
+
+  group('event scoping', () {
+    test("another event's photos never appear", () async {
+      await seed(stage: MediaStage.done);
+      await seed(stage: MediaStage.failed, eventId: 'OTHER-EVENT');
+      await seed(stage: MediaStage.done, eventId: 'OTHER-EVENT');
+
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      // The ledger is durable across events, so without scoping an operator
+      // opening the queue at a wedding would see last weekend's party — wrong
+      // counts, and a real chance of reprinting the wrong couple's photos.
+      expect(vm.visibleEntries, hasLength(1));
+      expect(vm.totalInFilter, 1);
+      expect(vm.stats.total, 1);
+      expect(vm.stats.failed, 0,
+          reason: "the other event's failure must not raise this one's alarm");
+    });
+
+    test('unassigned photos are not folded into an event', () async {
+      await seed(stage: MediaStage.done);
+      await seed(stage: MediaStage.done, eventId: null);
+
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.visibleEntries, hasLength(1));
+    });
+
+    test('the counters the chips show are scoped too', () async {
+      await seed(stage: MediaStage.failed);
+      await seed(stage: MediaStage.failed, eventId: 'OTHER-EVENT');
+
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      final byLabel = {for (final o in vm.filterOptions) o.label: o.count};
+      expect(byLabel['Failed'], 1);
+      expect(byLabel['All'], 1);
+    });
+  });
+
+  group('pagination', () {
+    test('loads one page, then more on demand', () async {
+      for (var i = 0; i < 7; i++) {
+        await seed(stage: MediaStage.done);
+      }
+      final vm = build(pageSize: 3);
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.visibleEntries, hasLength(3));
+      expect(vm.totalInFilter, 7);
+      expect(vm.hasMore, isTrue);
+
+      await vm.loadMore();
+      expect(vm.visibleEntries, hasLength(6));
+      expect(vm.hasMore, isTrue);
+
+      await vm.loadMore();
+      expect(vm.visibleEntries, hasLength(7));
+      expect(vm.hasMore, isFalse);
+    });
+
+    test('a poll keeps the pages already on screen', () async {
+      for (var i = 0; i < 6; i++) {
+        await seed(stage: MediaStage.done);
+      }
+      final vm = build(pageSize: 2);
+      await vm.start();
+      addTearDown(vm.dispose);
+      await vm.loadMore();
+      expect(vm.visibleEntries, hasLength(4));
+
+      // The refresh timer must not scroll the operator back to the top.
+      await vm.refresh();
+      expect(vm.visibleEntries, hasLength(4));
+    });
+
+    test('load more past the end is a no-op', () async {
+      await seed(stage: MediaStage.done);
+      final vm = build(pageSize: 10);
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.hasMore, isFalse);
+      await vm.loadMore();
+      expect(vm.visibleEntries, hasLength(1));
+    });
+
+    test('pages are scoped to the filter, not filtered after loading',
+        () async {
+      for (var i = 0; i < 4; i++) {
+        await seed(stage: MediaStage.done);
+      }
+      await seed(stage: MediaStage.failed);
+
+      final vm = build(pageSize: 2, initialFilter: MediaStage.failed);
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      // A filter applied in memory over a page would show nothing here.
+      expect(vm.visibleEntries, hasLength(1));
+      expect(vm.hasMore, isFalse);
+    });
+  });
+
+  group('selection', () {
+    test('nothing acts until something is ticked', () async {
+      await seed(stage: MediaStage.failed);
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      vm.enterSelection();
+      expect(vm.selectionMode, isTrue);
+      expect(vm.hasSelection, isFalse);
+      expect(vm.canRetrySelected, isFalse);
+      expect(vm.canReprintSelected, isFalse);
+      expect(vm.canRemoveSelected, isFalse);
+    });
+
+    test('actions appear only when valid for the selection', () async {
+      await seed(stage: MediaStage.failed);
+      await seed(stage: MediaStage.done);
+      await seed(stage: MediaStage.ai);
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      final failed = vm.visibleEntries.firstWhere((e) => e.isFailed);
+      vm.enterSelection();
+      vm.toggleSelected(failed);
+      expect(vm.canRetrySelected, isTrue);
+      expect(vm.canReprintSelected, isFalse,
+          reason: 'nothing finished is ticked');
+      expect(vm.canSkipAiSelected, isFalse);
+
+      vm.selectNone();
+      final done = vm.visibleEntries.firstWhere((e) => e.isDone);
+      vm.toggleSelected(done);
+      expect(vm.canReprintSelected, isTrue);
+      expect(vm.canRetrySelected, isFalse);
+    });
+
+    test('an action applies only to what is ticked', () async {
+      final failedA = await seed(stage: MediaStage.failed);
+      await seed(stage: MediaStage.failed);
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      vm.enterSelection();
+      vm.toggleSelected(
+        vm.visibleEntries.firstWhere((e) => e.item.id == failedA),
+      );
+      final n = await vm.removeSelected();
+
+      expect(n, 1, reason: 'a bare act-on-everything is what this replaces');
+      expect(vm.visibleEntries, hasLength(1));
+      expect(vm.visibleEntries.single.item.id, isNot(failedA));
+    });
+
+    test('retry requeues only the ticked failures', () async {
+      final a = await seed(stage: MediaStage.failed);
+      final b = await seed(stage: MediaStage.failed);
+      final queue = EventPipelineQueue(db: db);
+      for (final id in [a, b]) {
+        await ledger.markSelected(id, const ['print']);
+        await ledger.setStage(id, MediaStage.failed);
+        await queue.enqueue(kind: 'print', mediaId: id, eventId: 'EVT1');
+        final job = await queue.findFor(kind: 'print', mediaId: id);
+        await queue.claimReady('print');
+        await queue.markFailed(job!.id, error: 'nope', retryable: false);
+      }
+
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      vm.enterSelection();
+      vm.toggleSelected(vm.visibleEntries.firstWhere((e) => e.item.id == a));
+      final n = await vm.retrySelected();
+
+      expect(n, 1);
+      expect((await ledger.findById(a))!.stage, MediaStage.printing);
+      expect((await ledger.findById(b))!.stage, MediaStage.failed,
+          reason: 'a bare retry-all is what selection replaces');
+    });
+
+    test('skip AI drops the step on the ticked items only', () async {
+      final a = await seed(stage: MediaStage.ingested);
+      final b = await seed(stage: MediaStage.ingested);
+      final queue = EventPipelineQueue(db: db);
+      for (final id in [a, b]) {
+        await ledger.markSelected(id, const ['ai', 'print']);
+        await ledger.setStage(id, MediaStage.ai);
+        await queue.enqueue(kind: 'ai', mediaId: id, eventId: 'EVT1');
+      }
+
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      vm.enterSelection();
+      vm.toggleSelected(vm.visibleEntries.firstWhere((e) => e.item.id == a));
+      final n = await vm.skipAiSelected();
+
+      expect(n, 1);
+      expect((await ledger.findById(a))!.steps, ['print']);
+      expect((await ledger.findById(b))!.steps, ['ai', 'print']);
+    });
+
+    test('retry ignores ticked items that are not failures', () async {
+      await seed(stage: MediaStage.done);
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      vm.selectAllLoaded();
+      expect(await vm.retrySelected(), 0);
+    });
+
+    test('All ticks the loaded page and None clears it', () async {
+      for (var i = 0; i < 3; i++) {
+        await seed(stage: MediaStage.done);
+      }
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      vm.selectAllLoaded();
+      expect(vm.selectionMode, isTrue);
+      expect(vm.selectedCount, 3);
+      vm.selectNone();
+      expect(vm.selectedCount, 0);
+    });
+
+    test('changing the filter clears the ticks', () async {
+      await seed(stage: MediaStage.done);
+      await seed(stage: MediaStage.failed);
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      vm.selectAllLoaded();
+      expect(vm.selectedCount, 2);
+      await vm.setFilter(MediaStage.failed);
+
+      // Ticks carried across a filter change would let an action reach items
+      // the operator can no longer see.
+      expect(vm.selectedCount, 0);
+    });
+
+    test('removing an item takes its files with it', () async {
+      final id = await seed(stage: MediaStage.done);
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      vm.selectAllLoaded();
+      await vm.removeSelected();
+
+      expect(vm.visibleEntries, isEmpty);
+      final ledger = EventPipelineLedger(db: db);
+      expect(await ledger.findById(id), isNull);
+      expect(await media.getFile('EVT1/$id-thumb.jpg'), isNull);
+    });
+
+    test('an action leaves selection mode when it is done', () async {
+      await seed(stage: MediaStage.done);
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      vm.selectAllLoaded();
+      await vm.reprintSelected();
+      expect(vm.selectionMode, isFalse);
+      expect(vm.hasSelection, isFalse);
+    });
+
+    test('exiting selection clears the ticks', () async {
+      await seed(stage: MediaStage.done);
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      vm.selectAllLoaded();
+      vm.exitSelection();
+      expect(vm.selectionMode, isFalse);
+      expect(vm.selectedCount, 0);
+    });
+  });
+
+  group('pause and resume', () {
+    test('pausing holds every stage, not just one', () async {
+      final id = await seed(stage: MediaStage.queued);
+      final queue = EventPipelineQueue(db: db);
+      await queue.enqueue(kind: 'frame', mediaId: id);
+      await queue.enqueue(kind: 'print', mediaId: id);
+
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      await vm.setPaused(true);
+      expect(vm.isPaused, isTrue);
+      expect(await queue.claimReady('frame'), isEmpty);
+      expect(await queue.claimReady('print'), isEmpty);
+    });
+
+    test('pause survives a restart — it is queue state, not screen state',
+        () async {
+      final first = build();
+      await first.start();
+      await first.setPaused(true);
+      first.dispose();
+
+      final second = build();
+      await second.start();
+      addTearDown(second.dispose);
+
+      expect(second.isPaused, isTrue);
+    });
+
+    test('pausing an empty queue still holds the work that arrives next',
+        () async {
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+      await vm.setPaused(true);
+
+      final queue = EventPipelineQueue(db: db);
+      await queue.enqueue(kind: 'print', mediaId: 'later');
+      expect(await queue.claimReady('print'), isEmpty,
+          reason: 'a pause derived from job rows would have missed this');
+    });
+
+    test('resuming releases the work', () async {
+      final queue = EventPipelineQueue(db: db);
+      await queue.enqueue(kind: 'print', mediaId: 'm1');
+
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      await vm.setPaused(true);
+      expect(await queue.claimReady('print'), isEmpty);
+
+      await vm.setPaused(false);
+      expect(vm.isPaused, isFalse);
+      expect(await queue.claimReady('print'), hasLength(1));
+    });
+
+    test('processing is the live indicator, and pausing stops it', () async {
+      await seed(stage: MediaStage.framing);
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.isProcessing, isTrue);
+      await vm.setPaused(true);
+      expect(vm.isProcessing, isFalse);
     });
   });
 }

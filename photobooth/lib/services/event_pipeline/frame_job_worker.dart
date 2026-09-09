@@ -3,6 +3,7 @@ import '../../models/event_pipeline/event_print_size.dart';
 import '../../models/event_pipeline/media_item.dart';
 import '../../models/event_pipeline/media_rendition.dart';
 import '../../models/event_pipeline/pipeline_job.dart';
+import '../../utils/logger.dart';
 import 'event_frame_cache.dart';
 import 'event_media_store.dart';
 import 'event_pipeline_ledger.dart';
@@ -76,6 +77,9 @@ class FrameJobWorker extends EventPipelineWorker {
         photoPath: inputFile.path,
         framePath: framePath,
         size: size,
+        // Second encode off the finished canvas, so the queue grid shows the
+        // framed result rather than the raw import. One decode, two encodes.
+        thumbShortSide: RenditionKind.thumbShortSide,
       );
 
       final path = EventMediaStore.relativePathFor(
@@ -97,11 +101,41 @@ class FrameJobWorker extends EventPipelineWorker {
         bytes: result.bytes.length,
         createdAtMs: _nowMs(),
       ));
+      await _overwriteThumb(item, result);
       return const JobResult.done();
     } catch (e) {
       // A decode failure on one photo is that photo's problem; the queue keeps
       // going and print still falls back to the AI or source rendition.
       return JobResult.retry(e.toString());
+    }
+  }
+
+  /// Replaces the import-time thumbnail with the framed one.
+  ///
+  /// The grid always shows current state, so a photo that has been framed must
+  /// stop looking like one that has not. Best effort — a stale thumbnail is a
+  /// cosmetic problem, and failing a finished frame job over it is not.
+  Future<void> _overwriteThumb(MediaItem item, CompositeResult result) async {
+    final bytes = result.thumbBytes;
+    if (bytes == null || bytes.isEmpty) return;
+    final path = EventMediaStore.relativePathFor(
+      mediaId: item.id,
+      kind: RenditionKind.thumb,
+      eventId: item.eventId,
+    );
+    try {
+      if (await _media.putBytes(path, bytes) == null) return;
+      await _ledger.putRendition(MediaRendition(
+        mediaId: item.id,
+        kind: RenditionKind.thumb,
+        path: path,
+        width: result.thumbWidth,
+        height: result.thumbHeight,
+        bytes: bytes.length,
+        createdAtMs: _nowMs(),
+      ));
+    } catch (e) {
+      AppLogger.debug('Thumbnail overwrite failed for ${item.id}: $e');
     }
   }
 

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 
 import '../../models/event_pipeline/event_frame.dart';
 import '../../models/event_pipeline/event_pipeline_settings.dart';
+import '../../models/event_pipeline/media_item.dart';
 import '../../utils/logger.dart';
 import '../event_manager.dart';
 import 'ai_job_worker.dart';
@@ -280,6 +281,57 @@ class EventPipelineRunner {
     // Queued work must survive the operator locking the phone.
     await syncServiceState();
     return queued;
+  }
+
+  /// Queues another print of an item's finished output.
+  ///
+  /// Reprint is another copy of **whatever the finished output is** — the framed
+  /// version if there is one, else the AI result, else the imported photo. It
+  /// deliberately does not re-run a stage: the operator wants another print of
+  /// what they can see, not a fresh generation that might come out different
+  /// (spec §8).
+  Future<bool> reprint(String mediaId) async {
+    final ledger = _ledger;
+    final queue = _queue;
+    if (ledger == null || queue == null) return false;
+
+    final item = await ledger.findById(mediaId);
+    if (item == null) return false;
+    // Nothing to reprint if no derivative was ever produced.
+    if (await ledger.bestRenditionForPrint(mediaId) == null) return false;
+
+    await queue.enqueue(
+      kind: EventPipelineStep.print,
+      mediaId: mediaId,
+      eventId: item.eventId,
+      payload: <String, dynamic>{'copies': _settings.defaultCopies},
+    );
+    await ledger.setStage(mediaId, MediaStage.printing);
+    await syncServiceState();
+    return true;
+  }
+
+  /// Removes an item from the event: its jobs, its renditions, its row and its
+  /// files.
+  ///
+  /// The files go too. A 3,000-frame event is roughly 4 GB of derivatives, so an
+  /// item removed from the queue that leaves its images behind is a disk leak
+  /// with no way to find it again.
+  Future<bool> removeItem(String mediaId) async {
+    final ledger = _ledger;
+    final queue = _queue;
+    if (ledger == null || queue == null) return false;
+
+    final item = await ledger.findById(mediaId);
+    if (item == null) return false;
+
+    await queue.deleteFor(mediaId);
+    for (final rendition in await ledger.renditionsFor(mediaId)) {
+      await _media.delete(rendition.path);
+    }
+    await ledger.deleteItem(mediaId);
+    await syncServiceState();
+    return true;
   }
 
   /// Runs every local stage to completion — the console's "run now".

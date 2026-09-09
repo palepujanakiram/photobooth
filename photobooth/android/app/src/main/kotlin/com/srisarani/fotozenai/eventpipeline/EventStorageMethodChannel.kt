@@ -135,6 +135,9 @@ object EventStorageMethodChannel {
                 // Whether the app UID can enumerate it with no grant at all.
                 "directRead" to canListDirectly(directory),
                 "mediaStoreVolumeName" to volume.mediaStoreVolumeName,
+                // Capacity, so the picker can tell two seated cards apart by
+                // more than a UUID an operator has no way to recognise.
+                "totalBytes" to totalBytes(directory?.absolutePath),
             )
         }
     }
@@ -302,6 +305,17 @@ object EventStorageMethodChannel {
      * Event media sits outside `KioskDiskGuard` by design, so a free-space floor
      * is the only thing stopping an import filling the disk.
      */
+    private fun totalBytes(path: String?): Long? {
+        val target = path?.takeIf { it.isNotBlank() } ?: return null
+        return try {
+            val stat = StatFs(target)
+            stat.blockCountLong * stat.blockSizeLong
+        } catch (e: IllegalArgumentException) {
+            Log.d(TAG, "totalBytes failed for $target: ${e.message}")
+            null
+        }
+    }
+
     private fun freeBytes(path: String?): Long? {
         val target = path?.takeIf { it.isNotBlank() } ?: return null
         return try {

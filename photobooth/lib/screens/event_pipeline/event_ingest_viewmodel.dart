@@ -25,6 +25,15 @@ enum IngestPhase {
   /// Nothing readable is inserted.
   noCard,
 
+  /// Cards are mounted and the operator has not chosen one yet.
+  ///
+  /// The first state of every import. **Nothing is read until they tap a row**:
+  /// a multi-slot reader can hold several cards, so "the card" is not something
+  /// the app can assume, and a scan burns I/O on a card the operator may not
+  /// have meant — on a slow box, competing with whatever the queue is already
+  /// doing (spec §5).
+  pickVolume,
+
   /// A card is mounted but MediaStore is still indexing it.
   scanning,
 
@@ -93,6 +102,7 @@ class EventIngestViewModel extends ChangeNotifier {
   MediaStoreIngestSource? _source;
 
   IngestPhase _phase = IngestPhase.noCard;
+  List<ExternalVolume> _volumes = const <ExternalVolume>[];
   ExternalVolume? _volume;
   IngestScanResult? _scan;
   EventPipelineSettings? _settings;
@@ -120,6 +130,12 @@ class EventIngestViewModel extends ChangeNotifier {
   final Set<String> _extraFolders = <String>{};
 
   IngestPhase get phase => _phase;
+
+  /// Every mounted volume, shown even when there is only one. Consistency beats
+  /// saving a tap, and it keeps "which card am I looking at" on screen.
+  List<ExternalVolume> get volumes => _volumes;
+
+  /// The card the operator chose, once they have.
   ExternalVolume? get volume => _volume;
   IngestScanResult? get scan => _scan;
   EventPipelineSettings? get settings => _settings;
@@ -183,23 +199,61 @@ class EventIngestViewModel extends ChangeNotifier {
       // why. Wiping the screen here instead would replace an honest "imported
       // 50 of 400 — reinsert and scan again" with a blank "insert a card".
       if (_phase == IngestPhase.importing) return;
-      _volume = null;
-      _source = null;
-      _scan = null;
-      _selected.clear();
-      _setPhase(IngestPhase.noCard);
+      unawaited(_reconcileVolumes());
       return;
     }
     _cardRemoved = false;
     // An insert is only a hint that something appeared. The volume may not be
-    // mounted yet, and even once mounted MediaStore has not indexed it.
-    unawaited(refresh());
+    // mounted yet, and even once mounted MediaStore has not indexed it. Nothing
+    // is scanned either way — the operator still chooses.
+    unawaited(_reconcileVolumes());
   }
 
-  /// Finds a readable card and scans it. Also the manual "Scan card" action.
+  /// Re-lists volumes after the reader changed, keeping the operator's place.
   ///
-  /// A manual path exists on purpose: auto-detect can miss on some boxes, and a
-  /// button costs nothing while being the documented fallback.
+  /// Pulling the *other* card of a two-slot reader must not throw away a scan
+  /// in progress, so the chosen card is only abandoned when it is the one that
+  /// actually went.
+  Future<void> _reconcileVolumes() async {
+    if (_busy) return;
+    List<ExternalVolume> volumes;
+    try {
+      volumes = await _storage.listVolumes();
+    } catch (e) {
+      AppLogger.debug('Volume re-list failed: $e');
+      return;
+    }
+    _volumes = volumes;
+
+    final chosen = _volume;
+    if (chosen == null) {
+      // On the picker, or nothing chosen: the list is the whole screen.
+      if (_phase != IngestPhase.complete) {
+        _setPhase(volumes.isEmpty ? IngestPhase.noCard : IngestPhase.pickVolume);
+      }
+      notifyListeners();
+      return;
+    }
+    if (volumes.any((v) => v.uuid == chosen.uuid)) {
+      // Some other slot changed; the card being worked on is still seated.
+      notifyListeners();
+      return;
+    }
+    _volume = null;
+    _source = null;
+    _scan = null;
+    _selected.clear();
+    if (_phase != IngestPhase.complete) {
+      _setPhase(volumes.isEmpty ? IngestPhase.noCard : IngestPhase.pickVolume);
+    }
+    notifyListeners();
+  }
+
+  /// Re-lists what is mounted and returns to the picker.
+  ///
+  /// Deliberately does **not** scan. Discovering a card and reading one are now
+  /// separate actions, so an operator can seat a second card without the app
+  /// starting work on it.
   Future<void> refresh() async {
     if (_busy) return;
     _busy = true;
@@ -207,13 +261,30 @@ class EventIngestViewModel extends ChangeNotifier {
     notifyListeners();
     try {
       if (!await _ensurePermission()) return;
-      final volume = await _findVolume();
-      if (volume == null) {
-        _volume = null;
-        _setPhase(IngestPhase.noCard);
-        return;
-      }
-      _volume = volume;
+      _volumes = await _storage.listVolumes();
+      _volume = null;
+      _source = null;
+      _scan = null;
+      _selected.clear();
+      _setPhase(_volumes.isEmpty ? IngestPhase.noCard : IngestPhase.pickVolume);
+    } catch (e, st) {
+      AppLogger.error('Ingest refresh failed', error: e, stackTrace: st);
+      _error = 'Could not read the card reader.';
+      _setPhase(IngestPhase.noCard);
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
+  }
+
+  /// Reads the card the operator tapped. The only path that touches a card.
+  Future<void> selectVolume(ExternalVolume volume) async {
+    if (_busy) return;
+    _busy = true;
+    _error = null;
+    _volume = volume;
+    notifyListeners();
+    try {
       if (!volume.isUsable) {
         // Mounted but not indexed — distinct from an empty card, and the
         // operator needs to be told which it is.
@@ -222,12 +293,29 @@ class EventIngestViewModel extends ChangeNotifier {
       }
       await _scanVolume(volume);
     } catch (e, st) {
-      AppLogger.error('Ingest refresh failed', error: e, stackTrace: st);
+      AppLogger.error('Ingest scan failed', error: e, stackTrace: st);
       _error = 'Could not read the card.';
+      _setPhase(IngestPhase.pickVolume);
     } finally {
       _busy = false;
       notifyListeners();
     }
+  }
+
+  /// Re-reads the card already chosen — the "Scan again" action.
+  Future<void> rescan() async {
+    final volume = _volume;
+    if (volume == null) {
+      await refresh();
+      return;
+    }
+    await selectVolume(volume);
+  }
+
+  /// Leaves a chosen card and goes back to the list.
+  Future<void> backToVolumes() async {
+    _report = null;
+    await refresh();
   }
 
   Future<bool> _ensurePermission() async {
@@ -237,16 +325,6 @@ class EventIngestViewModel extends ChangeNotifier {
     if (requested.isGranted || requested.isLimited) return true;
     _setPhase(IngestPhase.needsPermission);
     return false;
-  }
-
-  Future<ExternalVolume?> _findVolume() async {
-    final volumes = await _storage.listVolumes();
-    if (volumes.isEmpty) return null;
-    // Prefer one we can actually read; fall back so "unreadable" can be shown.
-    for (final v in volumes) {
-      if (v.isUsable) return v;
-    }
-    return volumes.first;
   }
 
   /// Waits for the media scanner before trusting a count.
@@ -391,7 +469,7 @@ class EventIngestViewModel extends ChangeNotifier {
     }
   }
 
-  /// Leaves the "safe to remove" state and rescans whatever is inserted.
+  /// Leaves the "safe to remove" state and returns to the card list.
   Future<void> done() async {
     _report = null;
     _scan = null;

@@ -12,13 +12,28 @@ abstract final class RenditionKind {
   /// Result of the frame step.
   static const String framed = 'framed';
 
+  /// Grid thumbnail, ~320 px short side and ~30 KB.
+  ///
+  /// Roughly 20x less to read than the print derivative and a trivial decode,
+  /// which is the difference between a smooth grid and an unusable one on the
+  /// Amlogic box. It costs no extra read: the downscaler already holds the full
+  /// bitmap and the compositor already holds the finished canvas, so each emits
+  /// two encodes from one decode.
+  ///
+  /// Deliberately **not** in [printPriority] — a 320 px thumbnail must never
+  /// reach a printer.
+  static const String thumb = 'thumb';
+
   /// Order the print step resolves in — best available wins.
   ///
   /// So a failed frame step still prints the AI result, and an AI-off event
   /// prints the source derivative, rather than either case blocking the print.
   static const List<String> printPriority = <String>[framed, ai, source];
 
-  static const List<String> all = <String>[source, ai, framed];
+  static const List<String> all = <String>[source, ai, framed, thumb];
+
+  /// Short side of a [thumb], in pixels.
+  static const int thumbShortSide = 320;
 
   static bool isValid(String kind) => all.contains(kind);
 }

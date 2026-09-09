@@ -63,6 +63,7 @@ class FakeDownscaler implements ImageDownscaler {
     required int targetShortSide,
     int maxLongSide = 4096,
     int quality = 88,
+    int thumbShortSide = 0,
   }) async {
     calls++;
     onCall?.call(calls);
@@ -158,6 +159,14 @@ void main() {
     );
   }
 
+  /// Open the screen and choose the first card, which is what the operator
+  /// does now: discovery and reading are separate actions.
+  Future<void> startAndPick(EventIngestViewModel vm) async {
+    await vm.start();
+    if (vm.volumes.isEmpty) return;
+    await vm.selectVolume(vm.volumes.first);
+  }
+
   group('phases', () {
     test('no volume means no card', () async {
       final vm = build();
@@ -176,10 +185,102 @@ void main() {
         ),
       ];
       final vm = build();
-      await vm.start();
+      await startAndPick(vm);
       expect(vm.phase, IngestPhase.unreadable);
       expect(storage.queryCalls, 0, reason: 'nothing to query');
       addTearDown(vm.dispose);
+    });
+
+    test('mounted cards land on the picker, and nothing is read', () async {
+      const second = ExternalVolume(
+        uuid: 'VOL-2',
+        description: 'SD card',
+        isRemovable: true,
+        isIndexed: true,
+        mediaStoreVolumeName: 'vol-2',
+      );
+      storage.volumes = [usableVolume, second];
+      storage.rows = [row('A.JPG')];
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.phase, IngestPhase.pickVolume);
+      expect(vm.volumes, hasLength(2));
+      expect(vm.volume, isNull);
+      expect(storage.queryCalls, 0,
+          reason: 'a scan on a card nobody chose burns I/O the queue needs');
+    });
+
+    test('a single card still gets a list rather than an auto-scan', () async {
+      storage.volumes = [usableVolume];
+      storage.rows = [row('A.JPG')];
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      // Consistency beats saving a tap: the row is also what tells the operator
+      // which card is about to be read.
+      expect(vm.phase, IngestPhase.pickVolume);
+      expect(vm.volumes, hasLength(1));
+      expect(storage.queryCalls, 0);
+    });
+
+    test('choosing a card is what starts the read', () async {
+      storage.volumes = [usableVolume];
+      storage.rows = [row('A.JPG')];
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      await vm.selectVolume(usableVolume);
+      expect(vm.phase, IngestPhase.review);
+      expect(vm.volume, same(usableVolume));
+      expect(storage.queryCalls, greaterThan(0));
+    });
+
+    test('back from a chosen card returns to the list, not off the screen',
+        () async {
+      storage.volumes = [usableVolume];
+      storage.rows = [row('A.JPG')];
+      final vm = build();
+      await startAndPick(vm);
+      addTearDown(vm.dispose);
+
+      await vm.backToVolumes();
+      expect(vm.phase, IngestPhase.pickVolume);
+      expect(vm.volume, isNull);
+      expect(vm.scan, isNull);
+    });
+
+    test('no cards at all says to insert one', () async {
+      storage.volumes = [];
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.phase, IngestPhase.noCard);
+      expect(vm.volumes, isEmpty);
+    });
+
+    test('an unusable card is listed rather than hidden', () async {
+      // Hiding it would look like the card is not seated at all, which sends
+      // the operator looking for a hardware fault that is not there.
+      storage.volumes = [
+        const ExternalVolume(
+          uuid: 'VOL-9',
+          description: 'SD card',
+          isRemovable: true,
+          isIndexed: false,
+        ),
+      ];
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.phase, IngestPhase.pickVolume);
+      expect(vm.volumes, hasLength(1));
+      expect(vm.volumes.single.isUsable, isFalse);
     });
 
     test('a denied permission stops before touching the card', () async {
@@ -196,7 +297,7 @@ void main() {
       storage.volumes = [usableVolume];
       storage.rows = [row('A.JPG'), row('B.JPG')];
       final vm = build();
-      await vm.start();
+      await startAndPick(vm);
 
       expect(vm.phase, IngestPhase.review);
       expect(vm.candidates, hasLength(2));
@@ -210,7 +311,7 @@ void main() {
       storage.volumes = [usableVolume];
       storage.rows = [row('A.JPG'), row('B.JPG')];
       final vm = build();
-      await vm.start();
+      await startAndPick(vm);
 
       final first = vm.candidates.first;
       vm.toggleItem(first);
@@ -225,7 +326,7 @@ void main() {
       storage.volumes = [usableVolume];
       storage.rows = [row('A.JPG'), row('B.JPG')];
       final vm = build();
-      await vm.start();
+      await startAndPick(vm);
 
       vm.selectNone();
       expect(vm.hasSelection, isFalse);
@@ -238,7 +339,7 @@ void main() {
       storage.volumes = [usableVolume];
       storage.rows = [row('A.JPG')];
       final vm = build();
-      await vm.start();
+      await startAndPick(vm);
       vm.selectNone();
       await vm.importSelected();
 
@@ -254,7 +355,7 @@ void main() {
       storage.volumes = [usableVolume];
       storage.rows = [row('A.JPG'), row('B.JPG', folder: 'Pictures')];
       final vm = build();
-      await vm.start();
+      await startAndPick(vm);
 
       expect(vm.candidates, hasLength(1));
       final pictures =
@@ -271,7 +372,7 @@ void main() {
       storage.volumes = [usableVolume];
       storage.rows = [row('A.JPG')];
       final vm = build();
-      await vm.start();
+      await startAndPick(vm);
 
       final dcim = vm.scan!.folders.first;
       await vm.toggleFolder(dcim);
@@ -285,7 +386,7 @@ void main() {
       storage.volumes = [usableVolume];
       storage.rows = [row('A.JPG'), row('B.JPG')];
       final vm = build();
-      await vm.start();
+      await startAndPick(vm);
       await vm.importSelected();
 
       expect(vm.phase, IngestPhase.complete);
@@ -298,10 +399,14 @@ void main() {
       storage.volumes = [usableVolume];
       storage.rows = [row('A.JPG')];
       final vm = build();
-      await vm.start();
+      await startAndPick(vm);
       await vm.importSelected();
       await vm.done();
 
+      // Done returns to the card list; choosing the same card again is where
+      // the dedupe shows up.
+      expect(vm.phase, IngestPhase.pickVolume);
+      await vm.selectVolume(vm.volumes.first);
       expect(vm.phase, IngestPhase.review);
       expect(vm.candidates, isEmpty);
       expect(vm.alreadyImported, 1);
@@ -312,7 +417,7 @@ void main() {
       storage.volumes = [usableVolume];
       storage.rows = [row('A.JPG')];
       final vm = build();
-      await vm.start();
+      await startAndPick(vm);
       // Backend flags set autoPrint with no theme or frame configured.
       expect(vm.resolvedSteps, ['print']);
       addTearDown(vm.dispose);
@@ -320,21 +425,73 @@ void main() {
   });
 
   group('card events', () {
-    test('removal returns to the no-card state and clears the scan', () async {
+    test('removing the card being read returns to the empty card list',
+        () async {
       storage.volumes = [usableVolume];
       storage.rows = [row('A.JPG')];
       final vm = build();
-      await vm.start();
+      await startAndPick(vm);
       expect(vm.phase, IngestPhase.review);
 
+      storage.volumes = [];
       cardDetect.controller.add(
         const CardEvent(kind: CardEventKind.unmounted),
       );
-      await Future<void>.delayed(Duration.zero);
+      await _until(() => vm.phase == IngestPhase.noCard);
 
       expect(vm.phase, IngestPhase.noCard);
+      expect(vm.volume, isNull);
       expect(vm.scan, isNull);
       expect(vm.selectedCount, 0);
+      addTearDown(vm.dispose);
+    });
+
+    test('pulling the other card of a reader does not throw away the scan',
+        () async {
+      const second = ExternalVolume(
+        uuid: 'VOL-2',
+        description: 'SD card',
+        isRemovable: true,
+        isIndexed: true,
+        mediaStoreVolumeName: 'vol-2',
+      );
+      storage.volumes = [usableVolume, second];
+      storage.rows = [row('A.JPG')];
+      final vm = build();
+      await startAndPick(vm);
+      expect(vm.phase, IngestPhase.review);
+
+      // The untouched card leaves; the one being read is still seated.
+      storage.volumes = [usableVolume];
+      cardDetect.controller.add(
+        const CardEvent(kind: CardEventKind.unmounted),
+      );
+      await _until(() => vm.volumes.length == 1);
+
+      expect(vm.phase, IngestPhase.review,
+          reason: 'a scan in progress must survive the other slot changing');
+      expect(vm.volume!.uuid, 'VOL-1');
+      expect(vm.candidates, hasLength(1));
+      addTearDown(vm.dispose);
+    });
+
+    test('an insert lists the new card without reading it', () async {
+      storage.volumes = [];
+      final vm = build();
+      await vm.start();
+      expect(vm.phase, IngestPhase.noCard);
+
+      storage.volumes = [usableVolume];
+      storage.rows = [row('A.JPG')];
+      cardDetect.controller.add(
+        const CardEvent(kind: CardEventKind.mounted),
+      );
+      await _until(() => vm.phase == IngestPhase.pickVolume);
+
+      expect(vm.phase, IngestPhase.pickVolume);
+      expect(vm.volumes, hasLength(1));
+      expect(storage.queryCalls, 0,
+          reason: 'a scan burns I/O on a card nobody chose');
       addTearDown(vm.dispose);
     });
 
@@ -342,7 +499,7 @@ void main() {
       storage.volumes = [usableVolume];
       storage.rows = [row('A.JPG'), row('B.JPG'), row('C.JPG')];
       final vm = build();
-      await vm.start();
+      await startAndPick(vm);
       expect(vm.phase, IngestPhase.review);
       expect(vm.selectedCount, 3);
 
@@ -370,7 +527,7 @@ void main() {
       storage.volumes = [usableVolume];
       storage.rows = [row('A.JPG'), row('B.JPG'), row('C.JPG')];
       final vm = build();
-      await vm.start();
+      await startAndPick(vm);
       downscaler.onCall = (call) {
         if (call == 1) {
           cardDetect.controller.add(
@@ -381,8 +538,9 @@ void main() {
       await vm.importSelected();
       downscaler.onCall = null;
 
-      // Operator reinserts the card and scans again.
+      // Operator reinserts the card and chooses it again.
       await vm.done();
+      await vm.selectVolume(vm.volumes.first);
       expect(vm.phase, IngestPhase.review);
       expect(vm.candidates, hasLength(2),
           reason: 'rolled-back rows must not read as already imported');
@@ -411,6 +569,7 @@ void main() {
     storage.rows = [row('A.JPG')];
     final vm = build();
     await vm.start();
+    await vm.selectVolume(vm.volumes.first);
     await vm.importSelected();
 
     final rows = await db.database.query('evp_media_items');
@@ -418,4 +577,12 @@ void main() {
     expect(rows.single['source'], MediaSource.sdCard);
     addTearDown(vm.dispose);
   });
+}
+
+/// Waits for [condition], so a test does not depend on how many event-loop
+/// turns a card-detect event takes to be reconciled.
+Future<void> _until(bool Function() condition) async {
+  for (var i = 0; i < 200 && !condition(); i++) {
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+  }
 }

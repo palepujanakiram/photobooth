@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../models/event_pipeline/media_item.dart';
+import '../event_manager.dart';
 import 'event_pipeline_db.dart';
 import 'event_pipeline_ledger.dart';
 import 'event_pipeline_queue.dart';
@@ -21,6 +22,7 @@ class EventPipelineStats {
     this.done = 0,
     this.failed = 0,
     this.printPaused = false,
+    this.queuePaused = false,
   });
 
   /// Imported but not yet selected.
@@ -35,6 +37,11 @@ class EventPipelineStats {
 
   /// True when the print queue is held — ribbon, paper, jam or cover.
   final bool printPaused;
+
+  /// True when the **operator** has held every stage. Distinct from
+  /// [printPaused]: one is the printer's problem, the other is a deliberate
+  /// hold, and telling an operator the wrong one wastes their time.
+  final bool queuePaused;
 
   int get inFlight => queued + ai + framing + printing;
   int get total => imported + inFlight + done + failed;
@@ -71,6 +78,7 @@ class EventPipelineStats {
   static EventPipelineStats fromStageCounts(
     Map<String, int> stages, {
     bool printPaused = false,
+    bool queuePaused = false,
   }) {
     return EventPipelineStats(
       imported: stages[MediaStage.ingested] ?? 0,
@@ -81,6 +89,7 @@ class EventPipelineStats {
       done: stages[MediaStage.done] ?? 0,
       failed: stages[MediaStage.failed] ?? 0,
       printPaused: printPaused,
+      queuePaused: queuePaused,
     );
   }
 }
@@ -93,9 +102,12 @@ class EventPipelineStats {
 class EventPipelineStatsReader {
   EventPipelineStatsReader({
     Future<EventPipelineDb?> Function()? openDb,
-  }) : _openDb = openDb ?? EventPipelineDb.openDefault;
+    EventManager? events,
+  })  : _openDb = openDb ?? EventPipelineDb.openDefault,
+        _events = events ?? EventManager();
 
   final Future<EventPipelineDb?> Function() _openDb;
+  final EventManager _events;
 
   static EventPipelineDb? _shared;
   static Future<EventPipelineDb?>? _opening;
@@ -117,13 +129,25 @@ class EventPipelineStatsReader {
     });
   }
 
-  Future<EventPipelineStats> read() async {
+  /// Counts for the currently bound event only.
+  ///
+  /// Pass [eventId] to override; omit it and the bound event is read. Scoping
+  /// matters more than it sounds: the ledger outlives an event, so an unscoped
+  /// total at a wedding silently includes last weekend's party (spec §9B).
+  Future<EventPipelineStats> read({String? eventId}) async {
     final db = await _database();
     // No database means no pipeline data, which is an empty strip rather than an
     // error — a station must still render when storage is unavailable.
     if (db == null) return const EventPipelineStats();
-    final stages = await EventPipelineLedger(db: db).stageCounts();
-    final paused = await EventPipelineQueue(db: db).isKindPaused('print');
-    return EventPipelineStats.fromStageCounts(stages, printPaused: paused);
+    final scope = eventId ?? await _events.getEventId();
+    final queue = EventPipelineQueue(db: db);
+    final stages = await EventPipelineLedger(db: db).stageCounts(
+      eventId: scope,
+    );
+    return EventPipelineStats.fromStageCounts(
+      stages,
+      printPaused: await queue.isKindPaused('print'),
+      queuePaused: await queue.isPaused(),
+    );
   }
 }

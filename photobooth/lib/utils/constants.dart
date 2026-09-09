@@ -425,6 +425,9 @@ class AppConstants {
 
   /// Event pipeline: the hub that replaces the picker when the flag is on.
   static const String kRouteEventHub = '/event-station/hub';
+  static const String kRouteEventItemDetail = '/event-station/item';
+  static const String kRouteEventSettings = '/event-station/settings';
+  static const String kRouteEventCapture = '/event-station/pipeline-capture';
 
   // Error Messages
   static const String kErrorCameraPermission = 'Camera permission denied';

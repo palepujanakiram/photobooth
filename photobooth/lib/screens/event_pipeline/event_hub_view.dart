@@ -28,6 +28,16 @@ class EventHubScreen extends StatelessWidget {
       child: AppScaffold(
         title: AppStrings.eventHubTitle,
         showBackButton: true,
+        actions: [
+          // The gear from the spec's header: event settings are reached from
+          // the event, not from Kiosk settings.
+          IconButton(
+            tooltip: 'Event settings',
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () => Navigator.of(context)
+                .pushNamed(AppConstants.kRouteEventSettings),
+          ),
+        ],
         child: EventStationBoundShell(
           child: Consumer<EventHubViewModel>(
             builder: (context, vm, _) => _HubBody(vm: vm),
@@ -90,11 +100,9 @@ class _HubBody extends StatelessWidget {
                   label: AppStrings.eventHubCapture,
                   enabled: vm.canCapture,
                   disabledReason: vm.captureBlockedReason,
-                  // Capture is Phase 8; the button and its gate exist now so
-                  // the readiness rules are exercised by the real screen.
                   onPressed: () => Navigator.pushNamed(
                     context,
-                    AppConstants.kRouteEventCaptureStation,
+                    AppConstants.kRouteEventCapture,
                   ),
                 ),
               ),

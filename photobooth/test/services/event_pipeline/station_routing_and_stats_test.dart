@@ -8,8 +8,12 @@ import 'package:photobooth/services/event_pipeline/event_pipeline_queue.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_stats.dart';
 import 'package:photobooth/utils/constants.dart';
 import 'package:photobooth/utils/event_station_role.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  // The stats reader looks up the bound event to scope its counts, which needs
+  // the platform binding and a prefs store.
+  TestWidgetsFlutterBinding.ensureInitialized();
   group('stationRequiresWan', () {
     test('every station needs WAN with the pipeline off', () {
       for (final role in EventStationRole.values) {
@@ -228,6 +232,7 @@ void main() {
     late EventPipelineDb db;
 
     setUp(() async {
+      SharedPreferences.setMockInitialValues({});
       // The reader shares one handle process-wide, so it must be reset between
       // tests or a previous test's database leaks into this one.
       EventPipelineStatsReader.resetSharedForTests();

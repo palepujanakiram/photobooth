@@ -42,6 +42,8 @@ class FakeCompositor implements FrameCompositor {
   String? lastPhotoPath;
   String? lastFramePath;
   EventPrintSize? lastSize;
+  int? lastThumbShortSide;
+  bool suppressThumb = false;
 
   @override
   Future<CompositeResult> composite({
@@ -49,13 +51,20 @@ class FakeCompositor implements FrameCompositor {
     required String? framePath,
     required EventPrintSize size,
     int quality = 88,
+    int thumbShortSide = 0,
   }) async {
     calls++;
     lastPhotoPath = photoPath;
     lastFramePath = framePath;
     lastSize = size;
+    lastThumbShortSide = thumbShortSide;
     if (shouldThrow) throw StateError('decode failed');
     return CompositeResult(
+      thumbBytes: thumbShortSide <= 0 || suppressThumb
+          ? null
+          : Uint8List.fromList(List<int>.filled(64, 6)),
+      thumbWidth: thumbShortSide <= 0 ? null : thumbShortSide,
+      thumbHeight: thumbShortSide <= 0 ? null : thumbShortSide,
       bytes: Uint8List.fromList(List<int>.filled(1024, 5)),
       width: size.width,
       height: size.height,
@@ -384,6 +393,94 @@ void main() {
 
       expect(compositor.lastSize!.height, 2436);
     });
+
+    test('the grid thumbnail is overwritten with the framed result', () async {
+      api.frames = const [
+        KioskFrameModel(id: 'frame-1', name: 'F', overlayUrl: '/f1.png'),
+      ];
+      final cache = buildCache();
+      await cache.refresh(eventId: 'EVT1');
+
+      final mediaId = await seedItemWithSource();
+      // The import-time thumbnail, as the ingest worker would have left it.
+      await mediaStore.putBytes('EVT1/$mediaId-thumb.jpg', [1, 1, 1]);
+      await ledger.putRendition(MediaRendition(
+        mediaId: mediaId,
+        kind: RenditionKind.thumb,
+        path: 'EVT1/$mediaId-thumb.jpg',
+        bytes: 3,
+        createdAtMs: 1,
+      ));
+
+      await ledger.markSelected(mediaId, const ['frame']);
+      await queue.enqueue(kind: 'frame', mediaId: mediaId, eventId: 'EVT1');
+      await buildWorker(cache: cache).drain();
+
+      expect(compositor.lastThumbShortSide, RenditionKind.thumbShortSide,
+          reason: 'one decode, two encodes off the finished canvas');
+      final thumb = (await ledger.renditionsFor(mediaId))
+          .firstWhere((r) => r.kind == RenditionKind.thumb);
+      // The grid must show the framed result, not the raw import.
+      expect(thumb.bytes, 64);
+    });
+
+    test('a thumbnail that cannot be written does not fail the frame job',
+        () async {
+      api.frames = const [
+        KioskFrameModel(id: 'frame-1', name: 'F', overlayUrl: '/f1.png'),
+      ];
+      final cache = buildCache();
+      await cache.refresh(eventId: 'EVT1');
+
+      final mediaId = await seedItemWithSource();
+      await ledger.markSelected(mediaId, const ['frame']);
+      await queue.enqueue(kind: 'frame', mediaId: mediaId, eventId: 'EVT1');
+
+      await FrameJobWorker(
+        queue: queue,
+        ledger: ledger,
+        frameCache: cache,
+        mediaStore: _ThumbHostileStore(mediaDir),
+        compositor: compositor,
+        settings: settingsWith,
+      ).drain();
+
+      // A stale thumbnail is cosmetic; a lost frame job is not.
+      final item = await ledger.findById(mediaId);
+      expect(item!.stage, isNot(MediaStage.failed));
+    });
+
+    test('a compositor with no thumbnail leaves the old one in place',
+        () async {
+      api.frames = const [
+        KioskFrameModel(id: 'frame-1', name: 'F', overlayUrl: '/f1.png'),
+      ];
+      final cache = buildCache();
+      await cache.refresh(eventId: 'EVT1');
+
+      final mediaId = await seedItemWithSource();
+      await ledger.putRendition(MediaRendition(
+        mediaId: mediaId,
+        kind: RenditionKind.thumb,
+        path: 'EVT1/$mediaId-thumb.jpg',
+        bytes: 3,
+        createdAtMs: 1,
+      ));
+      await ledger.markSelected(mediaId, const ['frame']);
+      await queue.enqueue(kind: 'frame', mediaId: mediaId, eventId: 'EVT1');
+
+      // A stale thumbnail is cosmetic; failing a finished frame job over one
+      // would not be.
+      final worker = buildWorker(cache: cache);
+      compositor.suppressThumb = true;
+      await worker.drain();
+
+      final item = await ledger.findById(mediaId);
+      expect(item!.stage, isNot(MediaStage.failed));
+      final thumb = (await ledger.renditionsFor(mediaId))
+          .firstWhere((r) => r.kind == RenditionKind.thumb);
+      expect(thumb.bytes, 3);
+    });
   });
 
   group('EventPrintSize', () {
@@ -416,4 +513,18 @@ void main() {
       expect(frame.copyWith(localPath: 'e/f.png').isCached, isTrue);
     });
   });
+}
+
+/// A store that refuses thumbnails, so the best-effort path is exercised.
+class _ThumbHostileStore extends EventMediaStore {
+  _ThumbHostileStore(Directory dir)
+      : super(resolveDirectory: () async => dir);
+
+  @override
+  Future<File?> putBytes(String relativePath, List<int> bytes) {
+    if (relativePath.contains(RenditionKind.thumb)) {
+      throw const FileSystemException('read-only');
+    }
+    return super.putBytes(relativePath, bytes);
+  }
 }
