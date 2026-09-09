@@ -39,6 +39,25 @@ void main() {
     expect(model.enableSurpriseMeAi, isNull);
   });
 
+  test('parses classicPoseCountdownSeconds from settings JSON', () {
+    expect(
+      AppSettingsModel.fromJson({}).classicPoseCountdownSeconds,
+      isNull,
+    );
+    expect(
+      AppSettingsModel.fromJson({
+        'classicPoseCountdownSeconds': 7,
+      }).classicPoseCountdownSeconds,
+      7,
+    );
+    expect(
+      AppSettingsModel.fromJson({
+        'classic_pose_countdown_seconds': 12,
+      }).classicPoseCountdownSeconds,
+      12,
+    );
+  });
+
   test('StripFiltersCatalog parses features.enableSurpriseMeAi', () {
     final catalog = StripFiltersCatalog.fromJson({
       'brand': 'FotoFlashback',

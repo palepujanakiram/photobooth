@@ -5,6 +5,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../services/image_cache_service.dart';
+import '../../services/image_cache_source.dart';
 import '../../services/protected_image_loader.dart';
 import '../../utils/logger.dart';
 import '../../utils/network_image_decode.dart';
@@ -61,16 +62,35 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
   @override
   void initState() {
     super.initState();
-    _loadImage();
+    if (!_applyInlineImage(widget.imageUrl)) {
+      _loadImage();
+    }
   }
 
   @override
   void didUpdateWidget(CachedNetworkImage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.imageUrl != widget.imageUrl ||
-        oldWidget.cacheKey != widget.cacheKey) {
-      _loadImage();
+    if (oldWidget.imageUrl == widget.imageUrl &&
+        oldWidget.cacheKey == widget.cacheKey) {
+      return;
     }
+    if (_applyInlineImage(widget.imageUrl)) {
+      setState(() {});
+      return;
+    }
+    _loadImage();
+  }
+
+  /// Event Classic on web bakes a data JPEG — never fetch it as http.
+  bool _applyInlineImage(String url) {
+    final inline = extractInlineImageDataUrl(url.trim());
+    if (inline == null) return false;
+    final bytes = decodeInlineImageDataUrl(inline);
+    _cachedFile = null;
+    _protectedBytes = bytes;
+    _isLoading = false;
+    _hasError = bytes == null || bytes.isEmpty;
+    return true;
   }
 
   Future<void> _loadImage() async {
@@ -232,8 +252,8 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
     if (_isLoading && widget.placeholder != null) {
       return widget.placeholder!;
     }
-    if (_hasError && widget.errorWidget != null) {
-      return widget.errorWidget!;
+    if (_hasError) {
+      return widget.errorWidget ?? _defaultErrorWidget();
     }
     final protectedBytes = _protectedBytes;
     if (protectedBytes != null) {

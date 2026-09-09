@@ -26,6 +26,7 @@ class KioskFrameModel {
   final String id;
   final String name;
   final String overlayUrl;
+  final String landscapeOverlayUrl;
   final DateTime? scheduledStartAt;
   final DateTime? scheduledEndAt;
   final KioskFrameStripAssets strip;
@@ -34,6 +35,7 @@ class KioskFrameModel {
     required this.id,
     required this.name,
     required this.overlayUrl,
+    this.landscapeOverlayUrl = '',
     this.scheduledStartAt,
     this.scheduledEndAt,
     this.strip = const KioskFrameStripAssets(),
@@ -47,6 +49,7 @@ class KioskFrameModel {
       id: idRaw == null ? '' : idRaw.toString(),
       name: nameRaw == null ? '' : nameRaw.toString(),
       overlayUrl: urlRaw == null ? '' : urlRaw.toString(),
+      landscapeOverlayUrl: json['landscapeOverlayUrl']?.toString() ?? '',
       scheduledStartAt: _parseDate(json['scheduledStartAt']),
       scheduledEndAt: _parseDate(json['scheduledEndAt']),
       strip: KioskFrameStripAssets(
@@ -62,6 +65,8 @@ class KioskFrameModel {
         'id': id,
         'name': name,
         'overlayUrl': overlayUrl,
+        if (landscapeOverlayUrl.trim().isNotEmpty)
+          'landscapeOverlayUrl': landscapeOverlayUrl,
         if (scheduledStartAt != null)
           'scheduledStartAt': scheduledStartAt!.toIso8601String(),
         if (scheduledEndAt != null)

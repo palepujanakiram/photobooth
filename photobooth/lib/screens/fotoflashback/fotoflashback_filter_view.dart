@@ -339,8 +339,26 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                           layout: viewModel.wysiwygLayout,
                           filterId: viewModel.selectedFilterId,
                           frameId: viewModel.selectedFrameId,
-                          frameOverlayUrl: viewModel.selectedFrame?.overlayUrl,
-                          frameSlots: viewModel.selectedFrame?.slots ?? const [],
+                          frameOverlayUrl: classicOccasionOverlayUrl(
+                            overlayUrl: viewModel.selectedFrame?.overlayUrl,
+                            landscapeOverlayUrl:
+                                viewModel.selectedFrame?.landscapeOverlayUrl,
+                            landscape: viewModel.printOrientation ==
+                                PrintOrientation.landscape,
+                          ),
+                          frameSlots: classicOccasionOverlaySlots(
+                            slots: viewModel.selectedFrame?.slots ?? const [],
+                            landscapeSlots:
+                                viewModel.selectedFrame?.landscapeSlots ??
+                                    const [],
+                            landscape: viewModel.printOrientation ==
+                                PrintOrientation.landscape,
+                            hasLandscapeOverlay:
+                                (viewModel.selectedFrame?.landscapeOverlayUrl ??
+                                        '')
+                                    .trim()
+                                    .isNotEmpty,
+                          ),
                           frameCaption: viewModel.selectedFrame?.caption,
                           stickerId: viewModel.selectedStickerId,
                           placements: viewModel.stickerPlacements,
@@ -579,6 +597,8 @@ class _LookPickerBody extends StatelessWidget {
                 filterId: filterId,
                 frameId: frameId,
                 frameOverlayUrl: frameOverlayUrl,
+                overlayCacheLandscape:
+                    printOrientation == PrintOrientation.landscape,
                 frameSlots: frameSlots,
                 frameCaption: frameCaption,
                 stickerId: stickerId,

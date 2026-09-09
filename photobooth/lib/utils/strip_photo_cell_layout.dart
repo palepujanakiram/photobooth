@@ -1,7 +1,8 @@
-import 'dart:ui';
+import 'package:flutter/painting.dart';
 
 import '../models/strip_models.dart';
 import '../screens/fotoflashback/fotoflashback_strip_chrome_view_widgets.dart';
+import 'jpeg_sof_peek.dart';
 
 /// One photo slot on a 2×6 strip (absolute px in strip space).
 class StripPhotoCellRect {
@@ -22,20 +23,87 @@ class StripPhotoCellRect {
 
 /// Whether a strip cell letterboxes the capture instead of filling the window.
 ///
-/// Always false: Classic 1/3/4-shot and sheet layouts cover-fill the slot.
-/// [frameId] and [shotCount] stay in the signature so preview/print share one hook.
+/// Classic / Noir / Filmstrip and occasion 1-, 3-, and 4-shot cells
+/// contain-fit so the full capture stays visible. Sheet layouts (polaroid,
+/// grid) are unchanged.
 bool stripPhotoCellUsesContainFit(
   String frameId, {
   int shotCount = kStripShotCount,
 }) {
-  return frameId.isEmpty && shotCount < 0;
+  if (isStripSheetLayout(frameId)) return false;
+  if (shotCount != 1 &&
+      shotCount != kStripShotCountThree &&
+      shotCount != kStripShotCount) {
+    return false;
+  }
+  return frameId == 'classic' ||
+      frameId == 'noir' ||
+      frameId == 'filmstrip' ||
+      isOccasionFrameId(frameId) ||
+      isStripTemplateFrame(frameId);
 }
 
 /// Letterbox well behind contain-fit cells (matches print chrome fill).
 Color stripPhotoCellLetterboxColor(String frameId) {
+  if (isOccasionFrameId(frameId) || isStripTemplateFrame(frameId)) {
+    return const Color(0xFF121212);
+  }
   if (frameId == 'filmstrip') return const Color(0xFF0A0A0A);
   if (frameId == 'noir') return const Color(0xFF121216);
   return const Color(0xFFFFFFFF);
+}
+
+/// Whether cover-fill should keep the top of the capture (heads).
+///
+/// Only a **portrait** still in a **landscape** well uses top gravity. A
+/// landscape webcam in a wide 3-shot / 4-shot hole stays centered — top-crop
+/// would keep the ceiling and drop the subject off the bottom.
+bool coverCropKeepsSourceTop({
+  required double windowWidth,
+  required double windowHeight,
+  double? sourceWidth,
+  double? sourceHeight,
+}) {
+  if (windowWidth <= windowHeight) return false;
+  final sw = sourceWidth ?? 0;
+  final sh = sourceHeight ?? 0;
+  return sh > sw;
+}
+
+/// Cover-crop anchor for a photo well.
+///
+/// Portrait stills in a landscape well keep heads. Landscape stills, square
+/// stills, and unknown source size stay centered.
+Alignment coverPhotoAlignmentForWindow(
+  double width,
+  double height, {
+  double? sourceWidth,
+  double? sourceHeight,
+}) =>
+    coverCropKeepsSourceTop(
+      windowWidth: width,
+      windowHeight: height,
+      sourceWidth: sourceWidth,
+      sourceHeight: sourceHeight,
+    )
+        ? Alignment.topCenter
+        : Alignment.center;
+
+/// [coverPhotoAlignmentForWindow] using JPEG SOF size when bytes are present.
+Alignment coverPhotoAlignmentForJpeg({
+  required double windowWidth,
+  required double windowHeight,
+  List<int>? jpegBytes,
+}) {
+  final sof = jpegBytes == null || jpegBytes.isEmpty
+      ? null
+      : peekJpegSofDimensions(jpegBytes);
+  return coverPhotoAlignmentForWindow(
+    windowWidth,
+    windowHeight,
+    sourceWidth: sof?.width.toDouble(),
+    sourceHeight: sof?.height.toDouble(),
+  );
 }
 
 /// Photo cell geometry for one 2×6 strip — mirrors zenai `stripCompositor`.

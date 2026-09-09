@@ -47,6 +47,7 @@ import '../../models/customer_contact_capture.dart';
 import '../../models/kiosk_share_link_model.dart';
 import '../../models/session_discount.dart';
 import '../../models/payment_initiate_result.dart';
+import '../../models/payment_mode.dart';
 import 'kiosk_receipt_share_fallback.dart';
 import 'result_payment_poll_helpers.dart';
 import 'result_viewmodel_share_helpers.dart';
@@ -91,6 +92,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   final PhotoModel? _originalPhoto;
   final PrintOrientation _printOrientation;
   final String? _printSizeOverride;
+  final int? _classicComposeShotCount;
   final PrintService _printService;
   final ShareService _shareService;
   final ApiService _apiService;
@@ -210,6 +212,17 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
 
   bool get cashOnlyOffline => _sessionManager.isOfflineSession;
 
+  /// Event / payments-off kiosks: cash at the counter instead of UPI.
+  bool _collectsCounterCash = false;
+
+  bool get collectsCounterCash => _collectsCounterCash || cashOnlyOffline;
+
+  void setCollectsCounterCash(bool value) {
+    if (_collectsCounterCash == value) return;
+    _collectsCounterCash = value;
+    notifyListeners();
+  }
+
   /// Stops payment/session polling (e.g. before customer deletes photos).
   void stopPaymentPolling() {
     _paymentIdPollTimer?.cancel();
@@ -323,6 +336,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
     PhotoModel? originalPhoto,
     PrintOrientation printOrientation = PrintOrientation.portrait,
     String? printSize,
+    int? classicComposeShotCount,
     PrintService? printService,
     ShareService? shareService,
     ApiService? apiService,
@@ -339,6 +353,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
         _printOrientation = printOrientation,
         _printSizeOverride =
             (printSize?.trim().isNotEmpty ?? false) ? printSize!.trim() : null,
+        _classicComposeShotCount = classicComposeShotCount,
         _printService = printService ?? PrintService(),
         _shareService = shareService ?? ShareService(),
         _apiService = apiService ?? ApiService(),
@@ -466,7 +481,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
       await unapplyCoupon();
       return;
     }
-    if (checkoutAmount <= 0) {
+    if (checkoutAmount <= 0 && !collectsCounterCash) {
       _paymentLink = null;
       _qrImageUrl = null;
       _upiLink = null;

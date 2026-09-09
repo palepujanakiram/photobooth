@@ -25,6 +25,7 @@ class FotoFlashbackStripPreview extends StatelessWidget {
     required this.filterId,
     this.frameId = kDefaultStripFrameId,
     this.frameOverlayUrl,
+    this.overlayCacheLandscape = false,
     this.frameSlots = const [],
     this.frameCaption,
     this.stickerId = kDefaultStripStickerId,
@@ -54,6 +55,7 @@ class FotoFlashbackStripPreview extends StatelessWidget {
 
   /// Occasion / scrapbook overlay PNG for live preview.
   final String? frameOverlayUrl;
+  final bool overlayCacheLandscape;
   final List<StripTemplateSlot> frameSlots;
   final String? frameCaption;
 
@@ -149,7 +151,11 @@ class FotoFlashbackStripPreview extends StatelessWidget {
               filterId: filterId,
               frameId: frameId,
               overlayUrl: isOccasionFrameId(frameId) ? frameOverlayUrl : null,
-              photoHole: occasionSinglePhotoHole(frameSlots),
+              overlayCacheLandscape: overlayCacheLandscape,
+              photoHole: occasionSinglePhotoHole(
+                frameSlots,
+                landscape: overlayCacheLandscape,
+              ),
               imagesAreGraded: imagesAreGraded,
               placements: placements,
               scribbles: scribbles,
@@ -437,7 +443,16 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
               dataUrl: i < imageDataUrls.length ? imageDataUrls[i] : '',
               fit: photoFit,
               alignment: photoFit == BoxFit.cover
-                  ? Alignment.topCenter
+                  ? _coverSlotAlignment(
+                      width: cells[i].width,
+                      height: cells[i].height,
+                      jpegBytes: i < imageJpegBytes.length
+                          ? imageJpegBytes[i]
+                          : null,
+                      dataUrl: i < imageDataUrls.length
+                          ? imageDataUrls[i]
+                          : '',
+                    )
                   : Alignment.center,
               cacheWidth: cacheW,
               letterbox: letterbox,
@@ -900,6 +915,19 @@ Uint8List? _tryBytesFromDataUrl(String dataUrl) {
   }
 }
 
+Alignment _coverSlotAlignment({
+  required double width,
+  required double height,
+  Uint8List? jpegBytes,
+  String dataUrl = '',
+}) {
+  return coverPhotoAlignmentForJpeg(
+    windowWidth: width,
+    windowHeight: height,
+    jpegBytes: jpegBytes ?? _tryBytesFromDataUrl(dataUrl),
+  );
+}
+
 Widget _lookPreviewSlot({
   required Uint8List? jpegBytes,
   required String dataUrl,
@@ -1013,6 +1041,7 @@ class _Single6x4Preview extends StatelessWidget {
     required this.filterId,
     required this.frameId,
     this.overlayUrl,
+    this.overlayCacheLandscape = false,
     this.photoHole,
     required this.imagesAreGraded,
     required this.placements,
@@ -1033,6 +1062,7 @@ class _Single6x4Preview extends StatelessWidget {
   final String filterId;
   final String frameId;
   final String? overlayUrl;
+  final bool overlayCacheLandscape;
   final StripTemplateSlot? photoHole;
   final bool imagesAreGraded;
   final List<StripStickerPlacement> placements;
@@ -1050,35 +1080,26 @@ class _Single6x4Preview extends StatelessWidget {
     if (overlayUrl != null && overlayUrl!.trim().isNotEmpty) {
       return const Color(0xFF121212);
     }
-    if (frameId == 'noir') return const Color(0xFF111111);
-    return Colors.white;
+    return stripPhotoCellLetterboxColor(frameId);
   }
 
   Widget _singleClassicPhotoWell({
-    required bool hasOverlay,
-    required double margin,
+    required StripTemplateSlot hole,
     required Widget photoLayer,
     required double boxWidth,
     required double boxHeight,
   }) {
-    final well = ClipRect(
-      child: ColoredBox(
-        color: hasOverlay
-            ? stripPhotoCellLetterboxColor(frameId)
-            : const Color(0xFF121212),
-        child: photoLayer,
-      ),
-    );
-    if (!hasOverlay) {
-      return Padding(padding: EdgeInsets.all(margin), child: well);
-    }
-    final hole = photoHole ?? defaultOccasionSinglePhotoHole;
     return Positioned(
       left: hole.left * boxWidth,
       top: hole.top * boxHeight,
       width: hole.width * boxWidth,
       height: hole.height * boxHeight,
-      child: well,
+      child: ClipRect(
+        child: ColoredBox(
+          color: stripPhotoCellLetterboxColor(frameId),
+          child: photoLayer,
+        ),
+      ),
     );
   }
 
@@ -1088,20 +1109,36 @@ class _Single6x4Preview extends StatelessWidget {
     required double boxHeight,
     required String overlay,
   }) {
-    final margin = boxWidth * 0.027;
+    final landscapeSheet = boxWidth > boxHeight;
     final hasOverlay = overlay.isNotEmpty;
     final cacheW = flashbackLookPreviewCacheWidth(
       layoutWidth: boxWidth,
       devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
     );
     final hasPhoto = jpegBytes != null || imageDataUrl.trim().isNotEmpty;
+    final hole = resolveClassicSinglePhotoHole(
+      hasOverlay: hasOverlay,
+      landscape: landscapeSheet,
+      overlayHole: photoHole,
+      frameId: frameId,
+    );
+    final wellW = hole.width * boxWidth;
+    final wellH = hole.height * boxHeight;
+    final containPhoto = stripPhotoCellUsesContainFit(frameId, shotCount: 1);
     final photo = !hasPhoto
         ? _lookPreviewMissingPhoto()
         : _LookPreviewPhoto(
             jpegBytes: jpegBytes,
             dataUrl: imageDataUrl,
-            fit: BoxFit.cover,
-            alignment: Alignment.center,
+            fit: containPhoto ? BoxFit.contain : BoxFit.cover,
+            alignment: containPhoto
+                ? Alignment.center
+                : _coverSlotAlignment(
+                    width: wellW,
+                    height: wellH,
+                    jpegBytes: jpegBytes,
+                    dataUrl: imageDataUrl,
+                  ),
             cacheWidth: cacheW,
           );
     final photoLayer = !hasPhoto || imagesAreGraded
@@ -1114,22 +1151,26 @@ class _Single6x4Preview extends StatelessWidget {
       fit: StackFit.expand,
       children: [
         _singleClassicPhotoWell(
-          hasOverlay: hasOverlay,
-          margin: margin,
+          hole: hole,
           photoLayer: photoLayer,
           boxWidth: boxWidth,
           boxHeight: boxHeight,
         ),
         if (frameId == 'filmstrip' && !hasOverlay)
           CustomPaint(
-            painter: _SingleFilmstripSprocketPainter(margin: margin),
+            painter: _SingleFilmstripSprocketPainter(
+              margin: hole.left * boxWidth,
+            ),
           ),
         if (hasOverlay)
           Positioned.fill(
             child: IgnorePointer(
               child: CachedNetworkImage(
                 imageUrl: overlay,
-                cacheKey: classicFrameOverlayCacheKey(frameId),
+                cacheKey: classicFrameOverlayCacheKey(
+                  frameId,
+                  landscape: overlayCacheLandscape,
+                ),
                 fit: BoxFit.fill,
                 filterQuality: FilterQuality.high,
               ),
@@ -1212,7 +1253,7 @@ class _SingleFilmstripSprocketPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final rail = Paint()..color = const Color(0xFF1A1A1A);
     final hole = Paint()..color = Colors.white;
-    final railW = margin.clamp(8.0, 28.0);
+    final railW = margin < 8 ? 8.0 : margin;
     canvas.drawRect(Rect.fromLTWH(0, 0, railW, size.height), rail);
     canvas.drawRect(
       Rect.fromLTWH(size.width - railW, 0, railW, size.height),

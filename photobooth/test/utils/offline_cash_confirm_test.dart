@@ -47,13 +47,13 @@ void main() {
     expect(await OfflineOperatorPinStore.verifyPin('12'), isFalse);
   });
 
-  test('shouldSkipOfflinePayCollect only when offline and payments off', () {
+  test('shouldSkipOfflinePayCollect never skips cash collect', () {
     expect(
       shouldSkipOfflinePayCollect(
         paymentsEnabled: false,
         sessionOffline: true,
       ),
-      isTrue,
+      isFalse,
     );
     expect(
       shouldSkipOfflinePayCollect(

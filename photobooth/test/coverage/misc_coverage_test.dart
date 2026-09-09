@@ -84,6 +84,27 @@ void main() {
     expect(AppRuntimeConfig.instance.showApiLogs, isTrue);
   });
 
+  test('AppRuntimeConfig Classic pose countdown from settings and bind', () {
+    AppRuntimeConfig.instance.applyFromSettings(null);
+    expect(AppRuntimeConfig.instance.classicPoseCountdownSeconds, 10);
+    AppRuntimeConfig.instance.applyClassicPoseCountdown(7);
+    expect(AppRuntimeConfig.instance.classicPoseCountdownSeconds, 7);
+    AppRuntimeConfig.instance.applyClassicPoseCountdown(7);
+    expect(AppRuntimeConfig.instance.classicPoseCountdownSeconds, 7);
+    AppRuntimeConfig.instance.applyFromSettings(AppSettingsModel());
+    expect(AppRuntimeConfig.instance.classicPoseCountdownSeconds, 7);
+    AppRuntimeConfig.instance.applyFromSettings(
+      AppSettingsModel(classicPoseCountdownSeconds: 12),
+    );
+    expect(AppRuntimeConfig.instance.classicPoseCountdownSeconds, 12);
+    AppRuntimeConfig.instance.applyClassicPoseCountdown(3);
+    expect(AppRuntimeConfig.instance.classicPoseCountdownSeconds, 5);
+    AppRuntimeConfig.instance.applyClassicPoseCountdown(20);
+    expect(AppRuntimeConfig.instance.classicPoseCountdownSeconds, 15);
+    AppRuntimeConfig.instance.applyFromSettings(null);
+    expect(AppRuntimeConfig.instance.classicPoseCountdownSeconds, 10);
+  });
+
   test('KioskManager prefs round-trip', () async {
     SharedPreferences.setMockInitialValues({});
     final km = KioskManager();

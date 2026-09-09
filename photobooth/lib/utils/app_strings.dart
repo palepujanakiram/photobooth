@@ -540,11 +540,19 @@ abstract final class AppStrings {
   static const flashbackCaptureSubtitleThree =
       '3 shots · 10s to pose · 8s between shots to rearrange';
   static const flashbackCaptureSubtitleSingle = 'One shot · 10s pose countdown';
+  static String flashbackCaptureSubtitleFor(int poseSeconds) =>
+      '4 shots · ${poseSeconds}s to pose · 8s between shots to rearrange';
+  static String flashbackCaptureSubtitleThreeFor(int poseSeconds) =>
+      '3 shots · ${poseSeconds}s to pose · 8s between shots to rearrange';
+  static String flashbackCaptureSubtitleSingleFor(int poseSeconds) =>
+      'One shot · ${poseSeconds}s pose countdown';
   static String flashbackShotProgress(int current, int total) =>
       'Shot $current of $total';
   static String flashbackPoseProgress(int current, int total) =>
       'Pose now — Shot $current of $total';
   static const flashbackPoseProgressSingle = 'Pose now — 10 second countdown';
+  static String flashbackPoseProgressSingleFor(int poseSeconds) =>
+      'Pose now — $poseSeconds second countdown';
   static const flashbackSingle6x4Title = 'Classic print';
   static String flashbackSinglePrintTitle(bool portrait) =>
       portrait ? 'Classic 4×6' : 'Classic 6×4';
@@ -690,13 +698,19 @@ abstract final class AppStrings {
   static const offlineFrameOnlyMessage =
       'AI needs internet. You can still print this photo — '
       'try Classic while waiting to reconnect.';
-  static const offlineCashOnlyMessage =
-      'UPI needs internet. Pay cash at the counter.';
   static const offlineCashOnlyWaiting =
-      'Pay cash at the counter. Staff confirm here to start printing.';
+      'Staff confirm here after collecting cash.';
+  static const counterCashOnlyWaiting =
+      'Staff confirm in Payments to start printing.';
+  static const counterCashAppBarSubtitle = 'Cash at the counter';
+  static const wanDownCashAppBarSubtitle = 'No internet for UPI';
+  static const payScanToComplete = 'Scan to complete your purchase';
+  static const payUpiIntro =
+      'Scan the QR code to pay with UPI.\n'
+      'Printing starts automatically after payment is approved.';
   static const offlineGiftCardUnavailable =
       'Gift cards and coupons need internet.';
-  static const offlinePayAtCounterTitle = 'Pay at counter';
+  static const offlinePayAtCounterTitle = 'Offline payment';
   static const offlineCashConfirmStaffCta = 'Staff: cash received';
   static const offlineCashConfirmSheetTitle = 'Confirm cash received';
   static const offlineCashConfirmSheetBody =
@@ -736,6 +750,9 @@ abstract final class AppStrings {
       'Sync paused with $remaining still pending. Check internet and try again.';
   static const splashSyncFailedToast =
       'Could not sync. Check internet and try again.';
+  static const splashSyncUnavailableInBrowser =
+      'Offline sync runs on the booth app, not in the browser. '
+      'This web kiosk is already talking to the server.';
   static const termsDiskFull =
       'This kiosk is out of photo storage. Ask staff to connect internet and wait for sync.';
   static const termsSessionCreateFailed =
@@ -853,6 +870,8 @@ abstract final class AppStrings {
   static const eventStationAssignTheme = 'Use this look';
   static const eventStationNoThemes = 'No themes available for this event.';
   static const eventStationPrintNow = 'Print';
+  static const eventStationPrintPreview = 'Print preview';
+  static const eventStationPrintPreviewHint = 'As it will print';
   static const eventStationReprint = 'Print another copy';
   static const eventStationJobClaimed =
       'This job was taken by another station.';

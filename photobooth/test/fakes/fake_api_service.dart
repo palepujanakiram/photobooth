@@ -268,6 +268,18 @@ class FakeApiService extends ApiService {
   }
 
   @override
+  Future<String?> registerStripDeliverable({
+    required String sessionId,
+    required String imageDataUrl,
+  }) async {
+    if (sessionId.trim().isEmpty ||
+        !imageDataUrl.trim().startsWith('data:image')) {
+      return null;
+    }
+    return '/api/img/fotoflashback/fake-deliverable.jpg';
+  }
+
+  @override
   Future<void> startSurpriseMe({
     required String sessionId,
     required String imageDataUrl,

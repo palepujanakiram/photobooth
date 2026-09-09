@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -9,7 +11,7 @@ import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/event_station_timing.dart';
 import '../../views/widgets/app_scaffold.dart';
-import '../event_pipeline/event_pipeline_status_strip.dart';
+import '../../views/widgets/generated_image_preview_screen.dart';
 import 'event_print_station_viewmodel.dart';
 import 'event_station_chrome_view_widgets.dart';
 import 'event_station_queue_view_widgets.dart';
@@ -46,9 +48,8 @@ class EventPrintStationScreen extends StatelessWidget {
         showBackButton: true,
         onBackPressed: () => _changeRole(context),
         actions: [
-          TextButton(
+          EventStationChangeRoleButton(
             onPressed: () => _changeRole(context),
-            child: const Text(AppStrings.eventStationChangeRole),
           ),
         ],
         child: EventStationBoundShell(
@@ -59,9 +60,6 @@ class EventPrintStationScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Local pipeline counts. Renders nothing when the ledger is
-                  // empty, so a server-brokered station is unchanged.
-                  const EventPipelineStatusStrip(),
                   EventStationStatsBar(stats: vm.stats, delivery: vm.delivery),
                   const SizedBox(height: 12),
                   EventStationStatusTabs(
@@ -152,12 +150,25 @@ class EventPrintQueueTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return EventStationQueueRow(
+    final previewUrl = job.imageUrl.trim();
+    final row = EventStationQueueRow(
       imageUrl: job.imageUrl,
       cacheId: job.id,
       statusLabel: eventStationDisplayStatus(job.status, job.times),
       timingLabel: eventStationRowTiming(job.times),
       failed: job.times.isFailed,
+      onTap: previewUrl.isEmpty
+          ? null
+          : () {
+              unawaited(
+                showGeneratedImagePreview(
+                  context,
+                  imageUrl: previewUrl,
+                  title: AppStrings.eventStationPrintPreview,
+                  subtitle: AppStrings.eventStationPrintPreviewHint,
+                ),
+              );
+            },
       actions: [
         if (onPrint != null)
           TextButton(
@@ -170,6 +181,11 @@ class EventPrintQueueTile extends StatelessWidget {
             child: const Text(AppStrings.eventStationReprint),
           ),
       ],
+    );
+    if (previewUrl.isEmpty) return row;
+    return Tooltip(
+      message: AppStrings.eventStationPrintPreview,
+      child: row,
     );
   }
 }

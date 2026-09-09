@@ -41,6 +41,15 @@ void main() {
     });
   });
 
+  group('shouldDeferLocalClassicComposeWarm', () {
+    test('warms 1-shot, 3-shot, and 4-shot', () {
+      expect(shouldDeferLocalClassicComposeWarm(shotCount: 1), isFalse);
+      expect(shouldDeferLocalClassicComposeWarm(shotCount: 3), isFalse);
+      expect(shouldDeferLocalClassicComposeWarm(shotCount: 4), isFalse);
+      expect(shouldDeferLocalClassicComposeWarm(shotCount: 0), isTrue);
+    });
+  });
+
   group('shouldSkipClassicClientLookBake', () {
     test('skips bake for 4-shot strips', () {
       expect(

@@ -20,7 +20,7 @@ import '../../views/widgets/centered_max_width.dart';
 import '../../views/widgets/theme_background.dart';
 import '../../views/widgets/delete_my_photos_action.dart';
 import '../../services/payment_push_coordinator.dart';
-import '../../services/kiosk_manager.dart';
+import '../../utils/payment_workflow_helpers.dart';
 import '../../utils/route_args.dart';
 import '../transformation_details/transformation_details_view.dart';
 import '../../services/session_manager.dart';
@@ -41,7 +41,6 @@ class _ResultScreenState extends State<ResultScreen> {
   bool _paymentConfirmedSnackShown = false;
   String? _customerPhone;
   String? _transformationRunId;
-  bool? _paymentsEnabledOverride;
   Timer? _failureIdleTimer;
   Timer? _paymentSuccessNavFallback;
   int _failureSecondsLeft = 0;
@@ -52,6 +51,7 @@ class _ResultScreenState extends State<ResultScreen> {
   /// Prevents double-taps on slow connections and lets us swap the button
   /// label for an inline spinner.
   bool _refreshingPolling = false;
+  bool _offlineCashAutoSettled = false;
 
   /// Guards [WidgetsBinding.addPostFrameCallback] so we do not queue duplicate
   /// thank-you navigations on every [Consumer] rebuild (same as pre-refactor intent).
@@ -86,6 +86,7 @@ class _ResultScreenState extends State<ResultScreen> {
       originalPhoto: originalPhoto,
       printOrientation: parsed.printOrientation,
       printSize: parsed.printSize,
+      classicComposeShotCount: parsed.classicComposeShotCount,
       appSettingsManager: context.read<AppSettingsManager>(),
       contact: parsed.contact,
     );
@@ -95,14 +96,19 @@ class _ResultScreenState extends State<ResultScreen> {
   }
 
   Future<void> _initPaymentMode() async {
-    final v = await KioskManager().getPaymentEnabledOverride();
+    final paymentsEnabled = await resolvePaymentsEnabled();
     if (!mounted) return;
-    setState(() => _paymentsEnabledOverride = v);
-    final paymentsEnabled = _paymentsEnabledOverride ?? true;
+    _viewModel?.setCollectsCounterCash(
+      shouldCollectCounterCash(paymentsEnabled: paymentsEnabled),
+    );
+    if (!mounted) return;
+    setState(() {});
     if (!paymentsEnabled) {
-      PaymentPushCoordinator.instance.registerResultScreenCallback(null);
+      PaymentPushCoordinator.instance
+          .registerResultScreenCallback(_onPaymentPushFromFcm);
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        unawaited(_triggerFreeModePrint());
+        unawaited(PaymentPushCoordinator.instance.flushPendingStoragePayment());
+        _viewModel?.loadPaymentQr(customerPhone: _customerPhone);
       });
       return;
     }
@@ -120,6 +126,7 @@ class _ResultScreenState extends State<ResultScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(PaymentPushCoordinator.instance.flushPendingStoragePayment());
+      unawaited(_maybeAutoSettleOfflineCash());
       _viewModel?.loadPaymentQr(customerPhone: _customerPhone);
     });
   }
@@ -150,6 +157,42 @@ class _ResultScreenState extends State<ResultScreen> {
     if (success == false) {
       _lastPaymentSuccessForNav = false;
     }
+  }
+
+  Future<void> _maybeAutoSettleOfflineCash() async {
+    if (_offlineCashAutoSettled || kIsWeb) return;
+    final vm = _viewModel;
+    if (vm == null || !vm.cashOnlyOffline) return;
+    final skip =
+        context.read<AppSettingsManager>().settings?.skipOfflineCashPin == true;
+    if (!skip) return;
+    await _settleOfflineCashWithoutPin(vm);
+  }
+
+  Future<void> _onStaffCashConfirm(ResultViewModel viewModel) async {
+    final skip =
+        context.read<AppSettingsManager>().settings?.skipOfflineCashPin == true;
+    if (skip) {
+      await _settleOfflineCashWithoutPin(viewModel);
+      return;
+    }
+    if (!mounted) return;
+    await showOfflineCashConfirmSheet(
+      context: context,
+      viewModel: viewModel,
+    );
+  }
+
+  Future<void> _settleOfflineCashWithoutPin(ResultViewModel viewModel) async {
+    if (_offlineCashAutoSettled) return;
+    _offlineCashAutoSettled = true;
+    final ok = await viewModel.confirmOfflineCashReceived(skipPin: true);
+    if (!mounted) return;
+    if (!ok) {
+      _offlineCashAutoSettled = false;
+      return;
+    }
+    await viewModel.publishOfflineCashApproval();
   }
 
   void _onPaymentSucceeded(ResultViewModel viewModel) {
@@ -398,7 +441,6 @@ class _ResultScreenState extends State<ResultScreen> {
     BuildContext context,
     ResultViewModel viewModel,
     AppColors appColors,
-    bool paymentsEnabled,
   ) {
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -410,11 +452,9 @@ class _ResultScreenState extends State<ResultScreen> {
         surfaceTintColor: Colors.transparent,
         forceMaterialTransparency: true,
         centerTitle: true,
-        title: Text(
-          paymentsEnabled
-              ? 'PAY'
-              : AppStrings.offlineFreePrintTitle,
-          style: const TextStyle(
+        title: const Text(
+          'PAY',
+          style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.w600,
             fontSize: 22,
@@ -425,11 +465,10 @@ class _ResultScreenState extends State<ResultScreen> {
           child: Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: Text(
-              paymentsEnabled
-                  ? (viewModel.cashOnlyOffline
-                      ? AppStrings.offlineCashOnlyWaiting
-                      : 'Scan to complete your purchase')
-                  : AppStrings.offlineFreePrintSubtitle,
+              payScreenAppBarSubtitle(
+                collectsCounterCash: viewModel.collectsCounterCash,
+                sessionOffline: viewModel.cashOnlyOffline,
+              ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
@@ -475,16 +514,13 @@ class _ResultScreenState extends State<ResultScreen> {
                               _buildTransformationDetailsLink(),
                             ],
                             const SizedBox(height: 8),
-                            if (paymentsEnabled)
-                              Expanded(
-                                child: _buildPaymentCard(
-                                  context,
-                                  viewModel,
-                                  appColors,
-                                ),
-                              )
-                            else
-                              const Spacer(),
+                            Expanded(
+                              child: _buildPaymentCard(
+                                context,
+                                viewModel,
+                                appColors,
+                              ),
+                            ),
                             if (viewModel.hasError)
                               _buildErrorBanner(viewModel),
                             if (viewModel.fcmPaymentPushSuccess == true &&
@@ -602,7 +638,6 @@ class _ResultScreenState extends State<ResultScreen> {
   @override
   Widget build(BuildContext context) {
     final appColors = AppColors.of(context);
-    final paymentsEnabled = _paymentsEnabledOverride ?? true;
 
     if (!_isInitialized || _viewModel == null) {
       return Scaffold(
@@ -620,7 +655,6 @@ class _ResultScreenState extends State<ResultScreen> {
             context,
             viewModel,
             appColors,
-            paymentsEnabled,
           );
         },
       ),
@@ -628,12 +662,14 @@ class _ResultScreenState extends State<ResultScreen> {
   }
 
   Widget _buildTitleSection(AppColors appColors, ResultViewModel viewModel) {
+    final intro = payScreenIntroMessage(
+      collectsCounterCash: viewModel.collectsCounterCash,
+    );
+    if (intro == null) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(top: 0, bottom: 2),
       child: Text(
-        viewModel.cashOnlyOffline
-            ? AppStrings.offlineCashOnlyMessage
-            : 'Scan the QR code to pay with UPI.\nPrinting starts automatically after payment is approved.',
+        intro,
         maxLines: 3,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
@@ -820,13 +856,8 @@ class _ResultScreenState extends State<ResultScreen> {
                 onGetHelp: () => _showGetHelpDialog(viewModel),
                 refreshPollingChild: _buildRefreshPollingChild(),
                 buildQrArea: _buildPaymentQrArea,
-                onStaffCashConfirm: viewModel.cashOnlyOffline
-                    ? () => unawaited(
-                          showOfflineCashConfirmSheet(
-                            context: context,
-                            viewModel: viewModel,
-                          ),
-                        )
+                onStaffCashConfirm: viewModel.cashOnlyOffline && !kIsWeb
+                    ? () => unawaited(_onStaffCashConfirm(viewModel))
                     : null,
               );
             },

@@ -43,7 +43,10 @@ String resolveStaffDnpPrintSize({
     classicComposeShotCount: classicComposeShotCount,
   );
 
-  if (!isOrientationSelectablePrintSize(fromSession)) {
+  // Dual 2×6 cutter must not be rewritten from JPEG aspect — a 3/4-shot
+  // sheet is 4×6 pixels, which would otherwise become uncut `s4x6`.
+  if (isStripDualPrintSize(fromSession) ||
+      !isOrientationSelectablePrintSize(fromSession)) {
     return fromSession;
   }
   if (orientedDimensions == null) {

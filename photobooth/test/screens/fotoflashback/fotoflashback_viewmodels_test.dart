@@ -807,8 +807,68 @@ void main() {
     expect(image, isNotNull);
     expect(image!.imageUrl, isNotEmpty);
     expect(api.composeCalls, 0);
-    expect(SessionManager().isOfflineSession, isTrue);
+    expect(SessionManager().isOfflineSession, isFalse);
     await vm.refreshComposePreview();
+    expect(api.composeCalls, 0);
+    vm.dispose();
+  });
+
+  test('FotoFlashbackFilterViewModel 3-shot local warm then Continue skips Fly',
+      () async {
+    SessionManager().setSessionFromResponse(_sessionJson('sess-event-3shot'));
+    final api = _StripFakeApi();
+    final vm = FotoFlashbackFilterViewModel(
+      eventPrintIsLocal: true,
+      theme: stripTheme,
+      imageDataUrls: List.filled(3, _tinyJpegDataUrl()),
+      apiService: api,
+      overlayCleanupBuildGate: true,
+    );
+    await vm.loadFilters();
+    await vm.refreshComposePreview();
+    expect(api.composeCalls, 0);
+    final image = await vm.compose();
+    expect(image, isNotNull);
+    expect(api.composeCalls, 0);
+    vm.dispose();
+  });
+
+  test('FotoFlashbackFilterViewModel 4-shot local warm then Continue skips Fly',
+      () async {
+    SessionManager().setSessionFromResponse(_sessionJson('sess-event-4shot'));
+    final api = _StripFakeApi();
+    final vm = FotoFlashbackFilterViewModel(
+      eventPrintIsLocal: true,
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, _tinyJpegDataUrl()),
+      apiService: api,
+      overlayCleanupBuildGate: true,
+    );
+    await vm.loadFilters();
+    await vm.refreshComposePreview();
+    expect(api.composeCalls, 0);
+    final image = await vm.compose();
+    expect(image, isNotNull);
+    expect(api.composeCalls, 0);
+    vm.dispose();
+  });
+
+  test('FotoFlashbackFilterViewModel 1-shot local warm then Continue skips Fly',
+      () async {
+    SessionManager().setSessionFromResponse(_sessionJson('sess-event-1shot'));
+    final api = _StripFakeApi();
+    final vm = FotoFlashbackFilterViewModel(
+      eventPrintIsLocal: true,
+      theme: stripTheme,
+      imageDataUrls: [_tinyJpegDataUrl()],
+      apiService: api,
+      overlayCleanupBuildGate: false,
+    );
+    await vm.loadFilters();
+    await vm.refreshComposePreview();
+    expect(api.composeCalls, 0);
+    final image = await vm.compose();
+    expect(image, isNotNull);
     expect(api.composeCalls, 0);
     vm.dispose();
   });
@@ -994,6 +1054,34 @@ void main() {
     await throwingOverlay.loadFilters();
     expect(await throwingOverlay.compose(), isNotNull);
     throwingOverlay.dispose();
+
+    String? landscapeLookupUrl;
+    final landscapeDps = FotoFlashbackFilterViewModel(
+      eventPrintIsLocal: true,
+      theme: stripTheme,
+      imageDataUrls: [_tinyJpegDataUrl()],
+      apiService: _StripFakeApi(
+        failLoad: true,
+        kioskFrames: [
+          const KioskFrameModel(
+            id: 'dps-1',
+            name: 'Delhi Public School',
+            overlayUrl: 'https://cdn.example/dps.png',
+            landscapeOverlayUrl: 'https://cdn.example/dps-6x4.png',
+          ),
+        ],
+      ),
+      overlayCleanupBuildGate: false,
+      overlayBytesLookup: (frame) async {
+        landscapeLookupUrl = frame.overlayUrl;
+        return overlayPng;
+      },
+    );
+    await landscapeDps.loadFilters();
+    landscapeDps.selectPrintOrientation(PrintOrientation.landscape);
+    expect(await landscapeDps.compose(), isNotNull);
+    expect(landscapeLookupUrl, 'https://cdn.example/dps-6x4.png');
+    landscapeDps.dispose();
 
     final offlineDpsFour = FotoFlashbackFilterViewModel(
       eventPrintIsLocal: false,

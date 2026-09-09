@@ -22,6 +22,12 @@ const List<int> kClassicStripShotCounts = <int>[
   kStripShotCount,
 ];
 
+/// Hairline matte for Classic / Noir 1-shot (preview + local print).
+const double kClassicSingleMatteRatio = 0.027;
+
+/// Filmstrip 1-shot rail (matches [StripChromeLook.filmRailRatio] 36/600).
+const double kClassicFilmstripRailRatio = 36 / 600;
+
 /// Shot counts `/strip/compose` accepts: 1 (6×4 / 4×6) or a 2×6 strip length.
 bool isValidClassicComposeShotCount(int count) =>
     count == 1 || kClassicStripShotCounts.contains(count);
@@ -177,10 +183,86 @@ const StripTemplateSlot defaultOccasionSinglePhotoHole = StripTemplateSlot(
   height: 0.60,
 );
 
-/// Catalog hole for Classic 1-shot occasion overlay, else [defaultOccasionSinglePhotoHole].
-StripTemplateSlot occasionSinglePhotoHole(List<StripTemplateSlot> slots) {
+/// Fallback 6×4 window when an occasion overlay has no landscape hole.
+const StripTemplateSlot defaultClassicLandscapePhotoHole = StripTemplateSlot(
+  left: 0.07,
+  top: 0.14,
+  width: 0.86,
+  height: 0.72,
+);
+
+/// Built-in Classic / Noir / Filmstrip 1-shot: thin chrome, full capture inside.
+StripTemplateSlot classicChromeSinglePhotoHole({String frameId = 'classic'}) {
+  final x = frameId == 'filmstrip'
+      ? kClassicFilmstripRailRatio
+      : kClassicSingleMatteRatio;
+  const y = kClassicSingleMatteRatio;
+  return StripTemplateSlot(
+    left: x,
+    top: y,
+    width: 1 - 2 * x,
+    height: 1 - 2 * y,
+  );
+}
+
+/// Catalog hole for Classic 1-shot occasion overlay, else orientation default.
+StripTemplateSlot occasionSinglePhotoHole(
+  List<StripTemplateSlot> slots, {
+  bool landscape = false,
+}) {
   if (slots.length == 1) return slots.first;
-  return defaultOccasionSinglePhotoHole;
+  return landscape
+      ? defaultClassicLandscapePhotoHole
+      : defaultOccasionSinglePhotoHole;
+}
+
+/// Built-in 1-shot window (same thin chrome on 4×6 and 6×4).
+StripTemplateSlot? classicBuiltInSinglePhotoHole({
+  required bool landscape,
+  String frameId = 'classic',
+}) {
+  return classicChromeSinglePhotoHole(frameId: frameId);
+}
+
+/// Photo window for Classic 1-shot preview/print (occasion hole or built-in matte).
+StripTemplateSlot resolveClassicSinglePhotoHole({
+  required bool hasOverlay,
+  required bool landscape,
+  StripTemplateSlot? overlayHole,
+  String frameId = 'classic',
+}) {
+  if (hasOverlay) {
+    return overlayHole ??
+        occasionSinglePhotoHole(const [], landscape: landscape);
+  }
+  return classicChromeSinglePhotoHole(frameId: frameId);
+}
+
+/// Portrait 4×6 overlay, or the dedicated 6×4 PNG when [landscape] is true.
+String? classicOccasionOverlayUrl({
+  required String? overlayUrl,
+  String? landscapeOverlayUrl,
+  required bool landscape,
+}) {
+  final land = (landscapeOverlayUrl ?? '').trim();
+  if (landscape && land.isNotEmpty) return land;
+  final portrait = (overlayUrl ?? '').trim();
+  return portrait.isEmpty ? null : portrait;
+}
+
+/// Photo window for the overlay returned by [classicOccasionOverlayUrl].
+List<StripTemplateSlot> classicOccasionOverlaySlots({
+  required List<StripTemplateSlot> slots,
+  List<StripTemplateSlot> landscapeSlots = const [],
+  required bool landscape,
+  required bool hasLandscapeOverlay,
+}) {
+  if (landscape && hasLandscapeOverlay) {
+    return landscapeSlots.length == 1
+        ? landscapeSlots
+        : const [defaultClassicLandscapePhotoHole];
+  }
+  return slots;
 }
 
 const List<String> kStripStickerIds = [
@@ -360,10 +442,12 @@ class StripFrame {
     required this.description,
     this.kind,
     this.overlayUrl,
+    this.landscapeOverlayUrl,
     this.caption,
     this.logoUrl,
     this.shotCount,
     this.slots = const [],
+    this.landscapeSlots = const [],
   });
 
   final String id;
@@ -373,6 +457,7 @@ class StripFrame {
   /// `template` for admin scrapbook strips; `occasion` for 1-shot AI overlay.
   final String? kind;
   final String? overlayUrl;
+  final String? landscapeOverlayUrl;
   final String? caption;
   final String? logoUrl;
 
@@ -380,6 +465,7 @@ class StripFrame {
   /// except sheet layouts (those use [isStripSheetLayout]).
   final int? shotCount;
   final List<StripTemplateSlot> slots;
+  final List<StripTemplateSlot> landscapeSlots;
 
   bool get isTemplate => kind == 'template' || isStripTemplateFrame(id);
 
@@ -392,10 +478,13 @@ class StripFrame {
       description: JsonParseHelpers.stringValue(json['description']),
       kind: JsonParseHelpers.stringOrNull(json['kind']),
       overlayUrl: JsonParseHelpers.stringOrNull(json['overlayUrl']),
+      landscapeOverlayUrl:
+          JsonParseHelpers.stringOrNull(json['landscapeOverlayUrl']),
       caption: JsonParseHelpers.stringOrNull(json['caption']),
       logoUrl: JsonParseHelpers.stringOrNull(json['logoUrl']),
       shotCount: JsonParseHelpers.intOrNull(json['shotCount']),
       slots: parseStripTemplateSlots(json['slots']),
+      landscapeSlots: parseStripTemplateSlots(json['landscapeSlots']),
     );
   }
 }

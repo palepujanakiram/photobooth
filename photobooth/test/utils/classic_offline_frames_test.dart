@@ -19,6 +19,10 @@ void main() {
 
   test('classicFrameOverlayCacheKey matches AI and 6x2 variants', () {
     expect(classicFrameOverlayCacheKey('ai:frame-1'), 'frame-frame-1');
+    expect(
+      classicFrameOverlayCacheKey('ai:frame-1', landscape: true),
+      'frame-frame-1-land',
+    );
     expect(classicFrameOverlayCacheKey('fr:frame-1'), 'frame-frame-1-strip');
     expect(
       classicFrameOverlayCacheKey('f3:frame-1'),
@@ -35,6 +39,7 @@ void main() {
       id: 'dps-1',
       name: 'Delhi Public School',
       overlayUrl: 'https://cdn.example/ai.png',
+      landscapeOverlayUrl: 'https://cdn.example/ai-6x4.png',
       strip: KioskFrameStripAssets(
         overlayUrl: 'https://cdn.example/6x2.png',
         overlay3Url: 'https://cdn.example/6x2-3.png',
@@ -45,6 +50,7 @@ void main() {
     );
     final rows = classicFramesFromKioskFrame(frame);
     expect(rows.map((f) => f.id), ['ai:dps-1', 'fr:dps-1', 'f3:dps-1']);
+    expect(rows[0].landscapeOverlayUrl, 'https://cdn.example/ai-6x4.png');
     expect(rows[1].slots.single.top, 0.2);
     expect(classicFramesFromKioskFrame(const KioskFrameModel(
       id: '',
@@ -149,6 +155,26 @@ void main() {
         cachedFile: (url, {cacheKey}) async {
           expect(url, 'https://cdn.example/ai.png');
           expect(cacheKey, 'frame-dps-1');
+          return png;
+        },
+      ),
+      Uint8List.fromList(const [1, 2, 3]),
+    );
+
+    const landscapeOccasion = StripFrame(
+      id: 'ai:dps-1',
+      name: 'DPS',
+      description: 'AI',
+      kind: 'occasion',
+      overlayUrl: 'https://cdn.example/ai-6x4.png',
+      landscapeOverlayUrl: 'https://cdn.example/ai-6x4.png',
+    );
+    expect(
+      await readClassicOverlayBytes(
+        landscapeOccasion,
+        cachedFile: (url, {cacheKey}) async {
+          expect(url, 'https://cdn.example/ai-6x4.png');
+          expect(cacheKey, 'frame-dps-1-land');
           return png;
         },
       ),

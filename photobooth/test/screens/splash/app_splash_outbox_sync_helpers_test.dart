@@ -19,6 +19,21 @@ void main() {
     );
   });
 
+  test('splashOutboxSyncAvailable is native-only', () {
+    expect(splashOutboxSyncAvailable(isWeb: true, hasWorker: true), isFalse);
+    expect(splashOutboxSyncAvailable(isWeb: false, hasWorker: false), isFalse);
+    expect(splashOutboxSyncAvailable(isWeb: false, hasWorker: true), isTrue);
+    expect(splashOutboxSyncAvailable(isWeb: false), isFalse);
+    expect(splashOutboxSyncAvailable(hasWorker: true), isTrue);
+  });
+
+  test('splashOutboxSyncUnavailableMessage is browser-specific', () {
+    expect(
+      splashOutboxSyncUnavailableMessage(),
+      AppStrings.splashSyncUnavailableInBrowser,
+    );
+  });
+
   test('splashSyncPending singular when one item is waiting', () {
     expect(AppStrings.splashSyncPending(1, 0), '1 item waiting to sync');
     expect(AppStrings.splashSyncPending(2, 0), '2 items waiting to sync');

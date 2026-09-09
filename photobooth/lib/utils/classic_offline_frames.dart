@@ -16,11 +16,16 @@ String stripFiltersCatalogDiskKey(String? kioskCode) {
 }
 
 /// Stable image-cache key for a Classic catalog overlay PNG.
-String? classicFrameOverlayCacheKey(String? frameId) {
+String? classicFrameOverlayCacheKey(
+  String? frameId, {
+  bool landscape = false,
+}) {
   final id = frameId?.trim() ?? '';
   final dbId = classicFrameDbId(id);
   if (dbId == null) return catalogCacheKeyForFrame(id);
-  if (isOccasionFrameId(id)) return catalogCacheKeyForFrame(dbId);
+  if (isOccasionFrameId(id)) {
+    return catalogCacheKeyForFrame(landscape ? '$dbId-land' : dbId);
+  }
   if (isStrip3TemplateFrame(id)) {
     return catalogCacheKeyForFrame('$dbId-strip3');
   }
@@ -45,6 +50,9 @@ List<StripFrame> classicFramesFromKioskFrame(KioskFrameModel frame) {
         description: 'Classic 1-shot occasion overlay',
         kind: 'occasion',
         overlayUrl: overlay,
+        landscapeOverlayUrl: frame.landscapeOverlayUrl.trim().isEmpty
+            ? null
+            : frame.landscapeOverlayUrl.trim(),
         shotCount: 1,
       ),
     );
@@ -104,9 +112,11 @@ Future<Uint8List?> readClassicOverlayBytes(
   if (!frame.isOccasion && !isStripTemplateFrame(frame.id)) return null;
   try {
     final lookup = cachedFile ?? _cachedClassicOverlayFile;
+    final landscape = (frame.landscapeOverlayUrl ?? '').trim().isNotEmpty &&
+        url == frame.landscapeOverlayUrl!.trim();
     final file = await lookup(
       url,
-      cacheKey: classicFrameOverlayCacheKey(frame.id),
+      cacheKey: classicFrameOverlayCacheKey(frame.id, landscape: landscape),
     );
     if (file == null) return null;
     final bytes = await file.readAsBytes();

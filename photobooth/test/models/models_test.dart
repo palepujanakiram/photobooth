@@ -96,6 +96,13 @@ void main() {
     expect(m.cameraSidecarPath, '/');
   });
 
+  test('AppSettingsModel.fromJson parses skipOfflineCashPin', () {
+    expect(
+      AppSettingsModel.fromJson({'skipOfflineCashPin': true}).skipOfflineCashPin,
+      isTrue,
+    );
+  });
+
   test('AppSettingsModel.fromJson parses offlineCashPins', () {
     final m = AppSettingsModel.fromJson({
       'offlineCashPins': ['1357', '9999', 'nope', 2468],
@@ -157,6 +164,7 @@ void main() {
     expect(again.regenerationPrice, original.regenerationPrice);
     expect(again.operatingMode, original.operatingMode);
     expect(again.invoiceLastSeq, original.invoiceLastSeq);
+    expect(again.classicPoseCountdownSeconds, 10);
   });
 
   test('KioskInfoModel parses price overrides', () {
@@ -182,6 +190,38 @@ void main() {
       'classicShotModes': [1, 3.2, '4', 'nope'],
     });
     expect(m.classicShotModes, [1, 3, 4]);
+  });
+
+  test('KioskInfoModel parses and clamps classicPoseCountdownSeconds', () {
+    expect(
+      KioskInfoModel.fromJson({'id': 'k1', 'code': 'ABC'})
+          .classicPoseCountdownSeconds,
+      10,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'classicPoseCountdownSeconds': 7,
+      }).classicPoseCountdownSeconds,
+      7,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'classic_pose_countdown_seconds': '4',
+      }).classicPoseCountdownSeconds,
+      5,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'classicPoseCountdownSeconds': 15.6,
+      }).classicPoseCountdownSeconds,
+      15,
+    );
   });
 
   test('KioskInfoModel aiPhotosEnabled defaults true and parses false', () {
@@ -371,6 +411,7 @@ void main() {
       id: 'dps-1',
       name: 'Delhi Public School',
       overlayUrl: 'https://cdn.example/ai.png',
+      landscapeOverlayUrl: 'https://cdn.example/ai-6x4.png',
       strip: KioskFrameStripAssets(
         overlayUrl: 'https://cdn.example/6x2.png',
         overlay3Url: 'https://cdn.example/6x2-3.png',
@@ -380,6 +421,7 @@ void main() {
     );
     final parsed = KioskFrameModel.fromJson(original.toJson());
     expect(parsed.strip.overlayUrl, 'https://cdn.example/6x2.png');
+    expect(parsed.landscapeOverlayUrl, 'https://cdn.example/ai-6x4.png');
     expect(parsed.strip.overlay3Url, 'https://cdn.example/6x2-3.png');
     expect(parsed.strip.has4, isTrue);
     expect(parsed.strip.has3, isTrue);

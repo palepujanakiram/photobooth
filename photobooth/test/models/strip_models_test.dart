@@ -400,9 +400,15 @@ void main() {
       'description': 'AI overlay',
       'kind': 'occasion',
       'overlayUrl': 'https://example.com/ai.png',
+      'landscapeOverlayUrl': 'https://example.com/ai-6x4.png',
+      'landscapeSlots': [
+        {'left': 0.12, 'top': 0.1, 'width': 0.76, 'height': 0.78},
+      ],
       'shotCount': 1,
     });
     expect(one.isOccasion, isTrue);
+    expect(one.landscapeOverlayUrl, 'https://example.com/ai-6x4.png');
+    expect(one.landscapeSlots.single.left, 0.12);
     expect(isOccasionFrameId(one.id), isTrue);
     expect(isStripTemplateFrame(one.id), isFalse);
     expect(classicFrameVisibleForShotCount(one, 1), isTrue);
@@ -477,6 +483,70 @@ void main() {
       occasionSinglePhotoHole(const <StripTemplateSlot>[]),
       defaultOccasionSinglePhotoHole,
     );
+    expect(
+      occasionSinglePhotoHole(const <StripTemplateSlot>[], landscape: true),
+      defaultClassicLandscapePhotoHole,
+    );
+    expect(
+      classicOccasionOverlayUrl(
+        overlayUrl: 'https://cdn/p.png',
+        landscapeOverlayUrl: 'https://cdn/l.png',
+        landscape: true,
+      ),
+      'https://cdn/l.png',
+    );
+    expect(
+      classicOccasionOverlayUrl(
+        overlayUrl: 'https://cdn/p.png',
+        landscapeOverlayUrl: 'https://cdn/l.png',
+        landscape: false,
+      ),
+      'https://cdn/p.png',
+    );
+    expect(
+      classicOccasionOverlayUrl(
+        overlayUrl: 'https://cdn/p.png',
+        landscapeOverlayUrl: '  ',
+        landscape: true,
+      ),
+      'https://cdn/p.png',
+    );
+    expect(
+      classicOccasionOverlayUrl(overlayUrl: '  ', landscape: false),
+      isNull,
+    );
+    const landHole = StripTemplateSlot(
+      left: 0.12,
+      top: 0.1,
+      width: 0.76,
+      height: 0.78,
+    );
+    expect(
+      classicOccasionOverlaySlots(
+        slots: const [defaultOccasionSinglePhotoHole],
+        landscapeSlots: const [landHole],
+        landscape: true,
+        hasLandscapeOverlay: true,
+      ),
+      const [landHole],
+    );
+    expect(
+      classicOccasionOverlaySlots(
+        slots: const [defaultOccasionSinglePhotoHole],
+        landscapeSlots: const [landHole],
+        landscape: false,
+        hasLandscapeOverlay: true,
+      ),
+      const [defaultOccasionSinglePhotoHole],
+    );
+    expect(
+      classicOccasionOverlaySlots(
+        slots: const [defaultOccasionSinglePhotoHole],
+        landscape: true,
+        hasLandscapeOverlay: true,
+      ),
+      const [defaultClassicLandscapePhotoHole],
+    );
     final catalogHole = occasionSinglePhotoHole(const [
       StripTemplateSlot(left: 0.1, top: 0.2, width: 0.8, height: 0.5),
     ]);
@@ -484,6 +554,29 @@ void main() {
     expect(catalogHole.top, 0.2);
     expect(catalogHole.width, 0.8);
     expect(catalogHole.height, 0.5);
+    final landChrome = resolveClassicSinglePhotoHole(
+      hasOverlay: false,
+      landscape: true,
+    );
+    expect(landChrome.left, kClassicSingleMatteRatio);
+    expect(landChrome.top, kClassicSingleMatteRatio);
+    expect(landChrome.width, 1 - 2 * kClassicSingleMatteRatio);
+    expect(landChrome.height, 1 - 2 * kClassicSingleMatteRatio);
+    expect(
+      resolveClassicSinglePhotoHole(
+        hasOverlay: false,
+        landscape: false,
+      ).left,
+      kClassicSingleMatteRatio,
+    );
+    expect(
+      classicBuiltInSinglePhotoHole(landscape: false)?.left,
+      kClassicSingleMatteRatio,
+    );
+    expect(
+      classicChromeSinglePhotoHole(frameId: 'filmstrip').left,
+      kClassicFilmstripRailRatio,
+    );
     expect(
       const StripTemplateSlot(
         left: 0.1,

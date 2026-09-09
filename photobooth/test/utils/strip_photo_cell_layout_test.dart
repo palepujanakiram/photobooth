@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:photobooth/models/strip_models.dart';
 import 'package:photobooth/utils/strip_photo_cell_layout.dart';
+
+import '../helpers/tiny_jpeg.dart';
 
 void main() {
   const stripW = 600.0;
@@ -74,27 +77,39 @@ void main() {
       expect(cells.first.width, closeTo(cellW, 0.01));
       expect(cells.first.height, closeTo(cellH, 0.01));
       expect(cells[1].top, closeTo(marginY + cellH + gutter, 0.01));
-      expect(stripPhotoCellUsesContainFit('filmstrip'), isFalse);
-      expect(stripPhotoCellUsesContainFit('classic'), isFalse);
+      expect(stripPhotoCellUsesContainFit('filmstrip'), isTrue);
+      expect(stripPhotoCellUsesContainFit('classic'), isTrue);
       expect(
         stripPhotoCellUsesContainFit('classic', shotCount: kStripShotCountThree),
-        isFalse,
+        isTrue,
       );
       expect(
         stripPhotoCellUsesContainFit('f3:dps', shotCount: kStripShotCountThree),
-        isFalse,
+        isTrue,
       );
       expect(
         stripPhotoCellUsesContainFit('fr:dps', shotCount: kStripShotCount),
-        isFalse,
+        isTrue,
       );
       expect(
         stripPhotoCellUsesContainFit('classic', shotCount: 1),
-        isFalse,
+        isTrue,
+      );
+      expect(
+        stripPhotoCellUsesContainFit('filmstrip', shotCount: 1),
+        isTrue,
       );
       expect(
         stripPhotoCellUsesContainFit('ai:dps', shotCount: 1),
-        isFalse,
+        isTrue,
+      );
+      expect(
+        stripPhotoCellUsesContainFit('fr:dps', shotCount: 1),
+        isTrue,
+      );
+      expect(
+        stripPhotoCellUsesContainFit('noir', shotCount: 1),
+        isTrue,
       );
       expect(
         stripPhotoCellUsesContainFit('classic', shotCount: 0),
@@ -120,6 +135,19 @@ void main() {
         stripPhotoCellLetterboxColor('filmstrip'),
         const Color(0xFF0A0A0A),
       );
+      expect(
+        stripPhotoCellLetterboxColor('ai:dps'),
+        const Color(0xFF121212),
+      );
+      expect(
+        stripPhotoCellLetterboxColor('noir'),
+        const Color(0xFF121216),
+      );
+      expect(
+        stripPhotoCellLetterboxColor('classic'),
+        const Color(0xFFFFFFFF),
+      );
+      expect(threeCells.first.rect.width, closeTo(cellW, 0.01));
     });
   });
 
@@ -201,6 +229,103 @@ void main() {
         overlayUrl: 'https://example.com/x.png',
       );
       expect(fallback, hasLength(3));
+    });
+  });
+
+  group('coverPhotoAlignmentForWindow', () {
+    test('centers landscape webcam stills in wide wells', () {
+      expect(
+        coverPhotoAlignmentForWindow(1640, 900),
+        Alignment.center,
+      );
+      expect(
+        coverPhotoAlignmentForWindow(
+          1640,
+          900,
+          sourceWidth: 1600,
+          sourceHeight: 900,
+        ),
+        Alignment.center,
+      );
+      expect(
+        coverPhotoAlignmentForWindow(504, 279, sourceWidth: 1600, sourceHeight: 900),
+        Alignment.center,
+      );
+    });
+
+    test('keeps heads when a portrait still fills a landscape well', () {
+      expect(
+        coverPhotoAlignmentForWindow(
+          1640,
+          900,
+          sourceWidth: 600,
+          sourceHeight: 900,
+        ),
+        Alignment.topCenter,
+      );
+      expect(
+        coverPhotoAlignmentForWindow(800, 900, sourceWidth: 600, sourceHeight: 900),
+        Alignment.center,
+      );
+    });
+
+    test('coverPhotoAlignmentForJpeg peeks SOF size', () {
+      expect(
+        coverPhotoAlignmentForJpeg(
+          windowWidth: 1640,
+          windowHeight: 900,
+          jpegBytes: kTinyJpegBytes,
+        ),
+        Alignment.center,
+      );
+      expect(
+        coverPhotoAlignmentForJpeg(
+          windowWidth: 1640,
+          windowHeight: 900,
+        ),
+        Alignment.center,
+      );
+      expect(
+        coverPhotoAlignmentForJpeg(
+          windowWidth: 1640,
+          windowHeight: 900,
+          jpegBytes: const [],
+        ),
+        Alignment.center,
+      );
+      expect(
+        coverPhotoAlignmentForJpeg(
+          windowWidth: 1640,
+          windowHeight: 900,
+          jpegBytes: const [0x00, 0x01],
+        ),
+        Alignment.center,
+      );
+      final tallJpeg = img.encodeJpg(img.Image(width: 20, height: 40), quality: 85);
+      expect(
+        coverPhotoAlignmentForJpeg(
+          windowWidth: 1640,
+          windowHeight: 900,
+          jpegBytes: tallJpeg,
+        ),
+        Alignment.topCenter,
+      );
+      expect(
+        coverCropKeepsSourceTop(
+          windowWidth: 1640,
+          windowHeight: 900,
+          sourceWidth: 600,
+          sourceHeight: 900,
+        ),
+        isTrue,
+      );
+      expect(
+        coverCropKeepsSourceTop(
+          windowWidth: 800,
+          windowHeight: 900,
+        ),
+        isFalse,
+      );
     });
   });
 }

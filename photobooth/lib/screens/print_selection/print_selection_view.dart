@@ -106,28 +106,17 @@ class _PrintSelectionScreenState extends State<PrintSelectionScreen> {
         printOrientation: orientation,
         transformationRunId:
             (runId != null && runId.isNotEmpty) ? runId : null,
-        printSize: _classicSessionPrintSize(selected, vm.stripPrintSize),
+        printSize: resolveClassicCheckoutSessionPrintSize(
+          selected: selected,
+          stripPrintSize: vm.stripPrintSize,
+          classicComposeShotCount:
+              PrintSelectionCoordinator.instance.classicComposeShotCount,
+          orientation: orientation,
+        ),
+        classicComposeShotCount:
+            PrintSelectionCoordinator.instance.classicComposeShotCount,
       ),
     );
-  }
-
-  /// Session hint for Classic checkout — never dual-strip when only 6×4 sheets selected.
-  String? _classicSessionPrintSize(
-    List<GeneratedImage> selected,
-    String? stripPrintSize,
-  ) {
-    if (selected.isEmpty) return null;
-    final sizes = selected
-        .map((e) => e.printSize?.trim() ?? '')
-        .where((s) => s.isNotEmpty)
-        .toSet();
-    if (sizes.length == 1) return sizes.single;
-    if (sizes.contains(AppConstants.kPrintSizeLandscape6x4) &&
-        !sizes.contains(AppConstants.kPrintSizeStripDual2x6)) {
-      return AppConstants.kPrintSizeLandscape6x4;
-    }
-    final hint = stripPrintSize?.trim() ?? '';
-    return hint.isNotEmpty ? hint : null;
   }
 
   @override

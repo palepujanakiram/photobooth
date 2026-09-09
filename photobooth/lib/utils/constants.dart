@@ -201,8 +201,8 @@ class AppConstants {
   ///   preview vs JPEG mismatch; enable **clean HDMI** on the DSLR and match 1080p progressive when possible.
   /// - Prefer powered USB hubs and one external webcam; avoid enumerating many unused devices.
   /// - Close other apps using the camera; reboot kiosk if enumeration hangs after OOM.
-  /// - For extreme OOM only, consider `android:largeHeap="true"` in the Android manifest
-  ///   (trade-off: harder to catch real leaks).
+  /// - 4 GB Android TV kiosks enable `android:largeHeap="true"` so Classic print
+  ///   match can hold a 4×6 sheet without the process being LMK'd.
 
   /// When true, shows an overlay above Cancel/Continue with photo metadata (size, format).
   /// Off when [kLowMemoryKioskMode] is true (avoids full-image decode on the UI isolate).
@@ -276,7 +276,12 @@ class AppConstants {
   static const int kCaptureCountdownSeconds = 5;
 
   /// Classic 1-shot and 4-shot pose countdown before each shutter.
+  /// Default when a kiosk has no `classicPoseCountdownSeconds` override.
   static const int kFlashbackCaptureCountdownSeconds = 10;
+
+  /// Admin / API clamp for per-kiosk Classic pose countdown.
+  static const int kClassicPoseCountdownMinSeconds = 5;
+  static const int kClassicPoseCountdownMaxSeconds = 15;
 
   /// Classic 4-shot shots 2–4 use the same pose window as shot 1.
   static const int kFlashbackFollowOnCountdownSeconds = 10;

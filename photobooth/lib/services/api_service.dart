@@ -600,6 +600,11 @@ class ApiService {
         frame.strip.overlay3Url,
         catalogCacheKeyForFrame('${frame.id}-strip3'),
       );
+      await _cacheFrameOverlay(
+        cache,
+        frame.landscapeOverlayUrl,
+        catalogCacheKeyForFrame('${frame.id}-land'),
+      );
     }
   }
 
@@ -747,10 +752,17 @@ class ApiService {
     if (cache == null) return;
     for (final frame in catalog.frames) {
       final url = frame.overlayUrl?.trim() ?? '';
-      if (url.isEmpty) continue;
+      if (url.isNotEmpty) {
+        await cache.cacheImage(
+          SecureImageUrl.absolutize(url),
+          cacheKey: classicFrameOverlayCacheKey(frame.id),
+        );
+      }
+      final landscapeUrl = frame.landscapeOverlayUrl?.trim() ?? '';
+      if (landscapeUrl.isEmpty) continue;
       await cache.cacheImage(
-        SecureImageUrl.absolutize(url),
-        cacheKey: classicFrameOverlayCacheKey(frame.id),
+        SecureImageUrl.absolutize(landscapeUrl),
+        cacheKey: classicFrameOverlayCacheKey(frame.id, landscape: true),
       );
     }
   }
@@ -1121,6 +1133,47 @@ class ApiService {
         AppStrings.flashbackComposeFailed,
         e.response?.statusCode,
       );
+    }
+  }
+
+  /// POST `/api/sessions/:id/strip/deliverable` — store a locally baked print.
+  Future<String?> registerStripDeliverable({
+    required String sessionId,
+    required String imageDataUrl,
+  }) async {
+    final sid = sessionId.trim();
+    final dataUrl = imageDataUrl.trim();
+    if (sid.isEmpty || !dataUrl.startsWith(AppStrings.dataImagePrefix)) {
+      return null;
+    }
+    try {
+      final r = await _dio.post<dynamic>(
+        '/api/sessions/$sid/strip/deliverable',
+        data: <String, dynamic>{'imageDataUrl': dataUrl},
+        options: Options(
+          responseType: ResponseType.json,
+          validateStatus: (c) => c != null && c < 600,
+        ),
+      );
+      throwIfHttpErrorResponse(
+        r,
+        operationLabel: AppStrings.flashbackComposeFailed,
+      );
+      final data = r.data;
+      Map<String, dynamic>? map;
+      if (data is Map<String, dynamic>) {
+        map = data;
+      } else if (data is Map) {
+        map = Map<String, dynamic>.from(data);
+      }
+      if (map == null || map['success'] == false) return null;
+      final url = map['imageUrl']?.toString().trim() ?? '';
+      return url.isEmpty ? null : url;
+    } on ApiException {
+      return null;
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+      return null;
     }
   }
 
