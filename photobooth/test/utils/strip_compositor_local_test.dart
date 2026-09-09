@@ -671,14 +671,46 @@ void main() {
     expect(photo.g, greaterThan(150));
   });
 
-  test('landscape plates cover-fill 3-shot and 4-shot classic cells', () {
+  test('landscape plates contain-fit 3-shot and 4-shot classic cells', () {
     for (final shotCount in [kStripShotCountThree, kStripShotCount]) {
-      _expectLandscapeCoverInClassicCells(shotCount);
+      _expectLandscapeContainInClassicCells(shotCount);
     }
+  });
+
+  test('Classic 3-shot contain-fits a portrait capture from head to body', () {
+    final jpeg = composeLocalStripSheetJpegForTest(
+      sourceBytes: [
+        _markerHeadJpeg(width: 40, height: 80),
+        _markerHeadJpeg(width: 40, height: 80),
+        _markerHeadJpeg(width: 40, height: 80),
+      ],
+      filterId: 'clean',
+      frameId: 'classic',
+      single: false,
+    );
+    final decoded = img.decodeJpg(jpeg)!;
+    const stripDrawWidth =
+        (kLocalStripSheetWidth - kLocalStripCenterGutter) ~/ 2;
+    const cellWidth = stripDrawWidth - kLocalStripBorder * 2;
+    final innerHeight = kLocalStripSheetHeight -
+        kLocalStripBorderTop -
+        kLocalStripBorderBottom -
+        kLocalStripGutter * 2;
+    final cellHeight = innerHeight ~/ 3;
+    final x = kLocalStripBorder + cellWidth ~/ 2;
+    final head = decoded.getPixel(x, kLocalStripBorderTop + 12);
+    expect(head.g, greaterThan(150));
+    expect(head.b, lessThan(100));
+    final body = decoded.getPixel(
+      x,
+      kLocalStripBorderTop + cellHeight - 12,
+    );
+    expect(body.b, greaterThan(150));
+    expect(body.g, lessThan(100));
   });
 }
 
-void _expectLandscapeCoverInClassicCells(int shotCount) {
+void _expectLandscapeContainInClassicCells(int shotCount) {
   final sourceBytes = [
     _solidJpeg(220, 20, 20, width: 80, height: 20),
     _solidJpeg(20, 220, 20, width: 80, height: 20),
@@ -703,8 +735,8 @@ void _expectLandscapeCoverInClassicCells(int shotCount) {
   final cellHeight = innerHeight ~/ shotCount;
   final x = kLocalStripBorder + cellWidth ~/ 2;
   final edge = decoded.getPixel(x, kLocalStripBorderTop + 8);
-  expect(edge.r, greaterThan(180), reason: '$shotCount-shot cover edge');
-  expect(edge.g, lessThan(80), reason: '$shotCount-shot cover edge');
+  expect(edge.r, greaterThan(180), reason: '$shotCount-shot letterbox');
+  expect(edge.g, greaterThan(180), reason: '$shotCount-shot letterbox');
   final plate = decoded.getPixel(
     x,
     kLocalStripBorderTop + cellHeight ~/ 2,

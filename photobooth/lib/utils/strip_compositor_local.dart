@@ -177,8 +177,7 @@ Uint8List _composeLocalStripSheetIsolate(_LocalStripIsolateInput input) {
   );
 }
 
-/// Test hook for cell resize. Classic 1-shot chrome contain-fits; strip
-/// cells cover-fill.
+/// Test hook for cell resize. Classic dual-strip cells contain-fit.
 @visibleForTesting
 img.Image? prepareLocalStripCellForTest(
   Uint8List bytes,
@@ -373,8 +372,8 @@ void _drawOccasionDualStrip(
           stripLeft,
           0,
         ),
-        contain: false,
-        letterbox: img.ColorRgb8(255, 255, 255),
+        contain: true,
+        letterbox: img.ColorRgb8(18, 18, 18),
       );
     }
   }
@@ -467,7 +466,7 @@ void _drawDualStripCells(
       matrix,
       cellWidth,
       cellHeight,
-      contain: false,
+      contain: true,
       letterbox: _frameBackground(frameId),
     );
     if (prepared == null) continue;

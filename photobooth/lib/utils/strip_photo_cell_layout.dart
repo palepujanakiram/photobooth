@@ -23,18 +23,26 @@ class StripPhotoCellRect {
 
 /// Whether a strip cell letterboxes the capture instead of filling the window.
 ///
-/// Classic / Noir / Filmstrip 1-shot contain-fits in the chrome window.
-/// Occasion overlays (DPS) and multi-shot cells cover-fill the designed hole
-/// so the photo stays large — no black letterbox inside the frame.
+/// Classic / Noir / Filmstrip 1-, 3-, and 4-shot cells contain-fit so the
+/// full capture stays visible. Occasion 3-/4-shot holes do the same. Occasion
+/// 1-shot still cover-fills its designed hole. Sheet layouts (polaroid, grid)
+/// are unchanged.
 bool stripPhotoCellUsesContainFit(
   String frameId, {
   int shotCount = kStripShotCount,
 }) {
-  if (shotCount != 1) return false;
-  if (isOccasionFrameId(frameId) || isStripTemplateFrame(frameId)) {
+  if (isStripSheetLayout(frameId)) return false;
+  if (shotCount == 1) {
+    return !isOccasionFrameId(frameId) && !isStripTemplateFrame(frameId);
+  }
+  if (shotCount != kStripShotCountThree && shotCount != kStripShotCount) {
     return false;
   }
-  return true;
+  return frameId == 'classic' ||
+      frameId == 'noir' ||
+      frameId == 'filmstrip' ||
+      isOccasionFrameId(frameId) ||
+      isStripTemplateFrame(frameId);
 }
 
 /// Letterbox well behind contain-fit cells (matches print chrome fill).
