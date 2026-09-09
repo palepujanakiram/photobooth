@@ -371,6 +371,37 @@ void main() {
     });
   });
 
+  group('the pipeline switch the backend does not send', () {
+    test('a sync turns the pipeline on, so the flow is reachable at all',
+        () async {
+      // Without this the operator flow is unreachable: the override layer is
+      // gone, /api/event/by-code does not carry pipelineEnabled, and the hub —
+      // the only other screen that syncs — cannot be opened until it is true.
+      await build().sync();
+      expect((await config.resolve()).pipelineEnabled, isTrue);
+    });
+
+    test('a backend that does send it wins over the scaffold', () async {
+      await build(
+        fetchEvent: (_) async => backendBody(extra: {'pipelineEnabled': false}),
+      ).sync();
+      expect((await config.resolve()).pipelineEnabled, isFalse);
+    });
+
+    test('the forced value is what resolvePipelineEnabled falls back to', () {
+      expect(EventPipelineDevConfig.resolvePipelineEnabled(null),
+          EventPipelineDevConfig.forcePipelineEnabled);
+      expect(EventPipelineDevConfig.resolvePipelineEnabled(false), isFalse);
+      expect(EventPipelineDevConfig.resolvePipelineEnabled(true), isTrue);
+    });
+
+    test('offline mode defers to the backend unless forced', () {
+      expect(EventPipelineDevConfig.resolveOfflineMode(true), isTrue);
+      expect(EventPipelineDevConfig.resolveOfflineMode(null),
+          EventPipelineDevConfig.forceOfflineMode);
+    });
+  });
+
   group('EventPipelineDevConfig', () {
     test('backend beats override beats catalogue', () {
       expect(

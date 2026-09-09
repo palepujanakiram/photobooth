@@ -172,6 +172,10 @@ class EventPipelineSync {
     final src = nested is Map ? Map<String, dynamic>.from(nested) : body;
 
     return parsed.copyWith(
+      pipelineEnabled:
+          EventPipelineDevConfig.resolvePipelineEnabled(parsed.pipelineEnabled),
+      offlineMode:
+          EventPipelineDevConfig.resolveOfflineMode(parsed.offlineMode),
       themeId: EventPipelineDevConfig.resolveThemeId(
         fromBackend: parsed.themeId,
         catalogue: _idList(src['themeIds'] ?? src['theme_ids']),

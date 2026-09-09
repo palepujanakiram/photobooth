@@ -13,6 +13,34 @@
 /// deliberately no UI for it: settings are sync-only (spec §9), and a device
 /// that can be configured by hand is a device that can disagree with ZenAI.
 abstract final class EventPipelineDevConfig {
+  /// Forces the local pipeline on, ahead of the backend carrying the flag.
+  ///
+  /// `pipelineEnabled` is listed under §12's "Nice to have, not blocking", so
+  /// `/api/event/by-code` does not send it. With the override layer removed in
+  /// favour of sync-only settings there is otherwise **no way to turn the
+  /// pipeline on at all**, and the whole operator flow is unreachable — the hub
+  /// is the only screen that syncs, and it cannot be reached until the flag is
+  /// already true.
+  ///
+  /// Set false to get the pre-pipeline behaviour back on a device without
+  /// rebuilding the argument for it. Delete with the rest of this file once the
+  /// backend sends the field per event, which is where the decision belongs.
+  // Nullable on purpose: null means "defer to the backend", which is what this
+  // becomes the day the field lands.
+  // ignore: unnecessary_nullable_for_final_variable_declarations
+  static const bool? forcePipelineEnabled = true;
+
+  /// Forces offline mode alongside it, so a venue with no link is the tested
+  /// path rather than the accidental one.
+  static const bool? forceOfflineMode = null;
+
+  /// The backend value if it sent one, else the forced value above.
+  static bool? resolvePipelineEnabled(bool? fromBackend) =>
+      fromBackend ?? forcePipelineEnabled;
+
+  static bool? resolveOfflineMode(bool? fromBackend) =>
+      fromBackend ?? forceOfflineMode;
+
   /// Set false to see exactly how the app behaves once the backend lands: an
   /// event with no `themeId` drops AI from the chain, and one with no `frameId`
   /// drops framing.
