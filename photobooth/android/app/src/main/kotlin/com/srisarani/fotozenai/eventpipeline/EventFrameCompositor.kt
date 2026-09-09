@@ -2,6 +2,7 @@ package com.srisarani.fotozenai.eventpipeline
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ImageDecoder
@@ -90,6 +91,14 @@ object EventFrameCompositor {
         height: Int,
         quality: Int,
     ): Map<String, Any?> {
+        // The frame is the design; the print follows it. A portrait frame on a
+        // landscape raster would letterbox, leaving the cover-fitted photo
+        // visible on both sides *outside* the artwork — not a printable result.
+        // DNP media takes either orientation, so swap the canvas to match.
+        val canvasSize = orientedCanvas(context, framePath, width, height)
+        val width = canvasSize.first
+        val height = canvasSize.second
+
         val canvasBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(canvasBitmap)
         // White ground: a frame with transparent regions must not print black.
@@ -116,6 +125,53 @@ object EventFrameCompositor {
             "width" to width,
             "height" to height,
         )
+    }
+
+    /**
+     * Canvas dimensions matching the frame's orientation.
+     *
+     * Reads only the frame's header, so this costs nothing next to the decode.
+     * Returns the raster unchanged when there is no frame, or when the two
+     * already agree.
+     */
+    fun orientedCanvas(
+        context: Context,
+        framePath: String?,
+        width: Int,
+        height: Int,
+    ): Pair<Int, Int> {
+        if (framePath.isNullOrBlank()) return Pair(width, height)
+        val bounds = frameBounds(context, framePath) ?: return Pair(width, height)
+        val frameIsPortrait = bounds.second > bounds.first
+        val canvasIsPortrait = height > width
+        return if (frameIsPortrait == canvasIsPortrait) {
+            Pair(width, height)
+        } else {
+            Pair(height, width)
+        }
+    }
+
+    private fun frameBounds(
+        context: Context,
+        path: String,
+    ): Pair<Int, Int>? {
+        return try {
+            val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            if (path.startsWith("content://")) {
+                context.contentResolver.openInputStream(android.net.Uri.parse(path))
+                    ?.use { BitmapFactory.decodeStream(it, null, options) }
+            } else {
+                BitmapFactory.decodeFile(path, options)
+            }
+            if (options.outWidth <= 0 || options.outHeight <= 0) {
+                null
+            } else {
+                Pair(options.outWidth, options.outHeight)
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, "frame bounds unreadable for $path: ${e.message}")
+            null
+        }
     }
 
     private fun decode(
