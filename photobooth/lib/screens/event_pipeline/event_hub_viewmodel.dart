@@ -153,6 +153,8 @@ class EventHubViewModel extends ChangeNotifier {
       printer: await _printer.read(),
       frames: _syncStatus.frames ?? await _frameStatus(settings),
       freeBytes: await _freeBytes(),
+      queuePaused: counters.queuePaused,
+      inFlight: counters.inFlight,
       // The last sync reaching ZenAI is the honest signal for whether AI jobs
       // will run: a link that carried the config is a link that carries a
       // generation, and there is no separate reachability check to pay for.

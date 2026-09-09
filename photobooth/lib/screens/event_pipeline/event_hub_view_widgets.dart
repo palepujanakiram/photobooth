@@ -60,11 +60,16 @@ class EventHubReadinessBlock extends StatelessWidget {
     required this.headline,
     required this.rows,
     required this.onExplain,
+    this.onOpenSettings,
   });
 
   final AppColors appColors;
   final String headline;
   final List<ReadinessRow> rows;
+
+  /// Opens event settings. Lives on this header because the hub has no app
+  /// bar — it is the event's root and a title bar would carry a back arrow.
+  final VoidCallback? onOpenSettings;
 
   /// Called when an amber or red row is tapped. Green rows are not tappable —
   /// there is nothing to explain, and a tap that does nothing teaches an
@@ -84,14 +89,32 @@ class EventHubReadinessBlock extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            headline,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.1,
-              color: appColors.textColor,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  headline,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.1,
+                    color: appColors.textColor,
+                  ),
+                ),
+              ),
+              if (onOpenSettings != null)
+                InkWell(
+                  onTap: onOpenSettings,
+                  child: Padding(
+                    padding: const EdgeInsets.all(2),
+                    child: Icon(
+                      Icons.settings_outlined,
+                      size: 20,
+                      color: appColors.secondaryTextColor,
+                    ),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 6),
           for (final row in rows)

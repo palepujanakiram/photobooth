@@ -45,6 +45,8 @@ EventReadinessInput healthy({
   FrameCacheStatus? frames,
   int? freeBytes = 46 * gb,
   bool online = true,
+  bool queuePaused = false,
+  int inFlight = 0,
 }) {
   return EventReadinessInput(
     settings: config ?? settings(),
@@ -57,6 +59,8 @@ EventReadinessInput healthy({
     frames: frames,
     freeBytes: freeBytes,
     online: online,
+    queuePaused: queuePaused,
+    inFlight: inFlight,
   );
 }
 
@@ -86,6 +90,48 @@ void main() {
     test('green rows are not tappable', () {
       final report = EventReadiness.evaluate(healthy());
       expect(report.rows.every((r) => !r.isActionable), isTrue);
+    });
+  });
+
+  group('queue row', () {
+    test('an idle queue is green and says nothing is waiting', () {
+      final row = rowOf(EventReadiness.evaluate(healthy()), ReadinessKind.queue);
+      expect(row.tone, ReadinessTone.ok);
+      expect(row.detail, 'Idle — nothing waiting');
+    });
+
+    test('work in flight is reported with its count', () {
+      final row = rowOf(
+        EventReadiness.evaluate(healthy(inFlight: 12)),
+        ReadinessKind.queue,
+      );
+      expect(row.tone, ReadinessTone.ok);
+      expect(row.detail, 'Processing · 12 in flight');
+    });
+
+    test('a paused queue is amber and explains itself', () {
+      // A paused queue looks identical to a stalled one until something says
+      // so, which is the whole reason it belongs on the landing screen.
+      final report = EventReadiness.evaluate(
+        healthy(queuePaused: true, inFlight: 5),
+      );
+      final row = rowOf(report, ReadinessKind.queue);
+      expect(row.tone, ReadinessTone.warn);
+      expect(row.detail, 'Paused');
+      expect(row.isActionable, isTrue);
+      expect(row.explanation, contains('Resume'));
+    });
+
+    test('a pause is a warning, not a blocker — import still works', () {
+      final report = EventReadiness.evaluate(healthy(queuePaused: true));
+      expect(report.canImport, isTrue);
+      expect(report.hasBlocker, isFalse);
+      expect(report.headline, 'READY — WITH WARNINGS');
+    });
+
+    test('it is the first row, because it is the first question mid-event', () {
+      final report = EventReadiness.evaluate(healthy());
+      expect(report.rows.first.kind, ReadinessKind.queue);
     });
   });
 

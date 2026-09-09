@@ -14,6 +14,7 @@ import 'package:photobooth/services/event_pipeline/event_media_store.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_config.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_db.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_ledger.dart';
+import 'package:photobooth/services/event_pipeline/event_pipeline_queue.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_runner.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_stats.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_sync.dart';
@@ -457,6 +458,31 @@ void main() {
       expect(vm.importBlockedReason, EventReadiness.waitingForSettings);
       expect(vm.headline, 'Checking…');
       expect(vm.readinessRows, isEmpty);
+    });
+  });
+
+  group('queue status', () {
+    test('a paused queue is surfaced on the hub, not only in the queue screen',
+        () async {
+      await seed(MediaStage.framing);
+      final vm = build(initial: synced);
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(
+        vm.readinessRows
+            .firstWhere((r) => r.kind == ReadinessKind.queue)
+            .detail,
+        'Processing · 1 in flight',
+      );
+
+      await EventPipelineQueue(db: db).setPaused(true);
+      await vm.refresh();
+
+      final row =
+          vm.readinessRows.firstWhere((r) => r.kind == ReadinessKind.queue);
+      expect(row.tone, ReadinessTone.warn);
+      expect(row.detail, 'Paused');
     });
   });
 

@@ -26,31 +26,27 @@ class EventHubScreen extends StatelessWidget {
     return ChangeNotifierProvider<EventHubViewModel>(
       create: (_) => (viewModel ?? EventHubViewModel())..start(),
       // The hub is the event's root: splash reaches it with a replacement, so
-      // there is nothing beneath it and a back tap would drop the operator out
-      // of the app mid-event. Leaving an event is a deliberate action, not a
-      // stray tap — see the settings screen.
-      child: PopScope(
+      // there is nothing above it to go back to. No app bar at all — a title
+      // bar here would carry Flutter's automatic back arrow, which is exactly
+      // the stray tap that must not end an event. Leaving is a deliberate
+      // action on the settings screen.
+      child: const PopScope(
         canPop: false,
         child: AppScaffold(
-          title: AppStrings.eventHubTitle,
-          showBackButton: false,
-          actions: [
-            // The gear from the spec's header: event settings are reached from
-            // the event, not from Kiosk settings.
-            IconButton(
-              tooltip: 'Event settings',
-              icon: const Icon(Icons.settings_outlined),
-              onPressed: () => Navigator.of(context)
-                  .pushNamed(AppConstants.kRouteEventSettings),
-            ),
-          ],
-          child: EventStationBoundShell(
-            child: Consumer<EventHubViewModel>(
-              builder: (context, vm, _) => _HubBody(vm: vm),
-            ),
-          ),
+          child: EventStationBoundShell(child: _HubConsumer()),
         ),
       ),
+    );
+  }
+}
+
+class _HubConsumer extends StatelessWidget {
+  const _HubConsumer();
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<EventHubViewModel>(
+      builder: (context, vm, _) => _HubBody(vm: vm),
     );
   }
 }
@@ -78,6 +74,9 @@ class _HubBody extends StatelessWidget {
             headline: vm.isSyncing ? AppStrings.eventHubSyncing : vm.headline,
             rows: vm.readinessRows,
             onExplain: (row) => _explain(context, row),
+            // With no app bar, the status header is where the gear lives.
+            onOpenSettings: () => Navigator.of(context)
+                .pushNamed(AppConstants.kRouteEventSettings),
           ),
           const SizedBox(height: 12),
           EventHubCounterRow(

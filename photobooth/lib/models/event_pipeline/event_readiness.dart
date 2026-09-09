@@ -16,7 +16,7 @@ enum ReadinessTone {
 }
 
 /// Which readiness row this is, so the UI can key off it without matching text.
-enum ReadinessKind { sync, camera, printer, frames, ai, storage }
+enum ReadinessKind { queue, sync, camera, printer, frames, ai, storage }
 
 /// One line of the hub's readiness block.
 class ReadinessRow {
@@ -63,6 +63,8 @@ class EventReadinessInput {
     this.frames,
     this.freeBytes,
     this.online = true,
+    this.queuePaused = false,
+    this.inFlight = 0,
   });
 
   final EventPipelineSettings settings;
@@ -88,6 +90,12 @@ class EventReadinessInput {
   /// Whether the device can currently reach ZenAI. Only matters to AI, which
   /// is the one step that cannot run locally.
   final bool online;
+
+  /// Whether the operator has held every stage.
+  final bool queuePaused;
+
+  /// How many photos are mid-chain right now.
+  final int inFlight;
 }
 
 /// The whole readiness block plus the gates it drives.
@@ -142,6 +150,10 @@ abstract final class EventReadiness {
 
   static EventReadinessReport evaluate(EventReadinessInput input) {
     final rows = <ReadinessRow>[
+      // First, because mid-event the operator's first question is whether work
+      // is moving at all — and a paused queue looks identical to a stalled one
+      // until something says so (spec §7).
+      _queue(input),
       _sync(input),
       _camera(input),
       _printer(input),
@@ -174,6 +186,34 @@ abstract final class EventReadiness {
 
   static bool _isStorageBlocked(int? freeBytes) =>
       freeBytes != null && freeBytes < blockedStorageBytes;
+
+  static ReadinessRow _queue(EventReadinessInput input) {
+    if (input.queuePaused) {
+      return const ReadinessRow(
+        kind: ReadinessKind.queue,
+        label: 'Queue',
+        tone: ReadinessTone.warn,
+        detail: 'Paused',
+        explanation: 'You paused the queue, so nothing is being processed. '
+            'Photos already imported are safe and keep their place. Resume it '
+            'from the queue screen when you are ready.',
+      );
+    }
+    if (input.inFlight > 0) {
+      return ReadinessRow(
+        kind: ReadinessKind.queue,
+        label: 'Queue',
+        tone: ReadinessTone.ok,
+        detail: 'Processing · ${input.inFlight} in flight',
+      );
+    }
+    return const ReadinessRow(
+      kind: ReadinessKind.queue,
+      label: 'Queue',
+      tone: ReadinessTone.ok,
+      detail: 'Idle — nothing waiting',
+    );
+  }
 
   static ReadinessRow _sync(EventReadinessInput input) {
     if (!input.hasSyncedOnce) {

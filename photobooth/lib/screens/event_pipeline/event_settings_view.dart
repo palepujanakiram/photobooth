@@ -44,6 +44,44 @@ class _SettingsBody extends StatelessWidget {
 
   final EventSettingsViewModel vm;
 
+  /// Download and view, shown against the frame setting itself.
+  Widget? _frameActions(
+    BuildContext context,
+    EventSettingsViewModel vm,
+    AppColors colors,
+  ) {
+    final canDownload = vm.needsFrameDownload;
+    final canView = vm.canPreviewFrame;
+    if (!canDownload && !canView) return null;
+    return Wrap(
+      spacing: 4,
+      children: [
+        if (canDownload)
+          TextButton(
+            onPressed: vm.isDownloadingFrames ? null : vm.downloadFrames,
+            child: Text(
+              vm.isDownloadingFrames
+                  ? 'Downloading…'
+                  : 'Download frame artwork',
+            ),
+          ),
+        // "1 cached" says a file exists, not that it is the right artwork.
+        // Looking at it is the only way to know.
+        if (canView)
+          TextButton.icon(
+            icon: const Icon(Icons.image_outlined, size: 18),
+            label: const Text('View frame'),
+            onPressed: () => EventImageViewer.show(
+              context,
+              file: vm.frameImage!,
+              title: 'Event frame',
+              subtitle: vm.settings?.frameId,
+            ),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
@@ -81,38 +119,16 @@ class _SettingsBody extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          for (final row in vm.rows) _SettingTile(row: row, colors: colors),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Wrap(
-              spacing: 4,
-              children: [
-                if (vm.needsFrameDownload)
-                  TextButton(
-                    onPressed:
-                        vm.isDownloadingFrames ? null : vm.downloadFrames,
-                    child: Text(
-                      vm.isDownloadingFrames
-                          ? 'Downloading…'
-                          : 'Download frame artwork',
-                    ),
-                  ),
-                // "1 cached" says a file exists, not that it is the right
-                // artwork. Looking at it is the only way to know.
-                if (vm.canPreviewFrame)
-                  TextButton.icon(
-                    icon: const Icon(Icons.image_outlined, size: 18),
-                    label: const Text('View frame'),
-                    onPressed: () => EventImageViewer.show(
-                      context,
-                      file: vm.frameImage!,
-                      title: 'Event frame',
-                      subtitle: vm.settings?.frameId,
-                    ),
-                  ),
-              ],
+          // The frame controls sit under the frame row they belong to, rather
+          // than at the foot of the screen where they read as page actions.
+          for (final row in vm.rows)
+            _SettingTile(
+              row: row,
+              colors: colors,
+              trailing: row.label == 'Apply frame'
+                  ? _frameActions(context, vm, colors)
+                  : null,
             ),
-          ),
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -278,10 +294,17 @@ class _DangerZone extends StatelessWidget {
 }
 
 class _SettingTile extends StatelessWidget {
-  const _SettingTile({required this.row, required this.colors});
+  const _SettingTile({
+    required this.row,
+    required this.colors,
+    this.trailing,
+  });
 
   final EventSettingRow row;
   final AppColors colors;
+
+  /// Controls belonging to this setting, e.g. the frame's download and view.
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -332,6 +355,8 @@ class _SettingTile extends StatelessWidget {
                 style: TextStyle(fontSize: 12, color: colors.warningColor),
               ),
             ),
+          if (trailing != null)
+            Align(alignment: Alignment.centerLeft, child: trailing),
         ],
       ),
     );
