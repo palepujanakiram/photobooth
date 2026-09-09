@@ -860,6 +860,11 @@ abstract final class AppStrings {
   static const eventStationPrintHint =
       'Printer: claim transformed photos and print.';
   static const eventQueueTitle = 'Photo queue';
+  static const eventHubTitle = 'Event';
+  static const eventHubImport = 'Import from card';
+  static const eventHubCapture = 'Capture';
+  static const eventHubOpenQueue = 'Open queue';
+  static const eventHubSyncing = 'Syncing…';
   static const eventStationSdImport = 'SD import';
   static const eventStationSdImportHint =
       'Operator: import photos from the photographer\'s card.';

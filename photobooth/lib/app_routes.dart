@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 
 import 'screens/event_pipeline/event_ingest_view.dart';
+import 'screens/event_pipeline/event_hub_view.dart';
 import 'screens/event_pipeline/event_queue_view.dart';
 import 'screens/event_station/event_capture_station_view.dart';
 import 'screens/event_station/event_print_station_view.dart';
@@ -93,7 +94,12 @@ Map<String, WidgetBuilder> buildAppRoutes() {
         const EventPrintStationScreen(),
     AppConstants.kRouteEventIngestStation: (context) =>
         const EventIngestScreen(),
-    AppConstants.kRouteEventQueue: (context) => const EventQueueScreen(),
+    AppConstants.kRouteEventHub: (context) => const EventHubScreen(),
+    AppConstants.kRouteEventQueue: (context) => EventQueueScreen(
+          // The hub's counters open the queue already filtered to the stage
+          // that was tapped.
+          initialFilter: ModalRoute.of(context)?.settings.arguments as String?,
+        ),
     AppConstants.kRouteWebView: (context) => WebViewScreen.fromRouteSettings(
           ModalRoute.of(context)?.settings,
         ),

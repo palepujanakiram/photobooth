@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/models/event_info_model.dart';
+import 'package:photobooth/models/event_pipeline/event_frame.dart';
 import 'package:photobooth/models/kiosk_frame_model.dart';
 import 'package:photobooth/services/api_service.dart';
 import 'package:photobooth/services/event_manager.dart';
@@ -324,6 +325,49 @@ void main() {
 
       expect((await sync.sync()).state, EventSyncState.never);
       expect(asked, isFalse);
+    });
+  });
+
+  group('production defaults', () {
+    test('a sync built with nothing injected still reports honestly', () async {
+      // Exercises the production fallbacks. No event is bound, so this answers
+      // from prefs alone and never reaches for the network.
+      await events.setEventCode(null);
+      final status = await EventPipelineSync().status();
+      expect(status.state, EventSyncState.never);
+      expect(status.error, 'No event is bound.');
+    });
+
+    test('with no frame cache and no clock injected it still syncs', () async {
+      // The production defaults: real wall clock, and no database to record a
+      // frame cache in, which is what a device with unavailable storage has.
+      await events.cacheVerifyResult(
+        const EventInfoModel(id: 'evt-1', code: 'GALA-01'),
+      );
+      final before = DateTime.now().millisecondsSinceEpoch;
+      final status = await EventPipelineSync(
+        config: config,
+        events: events,
+        fetchEvent: (_) async => backendBody(),
+      ).sync();
+
+      expect(status.state, EventSyncState.synced);
+      expect(status.frames, isNull);
+      expect(status.syncedAtMs, greaterThanOrEqualTo(before));
+    });
+
+    test('copyWith keeps the frames it already had', () {
+      const original = EventSyncStatus(
+        state: EventSyncState.synced,
+        eventCode: 'GALA-01',
+        syncedAtMs: 42,
+        frames: FrameCacheStatus(total: 1, cached: 1, selectedIsCached: true),
+        error: 'kept',
+      );
+      final copy = original.copyWith();
+      expect(copy.frames, same(original.frames));
+      expect(copy.error, 'kept');
+      expect(copy.syncedAtMs, 42);
     });
   });
 

@@ -63,10 +63,12 @@ class EventQueueViewModel extends ChangeNotifier {
   EventQueueViewModel({
     EventPipelineRunner? runner,
     EventMediaStore? mediaStore,
+    String? initialFilter,
     Duration refreshInterval = const Duration(seconds: 4),
   })  : _runner = runner ?? EventPipelineRunner.instance ?? EventPipelineRunner(),
         _media = mediaStore ?? EventMediaStore(),
-        _refreshInterval = refreshInterval;
+        _refreshInterval = refreshInterval,
+        _filter = QueueFilter.normalize(initialFilter);
 
   final EventPipelineRunner _runner;
   final EventMediaStore _media;
@@ -77,7 +79,7 @@ class EventQueueViewModel extends ChangeNotifier {
   String? _error;
   List<QueueEntry> _entries = const [];
   EventPipelineStats _stats = const EventPipelineStats();
-  String _filter = QueueFilter.all;
+  String _filter;
 
   /// Everything the pipeline holds, unfiltered.
   List<QueueEntry> get entries => _entries;
@@ -87,6 +89,12 @@ class EventQueueViewModel extends ChangeNotifier {
   /// What the grid shows under the current filter.
   List<QueueEntry> get visibleEntries {
     if (_filter == QueueFilter.all) return _entries;
+    if (_filter == QueueFilter.working) {
+      return [
+        for (final e in _entries)
+          if (QueueFilter.workingStages.contains(e.item.stage)) e,
+      ];
+    }
     return [for (final e in _entries) if (e.item.stage == _filter) e];
   }
 
@@ -276,6 +284,30 @@ class QueueFilterOption {
 /// Status filters, in pipeline order.
 abstract final class QueueFilter {
   static const String all = 'ALL';
+
+  /// Everything in flight, as the hub's single "WORKING" counter shows it.
+  ///
+  /// Not a stage — a photo is at exactly one of AI, framing or printing — but
+  /// the hub deliberately collapses the three into one number, so tapping it
+  /// has to land on the same set rather than an arbitrary one of them.
+  static const String working = 'WORKING';
+
+  static const List<String> workingStages = <String>[
+    MediaStage.ai,
+    MediaStage.framing,
+    MediaStage.printing,
+  ];
+
+  /// Accepts a stage from the hub's counters, falling back to [all].
+  ///
+  /// The hub passes a route argument, which is untyped by the time it arrives;
+  /// an unknown value must land on a full queue rather than an empty grid.
+  static String normalize(String? value) {
+    final trimmed = value?.trim().toUpperCase() ?? '';
+    if (trimmed.isEmpty || trimmed == all) return all;
+    if (trimmed == working) return working;
+    return stageOrder.contains(trimmed) ? trimmed : all;
+  }
 
   /// Stage order matches the chain, so the chips read left to right the way a
   /// photo actually travels — with the two terminal states last.

@@ -6,6 +6,7 @@ import 'package:photobooth/services/event_pipeline/event_pipeline_db.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_ledger.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_queue.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_stats.dart';
+import 'package:photobooth/utils/constants.dart';
 import 'package:photobooth/utils/event_station_role.dart';
 
 void main() {
@@ -78,9 +79,98 @@ void main() {
         resolveEventPostSplashRoute(
           eventCode: 'GALA',
           stationRole: 'sd-import',
-          pipelineEnabled: true,
         ),
         EventPostSplashRoute.stationPicker,
+      );
+    });
+
+    test('the pipeline replaces the picker with the hub', () {
+      expect(
+        resolveEventPostSplashRoute(
+          eventCode: 'GALA',
+          stationRole: null,
+          pipelineEnabled: true,
+        ),
+        EventPostSplashRoute.hub,
+      );
+      expect(
+        eventPostSplashRouteName(EventPostSplashRoute.hub),
+        AppConstants.kRouteEventHub,
+      );
+    });
+
+    test('a station role does not escape the hub when the flag is on', () {
+      // There is no role to pick any more: three sources feed one queue on one
+      // device, so a leftover role from a previous event must not route past
+      // the hub.
+      for (final role in EventStationRole.values) {
+        expect(
+          resolveEventPostSplashRoute(
+            eventCode: 'GALA',
+            stationRole: role,
+            pipelineEnabled: true,
+          ),
+          EventPostSplashRoute.hub,
+          reason: '$role',
+        );
+      }
+    });
+
+    test('an offline event still reaches the hub', () {
+      expect(
+        resolveEventPostSplashRoute(
+          eventCode: 'GALA',
+          stationRole: 'capture',
+          wanAvailable: false,
+          pipelineEnabled: true,
+        ),
+        EventPostSplashRoute.hub,
+      );
+    });
+
+    test('regression: every flag-off destination is unchanged', () {
+      // The guard on the whole phase. With the flag off, routing must be
+      // byte-identical to the behaviour from before the pipeline existed.
+      expect(
+        resolveEventPostSplashRoute(eventCode: null, stationRole: 'capture'),
+        EventPostSplashRoute.terms,
+      );
+      expect(
+        resolveEventPostSplashRoute(eventCode: '   ', stationRole: 'capture'),
+        EventPostSplashRoute.terms,
+      );
+      expect(
+        resolveEventPostSplashRoute(eventCode: 'GALA', stationRole: null),
+        EventPostSplashRoute.stationPicker,
+      );
+      expect(
+        resolveEventPostSplashRoute(eventCode: 'GALA', stationRole: 'capture'),
+        EventPostSplashRoute.capture,
+      );
+      expect(
+        resolveEventPostSplashRoute(eventCode: 'GALA', stationRole: 'theme'),
+        EventPostSplashRoute.theme,
+      );
+      expect(
+        resolveEventPostSplashRoute(eventCode: 'GALA', stationRole: 'print'),
+        EventPostSplashRoute.print,
+      );
+      expect(
+        resolveEventPostSplashRoute(
+          eventCode: 'GALA',
+          stationRole: 'print',
+          wanAvailable: false,
+        ),
+        EventPostSplashRoute.needsInternet,
+      );
+      expect(
+        resolveEventPostSplashRoute(
+          eventCode: 'GALA',
+          stationRole: null,
+          wanAvailable: false,
+        ),
+        EventPostSplashRoute.stationPicker,
+        reason: 'a guest device with no role never needed WAN for this',
       );
     });
 

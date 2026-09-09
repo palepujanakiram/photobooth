@@ -81,9 +81,10 @@ void main() {
     return r.item.id;
   }
 
-  EventQueueViewModel build() => EventQueueViewModel(
+  EventQueueViewModel build({String? initialFilter}) => EventQueueViewModel(
         runner: runner,
         mediaStore: media,
+        initialFilter: initialFilter,
         refreshInterval: const Duration(hours: 1),
       );
 
@@ -181,6 +182,51 @@ void main() {
       vm.setFilter(MediaStage.done);
       expect(vm.visibleEntries, hasLength(1));
       expect(vm.visibleEntries.single.isDone, isTrue);
+    });
+
+    test('the hub opens the queue already filtered to the tapped counter',
+        () async {
+      await seed(stage: MediaStage.ingested);
+      await seed(stage: MediaStage.failed);
+      final vm = build(initialFilter: MediaStage.failed);
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.filter, MediaStage.failed);
+      expect(vm.visibleEntries, hasLength(1));
+    });
+
+    test('WORKING collapses the three in-flight stages, as the hub shows them',
+        () async {
+      await seed(stage: MediaStage.ai);
+      await seed(stage: MediaStage.framing);
+      await seed(stage: MediaStage.printing);
+      await seed(stage: MediaStage.done);
+      final vm = build(initialFilter: QueueFilter.working);
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.visibleEntries, hasLength(3));
+    });
+
+    test('an unknown route argument opens the whole queue, not an empty grid',
+        () async {
+      await seed(stage: MediaStage.ingested);
+      final vm = build(initialFilter: 'nonsense');
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.filter, QueueFilter.all);
+      expect(vm.visibleEntries, hasLength(1));
+    });
+
+    test('normalize accepts what the hub passes and nothing else', () {
+      expect(QueueFilter.normalize(null), QueueFilter.all);
+      expect(QueueFilter.normalize('  '), QueueFilter.all);
+      expect(QueueFilter.normalize('all'), QueueFilter.all);
+      expect(QueueFilter.normalize('working'), QueueFilter.working);
+      expect(QueueFilter.normalize('failed'), MediaStage.failed);
+      expect(QueueFilter.normalize('teleport'), QueueFilter.all);
     });
 
     test('All restores everything', () async {

@@ -1,0 +1,239 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+
+import '../../models/event_pipeline/event_frame.dart';
+import '../../models/event_pipeline/event_pipeline_settings.dart';
+import '../../models/event_pipeline/event_readiness.dart';
+import '../../services/direct_ptp_camera_service.dart';
+import '../../services/event_manager.dart';
+import '../../services/event_pipeline/event_frame_cache.dart';
+import '../../services/event_pipeline/event_pipeline_config.dart';
+import '../../services/event_pipeline/event_pipeline_db.dart';
+import '../../services/event_pipeline/event_pipeline_runner.dart';
+import '../../services/event_pipeline/event_media_store.dart';
+import '../../services/event_pipeline/event_pipeline_stats.dart';
+import '../../services/event_pipeline/event_pipeline_sync.dart';
+import '../../services/event_pipeline/ingest/event_storage_channel.dart';
+import '../../services/event_pipeline/printer_status_reader.dart';
+import '../../utils/logger.dart';
+
+/// The hub: readiness, counts, and three ways out.
+///
+/// The screen an operator can leave open all night, so everything it shows is
+/// read from the local ledger and platform channels rather than the network.
+/// The one network call — the event sync — is deliberately **not** awaited
+/// before the screen paints: a slow venue link would otherwise leave the
+/// operator on a spinner with nothing to look at, and a failed fetch needs a
+/// screen to report itself on anyway (spec §3A).
+class EventHubViewModel extends ChangeNotifier {
+  EventHubViewModel({
+    EventPipelineRunner? runner,
+    EventPipelineConfig? config,
+    EventManager? events,
+    EventPipelineSync? sync,
+    EventPipelineStatsReader? stats,
+    PrinterStatusReader? printer,
+    EventStorageChannel? storage,
+    EventMediaStore? mediaStore,
+    DirectPtpCameraService? camera,
+    Future<EventPipelineDb?> Function()? openDb,
+    Duration refreshInterval = const Duration(seconds: 4),
+  })  : _runner = runner ?? EventPipelineRunner.instance ?? EventPipelineRunner(),
+        _config = config ?? EventPipelineConfig(),
+        _events = events ?? EventManager(),
+        _stats = stats ?? EventPipelineStatsReader(),
+        _printer = printer ?? PrinterStatusReader(),
+        _storage = storage ?? EventStorageChannel(),
+        _media = mediaStore ?? EventMediaStore(),
+        _camera = camera ?? DirectPtpCameraService(),
+        _openDb = openDb ?? EventPipelineDb.openDefault,
+        _refreshInterval = refreshInterval {
+    _sync = sync ??
+        EventPipelineSync(
+          config: _config,
+          events: _events,
+          frameCache: _buildFrameCache,
+        );
+  }
+
+  final EventPipelineRunner _runner;
+  final EventPipelineConfig _config;
+  final EventManager _events;
+  final EventPipelineStatsReader _stats;
+  final PrinterStatusReader _printer;
+  final EventStorageChannel _storage;
+  final EventMediaStore _media;
+  final DirectPtpCameraService _camera;
+  final Future<EventPipelineDb?> Function() _openDb;
+  final Duration _refreshInterval;
+  late final EventPipelineSync _sync;
+
+  Timer? _timer;
+  bool _disposed = false;
+
+  String? _eventName;
+  String? _eventTagline;
+  EventPipelineSettings? _settings;
+  EventSyncStatus _syncStatus = const EventSyncStatus.never();
+  EventPipelineStats _counters = const EventPipelineStats();
+  EventReadinessReport? _readiness;
+  bool _syncing = false;
+
+  String? get eventName => _eventName;
+  String? get eventTagline => _eventTagline;
+  EventPipelineSettings? get settings => _settings;
+  EventSyncStatus get syncStatus => _syncStatus;
+  EventPipelineStats get counters => _counters;
+  EventReadinessReport? get readiness => _readiness;
+  bool get isSyncing => _syncing;
+
+  List<ReadinessRow> get readinessRows => _readiness?.rows ?? const [];
+  bool get canImport => _readiness?.canImport ?? false;
+  bool get canCapture => _readiness?.canCapture ?? false;
+  String? get importBlockedReason =>
+      _readiness?.importBlockedReason ?? EventReadiness.waitingForSettings;
+  String? get captureBlockedReason =>
+      _readiness?.captureBlockedReason ?? EventReadiness.waitingForSettings;
+  String get headline => _readiness?.headline ?? 'Checking…';
+
+  /// Paint what is already known, then sync in the background.
+  Future<void> start() async {
+    // Idempotent, so re-entering the hub does not stack timers.
+    await _runner.ensureStarted();
+    await _loadEvent();
+    _syncStatus = await _sync.status();
+    await refresh();
+
+    // Awaited, but nothing is waiting on start(): the provider cascades into it
+    // and returns the model immediately, and refresh() above has already
+    // notified. So the hub is on screen before this line runs, which is the
+    // whole of §3A — "not a blocking fetch before the hub appears".
+    await resync();
+    _timer = Timer.periodic(_refreshInterval, (_) => unawaited(refresh()));
+  }
+
+  /// Re-fetches the event config, for the tap on the sync row.
+  ///
+  /// An operator who changed something on the backend needs to know whether
+  /// this device has it yet, and this is how they find out.
+  Future<void> resync() async {
+    if (_syncing) return;
+    _syncing = true;
+    _notify();
+    try {
+      _syncStatus = await _sync.sync();
+      await _loadEvent();
+    } catch (e, st) {
+      // A sync that throws must not take the hub down with it — the readiness
+      // block exists precisely to report this state.
+      AppLogger.error('Event sync failed', error: e, stackTrace: st);
+    } finally {
+      _syncing = false;
+      await refresh();
+    }
+  }
+
+  /// Re-reads counters and readiness. Local only; never touches the network.
+  Future<void> refresh() async {
+    final settings = await _config.resolve(
+      defaults: EventPipelineDefaults(
+        photoMode: await _events.getPhotoModeOverride() ?? 'BOTH',
+        frameCount: await _events.getFrameCount(),
+      ),
+    );
+    final counters = await _stats.read();
+    final readiness = EventReadiness.evaluate(EventReadinessInput(
+      settings: settings,
+      hasSyncedOnce: _syncStatus.hasSyncedOnce,
+      syncIsFresh: _syncStatus.isFresh,
+      syncedAtMs: _syncStatus.syncedAtMs,
+      syncError: _syncStatus.error,
+      cameraName: await _cameraName(),
+      printer: await _printer.read(),
+      frames: _syncStatus.frames ?? await _frameStatus(settings),
+      freeBytes: await _freeBytes(),
+      // The last sync reaching ZenAI is the honest signal for whether AI jobs
+      // will run: a link that carried the config is a link that carries a
+      // generation, and there is no separate reachability check to pay for.
+      online: _syncStatus.isFresh,
+    ));
+
+    _settings = settings;
+    _counters = counters;
+    _readiness = readiness;
+    _notify();
+  }
+
+  Future<void> _loadEvent() async {
+    final event = await _events.readBoundEvent();
+    _eventName = event?.name ?? await _events.getEventName();
+    _eventTagline = event?.description;
+  }
+
+  /// Model of whatever is on the USB bus, without connecting to it.
+  ///
+  /// Probing rather than connecting matters: opening a PTP session to answer a
+  /// readiness row would take the camera out of the photographer's hands.
+  Future<String?> _cameraName() async {
+    try {
+      final device = await _camera.probeDevice();
+      if (device == null) return null;
+      final product = device.product?.trim() ?? '';
+      return product.isEmpty ? device.deviceName : product;
+    } catch (e) {
+      AppLogger.debug('Camera probe failed: $e');
+      return null;
+    }
+  }
+
+  /// Free space where the derivatives actually land, not on the system volume.
+  Future<int?> _freeBytes() async {
+    try {
+      final root = await _media.resolveRoot();
+      if (root == null) return null;
+      return await _storage.freeBytes(root.path);
+    } catch (e) {
+      AppLogger.debug('Free space unreadable: $e');
+      return null;
+    }
+  }
+
+  Future<EventFrameCache?> _buildFrameCache() async {
+    final db = await _openDb();
+    // Shares this screen's media store: overlays and derivatives live under one
+    // root, and the free-space row would otherwise be measuring a different
+    // disk from the one the frames land on.
+    return db == null ? null : EventFrameCache(db: db, mediaStore: _media);
+  }
+
+  Future<FrameCacheStatus?> _frameStatus(EventPipelineSettings settings) async {
+    if (!settings.frameEnabled) return null;
+    try {
+      final eventId = await _events.getEventId();
+      if (eventId == null) return null;
+      final cache = await _buildFrameCache();
+      if (cache == null) return null;
+      return await cache.status(
+        eventId: eventId,
+        selectedFrameId: settings.frameId,
+      );
+    } catch (e) {
+      AppLogger.debug('Frame status unreadable: $e');
+      return null;
+    }
+  }
+
+  void _notify() {
+    if (_disposed) return;
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _timer?.cancel();
+    _timer = null;
+    super.dispose();
+  }
+}

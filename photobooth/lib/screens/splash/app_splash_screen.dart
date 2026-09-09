@@ -453,8 +453,12 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     // Resolved rather than read from the sync snapshot: at first boot nothing
     // has called resolve() yet, and defaulting to "off" would send an offline
     // event's station to needsInternet.
+    //
+    // Checked for any event-bound device, not only one with a role: the hub is
+    // the entry point now and an operator never picks a role, so gating on one
+    // would send a pipeline device to the picker the hub replaces.
     var pipelineEnabled = false;
-    if ((eventCode?.trim().isNotEmpty ?? false) && role != null) {
+    if (eventCode?.trim().isNotEmpty ?? false) {
       pipelineEnabled = (await EventPipelineConfig().resolve()).pipelineEnabled;
       if (!mounted) return;
     }

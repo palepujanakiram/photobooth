@@ -13,14 +13,19 @@ import 'event_queue_viewmodel.dart';
 /// nothing else, so a queue that has stalled looks exactly like one that has
 /// finished — and imported photos appear to have vanished.
 class EventQueueScreen extends StatelessWidget {
-  const EventQueueScreen({super.key, this.viewModel});
+  const EventQueueScreen({super.key, this.viewModel, this.initialFilter});
 
   final EventQueueViewModel? viewModel;
+
+  /// Stage to open filtered to, from the hub's counters.
+  final String? initialFilter;
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider<EventQueueViewModel>(
-      create: (_) => (viewModel ?? EventQueueViewModel())..start(),
+      create: (_) =>
+          (viewModel ?? EventQueueViewModel(initialFilter: initialFilter))
+            ..start(),
       child: AppScaffold(
         title: AppStrings.eventQueueTitle,
         showBackButton: true,

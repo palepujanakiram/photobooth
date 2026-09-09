@@ -20,6 +20,10 @@ class EventStationRole {
 enum EventPostSplashRoute {
   terms,
   stationPicker,
+
+  /// The local pipeline's entry point. Replaces [stationPicker] when the flag
+  /// is on — see the operator screens spec §1.
+  hub,
   capture,
   theme,
   print,
@@ -61,6 +65,11 @@ EventPostSplashRoute resolveEventPostSplashRoute({
       )) {
     return EventPostSplashRoute.needsInternet;
   }
+  // With the local pipeline on there is no role to pick: three sources feed one
+  // queue on one device, so the question "which role is this" is not the one
+  // the operator is asking. The hub answers what they do ask — is everything
+  // ready, what is in the queue, what is stuck (spec §1).
+  if (pipelineEnabled) return EventPostSplashRoute.hub;
   switch (role) {
     case EventStationRole.capture:
       return EventPostSplashRoute.capture;
@@ -81,6 +90,8 @@ String eventPostSplashRouteName(EventPostSplashRoute route) {
       return AppConstants.kRouteEventThemeStation;
     case EventPostSplashRoute.print:
       return AppConstants.kRouteEventPrintStation;
+    case EventPostSplashRoute.hub:
+      return AppConstants.kRouteEventHub;
     case EventPostSplashRoute.stationPicker:
       return AppConstants.kRouteEventStation;
     case EventPostSplashRoute.terms:
