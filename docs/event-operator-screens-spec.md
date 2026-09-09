@@ -24,10 +24,14 @@ actions rather than roles.
 
 ### Coexistence
 
-The existing event screens stay exactly as they are. This is a parallel flow,
-reached only when `pipelineEnabled` is on. **Nothing is deleted until the new
-flow has run a real event** — the server-brokered path remains the fallback if
-something about the local pipeline disappoints on the day.
+The hub **replaces the station picker** when `pipelineEnabled` is on — the two
+entry points would otherwise compete and an operator would have to know which one
+their event uses.
+
+But **no existing screen or code is removed.** Capture, Theme and Print stay
+exactly as they are, reachable when the flag is off, and remain the fallback if
+something about the local pipeline disappoints on the day. Deletion is a decision
+to take after the new flow has run a real event, not before.
 
 ---
 
@@ -40,6 +44,7 @@ something about the local pipeline disappoints on the day.
 | **Operator/staff only** | No guest-facing copy, no consent flows, no idle attract state |
 | **Amlogic box, low spec** | Paginated lists, pre-made thumbnails, no large decodes on scroll |
 | **Offline is normal** | Every screen renders from the local ledger; nothing waits on a network call |
+| **ZenAI is the source of event config** | Settings, banners and frames are fetched **once per event**, cached, and used for the rest of it |
 
 The performance constraint is the one that shapes the UI most, and §7 covers it
 specifically.
@@ -80,9 +85,9 @@ The screen an operator can leave open all night. Lands here on entering an event
 │  ‹   Priya & Arjun                        ⚙    │
 │      WARM PEACH TO PURPLE                      │
 ├────────────────────────────────────────────────┤
-│  READY TO RUN                                  │
+│  READY TO RUN                    synced 09:12  │
 │  ✓ Camera    Canon EOS R · PTP                 │
-│  ✓ Printer   DS-RX1 · 4x6 · ~380 prints        │
+│  ✓ Printer   DS-RX1 · 4x6                      │
 │  ✓ Frames    1 cached                          │
 │  — AI        off for this event                │
 │  ✓ Storage   46 GB free                        │
@@ -90,14 +95,32 @@ The screen an operator can leave open all night. Lands here on entering an event
 │     12          3           148         0      │
 │   QUEUED     WORKING       DONE      FAILED    │
 ├────────────────────────────────────────────────┤
-│  ┌──────────────────┐  ┌──────────────────┐    │
-│  │ Import from card │  │     Capture      │    │
-│  └──────────────────┘  └──────────────────┘    │
+│  CARDS INSERTED                                │
 │  ┌────────────────────────────────────────┐    │
-│  │            Open queue                  │    │
+│  │ ▸ SD card  2609-0353   119 GB          │    │
+│  ├────────────────────────────────────────┤    │
+│  │ ▸ SD card  1E6F-0961   64 GB           │    │
 │  └────────────────────────────────────────┘    │
+├────────────────────────────────────────────────┤
+│  ┌──────────────────┐  ┌──────────────────┐    │
+│  │     Capture      │  │   Open queue     │    │
+│  └──────────────────┘  └──────────────────┘    │
 └────────────────────────────────────────────────┘
 ```
+
+### Cards are listed, never scanned on their own
+
+A multi-slot reader can hold several cards at once, so "the card" is not a thing
+the app can assume. Every mounted volume is listed with its label and size, and
+**nothing is read until the operator taps one**.
+
+Auto-scanning was wrong for two reasons beyond the ambiguity: it burns I/O on a
+card the operator did not mean, and on a slow box the scan competes with whatever
+the queue is already doing. An explicit tap also gives a natural moment to show
+which card is being read, which matters when two are seated.
+
+Removing a card removes its row. No card at all replaces the block with
+"Insert a card in the reader".
 
 ### The readiness block is the point of this screen
 
@@ -112,7 +135,7 @@ a glance during setup.
 | Row | Green | Amber | Red |
 |---|---|---|---|
 | Camera | Connected, model named | — | Not connected — Capture disabled |
-| Printer | Connected, size, prints left | Media low | Not connected, or **paused: ribbon/paper** |
+| Printer | Connected, print size | — | Not connected, or **paused: ribbon/paper** |
 | Frames | All cached | Some cached | **Frame on but artwork missing** — framing cannot run offline |
 | AI | On, theme named | On, **no theme set** — AI will be skipped | On, offline — jobs will wait |
 | Storage | Free space | Below 4 GB | Below 1 GB — import blocked |
@@ -126,9 +149,13 @@ then every single item defers.
 Four numbers, tapping any one opens the queue **filtered to it**. `FAILED` is red
 when non-zero and never hidden.
 
+`synced 09:12` is when event config last came from ZenAI, with a tap to re-sync.
+An operator who changed something on the backend needs to know whether this
+device has it yet.
+
 ### Actions
 
-- **Import from card** — disabled with "Insert a card" when no volume is mounted
+- **A card row** — opens Import for that specific volume
 - **Capture** — disabled when no camera is connected
 - **Open queue** — always available
 
@@ -138,12 +165,15 @@ when non-zero and never hidden.
 
 Largely as built and verified on device.
 
-**States:** no card · scanning · review · importing · safe to remove · card not
-readable · card empty · only RAW · nothing new · needs photo permission.
+Entered **for a specific volume** chosen on the hub, so this screen never has to
+decide which card was meant.
+
+**States:** scanning · review · importing · safe to remove · card not readable ·
+card empty · only RAW · nothing new · needs photo permission.
 
 ```
 ┌────────────────────────────────────────────────┐
-│  ‹   Import from card                          │
+│  ‹   SD card 2609-0353                         │
 ├────────────────────────────────────────────────┤
 │  412 new · 1,088 already imported              │
 │  18 RAW files skipped                          │
@@ -216,7 +246,7 @@ feel stuck.
 │  ⏸ Print queue paused — check ribbon           │
 ├────────────────────────────────────────────────┤
 │  [All 165] [Queued 12] [Framing 3] [Done 148]  │
-│  [Failed 2]                                    │
+│  [Failed 2]                          [ Select ]│
 ├────────────────────────────────────────────────┤
 │   ┌────┐  ┌────┐  ┌────┐                       │
 │   │ ▨  │  │ ▨  │  │ ▨  │                       │
@@ -224,10 +254,30 @@ feel stuck.
 │   IMG_44   IMG_45   IMG_46                     │
 │   Failed   Framing  Done                       │
 │   ...                          [ Load more ]   │
+└────────────────────────────────────────────────┘
+
+selection mode ───────────────────────────────────
+│  3 selected            [ All ] [ None ] [ ✕ ]  │
+│   ┌────┐  ┌────┐  ┌────┐                       │
+│   │ ▨ ☑│  │ ▨ ☑│  │ ▨ ☐│                       │
+│   └────┘  └────┘  └────┘                       │
 ├────────────────────────────────────────────────┤
-│  [Run local now]  [Retry 2 failed]  [Skip AI]  │
+│  [ Retry ] [ Skip AI ] [ Reprint ] [ Remove ]  │
 └────────────────────────────────────────────────┘
 ```
+
+### Nothing acts on everything
+
+Actions apply **only to what the operator selected**. A bare `Retry all` is the
+kind of button that quietly reprints eighty photos when someone meant three, and
+on dye-sub media that is real consumable spent for nothing.
+
+So: tap **Select**, tick items, then act. `All` and `None` are there for the case
+where the whole filter genuinely is the target — filter to `Failed`, tap `All`,
+`Retry` — which keeps the bulk case to three taps without making it the default.
+
+An action only appears when it is valid for the selection: `Skip AI` when
+something selected sits at AI, `Reprint` when something has finished.
 
 ### Performance rules, not preferences
 
@@ -245,13 +295,30 @@ These are the difference between smooth and unusable on the Amlogic box:
 
 Disk cost is roughly 30 KB × 3,000 ≈ 90 MB against ~4 GB of derivatives.
 
-### Action naming
+### Replacing "Run now" rather than renaming it
 
-`Run now` currently drains **only** the local stages — AI and the mirror are
-excluded deliberately, since either can block for a long time. The label
-overstates it: on an AI event an operator would press it, see nothing happen to
-items sitting at AI, and reasonably conclude it is broken. Rename to **Run local
-now**, or kick AI and the mirror without awaiting them.
+`Run now` is the wrong control, and renaming it to `Run local now` only makes the
+name accurate — it does not make it useful.
+
+The queue already runs continuously: frame and print tick every three seconds. A
+`Run now` button implies the opposite, that work waits for a human. It also lied
+about scope, draining only the local stages while items sat at AI.
+
+**What an operator actually needs is the reverse — a way to stop.** Ribbon change,
+paper reload, moving the printer: all want processing held and then resumed. So:
+
+```
+│  ● Processing — 12 queued            [ Pause ] │
+│  ⏸ Paused                            [ Resume ]│
+```
+
+A live indicator that the queue is working, and one control to hold it. `Pause`
+suspends every stage, survives a restart (it is queue state, not screen state),
+and the hub shows it too so a paused queue is never a mystery.
+
+The diagnostic case `Run now` half-served — "is this thing stuck?" — is answered
+better by the indicator itself: if it says Processing and the counts do not move,
+that is a real fault worth surfacing, not something to paper over with a button.
 
 ---
 
@@ -285,6 +352,11 @@ Showing all three renditions side by side is how an operator answers "did the
 frame come out right" without going to the printer. **Error is the real error
 text**, not a category.
 
+**Reprint prints another copy of whatever the finished output is** — the framed
+version if there is one, else the AI result, else the imported photo. It does not
+re-run AI or framing: the operator wants another print of what they can see, not
+a fresh generation that might come out different.
+
 ---
 
 ## 9. Screen 6 — Event settings
@@ -292,10 +364,52 @@ text**, not a category.
 Currently buried in Kiosk settings, which is the wrong place: it is event
 configuration, and the operator reaches for it from the event.
 
-Same controls as the existing panel — AI + theme, frame + which, print size,
-copies, auto-print, scan folders — plus the **resolved chain preview**, and one
-addition: a **frame cache status with a Download now action**, so an operator can
-fix the "frames not cached" warning from the hub without guessing how.
+### ZenAI is the source; the device holds a cache
+
+Event settings, banners and frames are configured on the backend. The device
+**syncs once when the event is bound** and uses that for the rest of the event,
+so nothing on any screen waits on a request and a venue with no usable link still
+runs correctly.
+
+```
+┌────────────────────────────────────────────────┐
+│  ‹   Event settings                            │
+│      Synced from ZenAI · 9 Sep 09:12  [Sync]   │
+├────────────────────────────────────────────────┤
+│  AI generation                          [ on ] │
+│  Restyles each photo before framing.           │
+│  Theme · Warm Peach                            │
+│                                                │
+│  Apply frame                            [ on ] │
+│  Adds the event's border to the finished       │
+│  photo. Downloaded once, then works offline.   │
+│  Frame · Feriya y Fiesta   ✓ cached            │
+│                                                │
+│  Auto print                             [ on ] │
+│  Prints each photo as soon as it is ready.     │
+│  Off means you release prints yourself.        │
+│                                                │
+│  Copies per photo                        [1]   │
+│  How many prints of each finished photo.       │
+│                                                │
+│  Print size                          [ 4x6 ]   │
+│  Must match the media loaded in the printer.   │
+├────────────────────────────────────────────────┤
+│  Each photo will run                           │
+│  AI → Frame → Print 4x6 · 1 copy               │
+└────────────────────────────────────────────────┘
+```
+
+**Every setting carries one line saying what it does.** These are read by an
+operator under time pressure who did not configure the event, and a bare toggle
+labelled "Apply frame" does not tell them that turning it off means the prints
+come out plain.
+
+`Sync` re-fetches on demand, for when something changed on the backend
+mid-event. The timestamp is the same one shown on the hub.
+
+The frame row doubles as the fix for the hub's "frames not cached" warning: it
+shows cache state and downloads on demand.
 
 ---
 
@@ -312,17 +426,27 @@ fix the "frames not cached" warning from the hub without guessing how.
 
 ---
 
-## 11. Open questions
+## 11. Decisions taken
 
-1. **Does the hub replace the station picker outright** when `pipelineEnabled` is
-   on, or sit alongside it as a fifth choice? Replacing is cleaner; sitting
-   alongside is safer while both flows exist.
-2. **Should Capture auto-queue, or land in the queue as `INGESTED` for review?**
-   Spec §4B.3 says auto-queue because a guest is waiting. Worth confirming now
-   that the same device also runs the queue.
-3. **Reprint semantics** — does Reprint re-run the print step on the existing
-   framed rendition, or re-run the whole chain? The former is almost certainly
-   what an operator means.
-4. **Does the readiness block need a printer media count?** It requires a DNP
-   status query the driver already supports, but the count's accuracy across
-   media types has not been verified.
+| Question | Answer |
+|---|---|
+| Hub vs station picker | Hub **replaces** the picker when the flag is on |
+| Remove the old screens? | **No** — keep the code and screens; revisit after a real event |
+| Capture destination | Confirm queues into the **same** queue as card imports |
+| Reprint | Another copy of the **finished output**, whatever stage produced it |
+| Printer media count | **Later**, once the flow is stable |
+| Card scanning | **Never automatic** — the operator taps a specific volume |
+| Queue actions | **Selection only**, never a bare act-on-everything |
+| Event config | **ZenAI is the source**, synced once per event and cached |
+
+## 12. Still open
+
+1. **Do local overrides survive at all?** With ZenAI authoritative, the settings
+   screen could be read-only apart from `Sync`. Keeping overrides helps an
+   operator work around a misconfigured event on site; removing them means one
+   source of truth and no chance of a device silently disagreeing with the
+   backend. The spec currently assumes overrides remain, marked as overriding.
+2. **What does the hub show while the first sync is running**, on a device that
+   has never seen this event? Every other state assumes a cache exists.
+3. **Does a card removed mid-import abort cleanly?** The ledger is consistent
+   either way, but the operator should be told rather than seeing a stalled bar.
