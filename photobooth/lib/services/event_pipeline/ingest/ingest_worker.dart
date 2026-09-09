@@ -139,17 +139,13 @@ class IngestWorker {
         stopReason = IngestReport.cardRemovedReason;
         break;
       }
-
-      switch (outcome.kind) {
-        case _OutcomeKind.imported:
-          imported++;
-          mediaIds.add(outcome.mediaId!);
-        case _OutcomeKind.duplicate:
-          duplicates++;
-        case _OutcomeKind.failed:
-          failed++;
-        case _OutcomeKind.sourceGone:
-          break;
+      if (outcome.kind == _OutcomeKind.imported) {
+        imported++;
+        mediaIds.add(outcome.mediaId!);
+      } else if (outcome.kind == _OutcomeKind.duplicate) {
+        duplicates++;
+      } else {
+        failed++;
       }
 
       onProgress?.call(IngestProgress(

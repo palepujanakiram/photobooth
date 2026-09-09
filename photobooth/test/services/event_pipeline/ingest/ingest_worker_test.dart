@@ -409,6 +409,48 @@ void main() {
           reason: 'the other 37 are never attempted');
     });
 
+    test('a card that goes before the row is written stops just as cleanly',
+        () async {
+      // The content-key read happens before insertIfNew, so this is the path
+      // where there is no row to roll back — the run must still stop rather
+      // than counting a failure.
+      await writePhoto('DCIM/A.JPG');
+      await writePhoto('DCIM/B.JPG', fill: 4);
+      final scan = await worker.scan(source(), scanFolders: const ['DCIM']);
+      final report = await worker.import(
+        _VanishingSource(card, id: 'VOL-1'),
+        scan.newCandidates,
+        settings: settingsWith(),
+      );
+
+      expect(report.imported, 0);
+      expect(report.failed, 0);
+      expect(report.stoppedOnCardRemoval, isTrue);
+      expect(await ledger.knownSourceRefs(MediaSource.sdCard), isEmpty);
+    });
+
+    test('a candidate with no addressable uri is a removed card, not a fault',
+        () async {
+      final report = await worker.import(
+        source(),
+        [
+          const IngestCandidate(
+            sourceId: 'VOL-1',
+            relativePath: 'DCIM/GONE.JPG',
+            displayName: 'GONE.JPG',
+            sizeBytes: 100,
+            modifiedAtMs: 1,
+            uri: '',
+          ),
+        ],
+        settings: settingsWith(),
+      );
+
+      expect(report.failed, 0);
+      expect(report.stoppedOnCardRemoval, isTrue);
+      expect(downscaler.calls, 0);
+    });
+
     test('a genuinely undecodable photo still lands FAILED', () async {
       await writePhoto('DCIM/A.JPG');
       await writePhoto('DCIM/B.JPG', fill: 4);
@@ -530,4 +572,28 @@ void main() {
       expect(DownscaleTarget.shortSideFor(10.0), 4096);
     });
   });
+}
+
+/// A source whose bytes are gone even though the listing still shows them —
+/// exactly what a card pulled between scan and import looks like.
+class _VanishingSource extends FolderIngestSource {
+  _VanishingSource(Directory directory, {required String id})
+      : super(
+          directory: directory,
+          id: id,
+          sourceKind: MediaSource.sdCard,
+        );
+
+  @override
+  Future<Uint8List> readRange(
+    IngestCandidate candidate,
+    int offset,
+    int length,
+  ) async {
+    throw const FileSystemException(
+      'Cannot open file',
+      '/storage/VOL-1/DCIM/A.JPG',
+      OSError('No such file or directory', 2),
+    );
+  }
 }
