@@ -4,6 +4,7 @@ import '../../models/event_pipeline/media_rendition.dart';
 import '../../models/event_pipeline/pipeline_job.dart';
 import '../../utils/exceptions.dart';
 import '../api_service.dart';
+import '../kiosk_manager.dart';
 import 'event_media_store.dart';
 import 'event_pipeline_ledger.dart';
 import 'event_pipeline_queue.dart';
@@ -27,6 +28,7 @@ class AiJobWorker extends EventPipelineWorker {
     required EventPipelineSettings Function() settings,
     ApiService? api,
     AiImageFetch? fetchImage,
+    KioskManager? kioskManager,
     super.batchLimit = 2,
     int Function()? nowMs,
   })  : _ledger = ledger,
@@ -34,6 +36,7 @@ class AiJobWorker extends EventPipelineWorker {
         _settings = settings,
         _api = api ?? ApiService(),
         _fetchImage = fetchImage,
+        _kiosk = kioskManager ?? KioskManager(),
         _nowMs = nowMs ?? _defaultNowMs,
         super(kind: EventPipelineStep.ai);
 
@@ -42,6 +45,7 @@ class AiJobWorker extends EventPipelineWorker {
   final EventPipelineSettings Function() _settings;
   final ApiService _api;
   final AiImageFetch? _fetchImage;
+  final KioskManager _kiosk;
   final int Function() _nowMs;
 
   static int _defaultNowMs() => DateTime.now().millisecondsSinceEpoch;
@@ -62,6 +66,16 @@ class AiJobWorker extends EventPipelineWorker {
       // burning attempts against a link that is not coming back this session.
       return const JobResult.defer(
         'Event is in offline mode',
+        Duration(minutes: 10),
+      );
+    }
+
+    // The kiosk-level toggle is separate from the event's `aiEnabled`, and it
+    // wins: an operator who turned FotoZen AI off on this device expects no
+    // generation regardless of what the event asks for.
+    if (!await _kiosk.isAiPhotosEnabled()) {
+      return const JobResult.defer(
+        'FotoZen AI is turned off on this kiosk',
         Duration(minutes: 10),
       );
     }

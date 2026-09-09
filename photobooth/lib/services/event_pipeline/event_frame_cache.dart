@@ -11,10 +11,12 @@ import 'event_pipeline_db.dart';
 
 /// Downloads and stores an event's frame overlays so framing can run offline.
 ///
-/// `ApiService.getKioskFrames()` already accepts an `eventCode` and disk-caches
-/// the frame **metadata** per kiosk+event. What was missing — and what this adds
-/// — is the overlay **bytes**. Without them a frame-enabled event that loses its
-/// link cannot complete a single item.
+/// `ApiService.getKioskFrames()` disk-caches frame metadata and, since the
+/// Classic offline-frames work, also warms the overlay PNGs into
+/// [ImageCacheService]. This keeps a **separate, permanent copy** anyway, and
+/// deliberately so: that cache is evictable, and an overlay evicted mid-event
+/// would break framing for every remaining photo with no way to re-fetch it
+/// offline. A frame an event depends on needs a guarantee, not a cache hit.
 class EventFrameCache {
   EventFrameCache({
     required EventPipelineDb db,
@@ -56,17 +58,7 @@ class EventFrameCache {
     required String eventId,
     String? selectedFrameId,
   }) async {
-    List<KioskFrameModel> frames;
-    try {
-      frames = await _api.getKioskFrames();
-    } catch (e, st) {
-      AppLogger.warning(
-        'Frame catalogue fetch failed; using what is already cached',
-        error: e,
-        stackTrace: st,
-      );
-      return status(eventId: eventId, selectedFrameId: selectedFrameId);
-    }
+    final frames = await _fetchCatalogue();
 
     for (final frame in frames) {
       if (frame.id.isEmpty || frame.overlayUrl.isEmpty) continue;
@@ -74,6 +66,30 @@ class EventFrameCache {
       await _downloadIfMissing(eventId, frame.id);
     }
     return status(eventId: eventId, selectedFrameId: selectedFrameId);
+  }
+
+  /// Live catalogue, falling back to the disk-only one.
+  ///
+  /// `getCachedKioskFrames()` reads the frame catalogue with no network at all,
+  /// so a booth that lost its link between setup and the event can still learn
+  /// which frames it is meant to have — and report a missing one honestly
+  /// instead of looking like an event with no frames configured.
+  Future<List<KioskFrameModel>> _fetchCatalogue() async {
+    try {
+      final live = await _api.getKioskFrames();
+      if (live.isNotEmpty) return live;
+    } catch (e, st) {
+      AppLogger.warning(
+        'Frame catalogue fetch failed; falling back to disk',
+        error: e,
+        stackTrace: st,
+      );
+    }
+    try {
+      return await _api.getCachedKioskFrames();
+    } catch (_) {
+      return const <KioskFrameModel>[];
+    }
   }
 
   Future<void> _upsertMetadata(String eventId, KioskFrameModel frame) async {

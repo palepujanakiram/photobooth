@@ -12,7 +12,9 @@ import 'package:photobooth/services/event_pipeline/event_media_store.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_db.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_ledger.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_queue.dart';
+import 'package:photobooth/services/kiosk_manager.dart';
 import 'package:photobooth/utils/exceptions.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Manual fake by subclass-and-override, per the repo convention.
 class FakeApi extends ApiService {
@@ -68,6 +70,8 @@ EventPipelineSettings settingsWith({
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   late Directory root;
   late Directory mediaDir;
   late EventPipelineDb db;
@@ -80,6 +84,8 @@ void main() {
   var fetched = <String>[];
 
   setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    KioskManager.resetClassicPhotosCacheForTests();
     root = await Directory.systemTemp.createTemp('fz_evp_ai_');
     mediaDir = Directory('${root.path}/media')..createSync(recursive: true);
     ids = 0;
@@ -261,6 +267,19 @@ void main() {
 
       expect((await queue.findById(job.id))!.status, PipelineJobStatus.failed);
       expect(api.calls, 0);
+    });
+
+    test('the kiosk AI toggle wins over the event setting', () async {
+      // An operator who turned FotoZen AI off on this device expects no
+      // generation, whatever the event asks for.
+      await KioskManager().setAiPhotosEnabled(false);
+      final mediaId = await seedItem();
+      final job = await queue.enqueue(kind: 'ai', mediaId: mediaId);
+      await buildWorker().drain();
+
+      expect(api.calls, 0);
+      final deferred = await queue.findById(job.id);
+      expect(deferred!.attempts, 0, reason: 'a policy hold is not a failure');
     });
 
     test('a transient API error retries', () async {
