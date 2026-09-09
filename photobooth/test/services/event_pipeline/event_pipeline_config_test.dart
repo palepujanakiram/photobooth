@@ -54,6 +54,46 @@ void main() {
     });
   });
 
+  group('sync record', () {
+    test('records and reads back the time this event synced', () async {
+      expect(await config.hasSyncedOnce('GALA-01'), isFalse);
+      await config.recordSyncedAt('GALA-01', 1700000000000);
+      expect(await config.readSyncedAtMs('GALA-01'), 1700000000000);
+      expect(await config.hasSyncedOnce('GALA-01'), isTrue);
+    });
+
+    test('the code is matched case- and space-insensitively', () async {
+      await config.recordSyncedAt('  gala-01 ', 42);
+      expect(await config.readSyncedAtMs('GALA-01'), 42);
+    });
+
+    test('a different event reads as never synced', () async {
+      await config.recordSyncedAt('GALA-01', 42);
+      expect(await config.readSyncedAtMs('WEDDING-02'), isNull,
+          reason: 'last weekend\'s sync must not unblock this weekend');
+    });
+
+    test('a blank code is not a syncable event', () async {
+      await config.recordSyncedAt('   ', 42);
+      expect(await config.readSyncedAtMs(''), isNull);
+    });
+
+    test('the stamp survives caching flags separately', () async {
+      await config.recordSyncedAt('GALA-01', 42);
+      // A backend that sends no pipeline fields still synced; the event then
+      // runs on defaults rather than being blocked forever.
+      await config.cacheFlags(EventPipelineFlags.empty);
+      expect(await config.hasSyncedOnce('GALA-01'), isTrue);
+      expect((await config.readCachedFlags()).isEmpty, isTrue);
+    });
+
+    test('clearCachedFlags clears the stamp too', () async {
+      await config.recordSyncedAt('GALA-01', 42);
+      await config.clearCachedFlags();
+      expect(await config.hasSyncedOnce('GALA-01'), isFalse);
+    });
+  });
+
   group('resolve', () {
     test('defaults apply when nothing is configured', () async {
       final s = await config.resolve();

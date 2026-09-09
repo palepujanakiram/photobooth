@@ -74,6 +74,32 @@ class EventPipelineFlags {
       printSize == null &&
       mirrorEnabled == null;
 
+  EventPipelineFlags copyWith({
+    bool? pipelineEnabled,
+    bool? offlineMode,
+    bool? aiEnabled,
+    String? themeId,
+    bool? frameEnabled,
+    String? frameId,
+    bool? autoPrint,
+    int? defaultCopies,
+    String? printSize,
+    bool? mirrorEnabled,
+  }) {
+    return EventPipelineFlags(
+      pipelineEnabled: pipelineEnabled ?? this.pipelineEnabled,
+      offlineMode: offlineMode ?? this.offlineMode,
+      aiEnabled: aiEnabled ?? this.aiEnabled,
+      themeId: themeId ?? this.themeId,
+      frameEnabled: frameEnabled ?? this.frameEnabled,
+      frameId: frameId ?? this.frameId,
+      autoPrint: autoPrint ?? this.autoPrint,
+      defaultCopies: defaultCopies ?? this.defaultCopies,
+      printSize: printSize ?? this.printSize,
+      mirrorEnabled: mirrorEnabled ?? this.mirrorEnabled,
+    );
+  }
+
   Map<String, dynamic> toJson() => <String, dynamic>{
         if (pipelineEnabled != null) 'pipelineEnabled': pipelineEnabled,
         if (offlineMode != null) 'offlineMode': offlineMode,

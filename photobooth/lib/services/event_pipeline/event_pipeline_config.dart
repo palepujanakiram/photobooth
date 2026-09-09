@@ -18,6 +18,8 @@ import '../../models/event_pipeline/event_pipeline_settings.dart';
 /// shape without a network call.
 class EventPipelineConfig {
   static const String _kCachedFlags = 'evp_cached_flags_json';
+  static const String _kSyncedAtMs = 'evp_flags_synced_at_ms';
+  static const String _kSyncedCode = 'evp_flags_synced_code';
 
   /// Sync snapshot for callers that cannot await — routing decisions on the
   /// splash path in particular. Null until [resolve] has run once.
@@ -59,8 +61,44 @@ class EventPipelineConfig {
   Future<void> clearCachedFlags() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kCachedFlags);
+    await prefs.remove(_kSyncedAtMs);
+    await prefs.remove(_kSyncedCode);
     _cachedPipelineEnabled = null;
   }
+
+  // ------------------------------------------------------------- sync record
+
+  /// Records that [eventCode] reached the backend at [atMs].
+  ///
+  /// Separate from [cacheFlags] on purpose: a backend that returns no pipeline
+  /// fields at all still **synced**, and the event then runs on defaults. Tying
+  /// the timestamp to the flags would leave that event permanently blocked from
+  /// importing (screens spec §3A).
+  Future<void> recordSyncedAt(String eventCode, int atMs) async {
+    final code = eventCode.trim().toUpperCase();
+    if (code.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kSyncedAtMs, atMs);
+    await prefs.setString(_kSyncedCode, code);
+  }
+
+  /// When [eventCode] last synced, or null if this device never has.
+  ///
+  /// Scoped to the code because a device moves between events: inheriting last
+  /// weekend's "synced 09:12" would unblock import for an event whose settings
+  /// this device has never actually seen.
+  Future<int?> readSyncedAtMs(String eventCode) async {
+    final code = eventCode.trim().toUpperCase();
+    if (code.isEmpty) return null;
+    final prefs = await SharedPreferences.getInstance();
+    final storedCode = prefs.getString(_kSyncedCode)?.trim().toUpperCase();
+    if (storedCode == null || storedCode != code) return null;
+    return prefs.getInt(_kSyncedAtMs);
+  }
+
+  /// Gate for import and capture — no photo enters without a chain to run.
+  Future<bool> hasSyncedOnce(String eventCode) async =>
+      await readSyncedAtMs(eventCode) != null;
 
   // --------------------------------------------------------------- resolution
 

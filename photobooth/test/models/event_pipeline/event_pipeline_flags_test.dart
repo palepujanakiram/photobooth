@@ -110,6 +110,57 @@ void main() {
       );
     });
 
+    test('every field screens spec §12 asks the backend for is parsed', () {
+      // The "Missing — needed for read-only settings" table. If the backend
+      // starts sending one of these and this test still passes, the device
+      // honours it with no further change.
+      final flags = EventPipelineFlags.fromEventJson(const {
+        'aiEnabled': true,
+        'themeId': 'theme-7',
+        'frameEnabled': true,
+        'frameId': 'frame-3',
+        'autoPrint': false,
+        'defaultCopies': 2,
+        'printSize': 's6x8',
+      });
+      expect(flags.aiEnabled, isTrue);
+      expect(flags.themeId, 'theme-7');
+      expect(flags.frameEnabled, isTrue);
+      expect(flags.frameId, 'frame-3');
+      expect(flags.autoPrint, isFalse);
+      expect(flags.defaultCopies, 2);
+      expect(flags.printSize, 's6x8');
+    });
+
+    test('copyWith replaces only what it is given', () {
+      const original = EventPipelineFlags(
+        pipelineEnabled: true,
+        aiEnabled: true,
+        defaultCopies: 2,
+      );
+      final updated = original.copyWith(themeId: 'theme-a');
+      expect(updated.themeId, 'theme-a');
+      expect(updated.pipelineEnabled, isTrue);
+      expect(updated.aiEnabled, isTrue);
+      expect(updated.defaultCopies, 2);
+    });
+
+    test('copyWith with nothing set is an unchanged copy', () {
+      const original = EventPipelineFlags(
+        pipelineEnabled: true,
+        offlineMode: true,
+        aiEnabled: false,
+        themeId: 't',
+        frameEnabled: true,
+        frameId: 'f',
+        autoPrint: true,
+        defaultCopies: 3,
+        printSize: 's5x7',
+        mirrorEnabled: false,
+      );
+      expect(original.copyWith().toJson(), original.toJson());
+    });
+
     test('toJson omits nulls and round-trips', () {
       const original = EventPipelineFlags(pipelineEnabled: true, themeId: 't');
       final json = original.toJson();
