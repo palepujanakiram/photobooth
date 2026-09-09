@@ -12,7 +12,6 @@ import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.util.concurrent.Executors
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -39,11 +38,6 @@ object EventImageDownscaler {
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    /**
-     * Single thread on purpose: peak RAM then holds one bitmap, not one per core.
-     * A 24 MP ARGB_8888 bitmap is ~96 MB, so four in flight would OOM the box.
-     */
-    private val ioExecutor = Executors.newSingleThreadExecutor()
 
     fun register(
         flutterEngine: FlutterEngine,
@@ -71,9 +65,13 @@ object EventImageDownscaler {
             val maxLongSide = call.argument<Int>("maxLongSide") ?: 4096
             val quality = call.argument<Int>("quality") ?: 88
 
-            ioExecutor.execute {
+            EventPipelineExecutors.import.execute {
                 try {
-                    val output = downscale(appContext, uri, targetShortSide, maxLongSide, quality)
+                    // Holds a full-resolution bitmap, so it takes its turn with
+                    // frame compositing rather than racing it into an OOM.
+                    val output = EventPipelineExecutors.withBitmapMemory("downscale") {
+                        downscale(appContext, uri, targetShortSide, maxLongSide, quality)
+                    }
                     mainHandler.post { result.success(output) }
                 } catch (e: Throwable) {
                     Log.e(TAG, "downscale failed for $uri", e)

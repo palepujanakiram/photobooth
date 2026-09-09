@@ -14,6 +14,7 @@ import 'event_pipeline_config.dart';
 import 'event_pipeline_db.dart';
 import 'event_pipeline_ledger.dart';
 import 'event_pipeline_queue.dart';
+import 'event_pipeline_service_channel.dart';
 import 'frame_compositor.dart';
 import 'frame_job_worker.dart';
 import 'print_job_worker.dart';
@@ -34,7 +35,9 @@ class EventPipelineRunner {
     FrameCompositor? compositor,
     Future<EventPipelineDb?> Function()? openDb,
     EventPrintFn? printFn,
+    EventPipelineServiceChannel? serviceChannel,
   })  : _config = config ?? EventPipelineConfig(),
+        _service = serviceChannel ?? EventPipelineServiceChannel(),
         _events = eventManager ?? EventManager(),
         _media = mediaStore ?? EventMediaStore(),
         _compositor = compositor ?? PlatformFrameCompositor(),
@@ -47,6 +50,7 @@ class EventPipelineRunner {
   final FrameCompositor _compositor;
   final Future<EventPipelineDb?> Function() _openDb;
   final EventPrintFn? _printFn;
+  final EventPipelineServiceChannel _service;
 
   static EventPipelineRunner? _instance;
 
@@ -199,6 +203,24 @@ class EventPipelineRunner {
     );
   }
 
+  /// Raises or drops the foreground service to match what is outstanding.
+  ///
+  /// Only shown while there is work: an idle notification is noise, and Android
+  /// increasingly penalises services that hold one without cause.
+  Future<void> syncServiceState() async {
+    final queue = _queue;
+    if (queue == null) return;
+    var open = 0;
+    for (final kind in EventPipelineStep.order) {
+      open += (await queue.counts(kind)).open;
+    }
+    if (open > 0) {
+      await _service.start(status: '$open photos in the queue');
+    } else {
+      await _service.stop();
+    }
+  }
+
   void _startWorkers() {
     // Framing and printing are local and cheap to poll. AI and the mirror both
     // touch the network, so they tick slower — a venue link is shared with the
@@ -210,6 +232,7 @@ class EventPipelineRunner {
   }
 
   void stop() {
+    unawaited(_service.stop());
     _ai?.stop();
     _frame?.stop();
     _print?.stop();
@@ -254,6 +277,8 @@ class EventPipelineRunner {
         await _mirror?.enqueueItem(mediaId);
       }
     }
+    // Queued work must survive the operator locking the phone.
+    await syncServiceState();
     return queued;
   }
 
@@ -261,5 +286,6 @@ class EventPipelineRunner {
   Future<void> drainAll() async {
     await _frame?.drainUntilIdle();
     await _print?.drainUntilIdle();
+    await syncServiceState();
   }
 }

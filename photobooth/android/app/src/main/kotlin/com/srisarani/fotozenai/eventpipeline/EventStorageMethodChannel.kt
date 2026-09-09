@@ -13,7 +13,6 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
-import java.util.concurrent.Executors
 
 /**
  * Storage discovery and MediaStore enumeration for the event pipeline ingest.
@@ -32,7 +31,6 @@ object EventStorageMethodChannel {
     const val CHANNEL_NAME = "com.srisarani.fotozenai/event_storage"
 
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val ioExecutor = Executors.newSingleThreadExecutor()
 
     fun register(
         flutterEngine: FlutterEngine,
@@ -49,7 +47,7 @@ object EventStorageMethodChannel {
         MethodChannel(messenger, CHANNEL_NAME).setMethodCallHandler { call, result ->
             // Every call touches disk or a content provider, so none of it belongs
             // on the platform thread.
-            ioExecutor.execute {
+            EventPipelineExecutors.io.execute {
                 val response =
                     try {
                         Result.success(dispatch(appContext, call.method, call.arguments))
@@ -100,6 +98,7 @@ object EventStorageMethodChannel {
                     length = (args["length"] as? Number)?.toInt() ?: 0,
                 )
             "freeBytes" -> freeBytes(args["path"] as? String)
+            "lanes" -> EventPipelineExecutors.describe()
             else -> NOT_IMPLEMENTED
         }
     }

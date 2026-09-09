@@ -14,7 +14,6 @@ import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.util.concurrent.Executors
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -34,8 +33,6 @@ object EventFrameCompositor {
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    /** Shares the downscaler's reasoning: one large bitmap at a time, not N. */
-    private val ioExecutor = Executors.newSingleThreadExecutor()
 
     fun register(
         flutterEngine: FlutterEngine,
@@ -63,17 +60,19 @@ object EventFrameCompositor {
                 return@setMethodCallHandler
             }
 
-            ioExecutor.execute {
+            EventPipelineExecutors.frame.execute {
                 try {
                     val output =
-                        composite(
-                            appContext,
-                            photoPath,
-                            framePath,
-                            width,
-                            height,
-                            call.argument<Int>("quality") ?: 88,
-                        )
+                        EventPipelineExecutors.withBitmapMemory("composite") {
+                            composite(
+                                appContext,
+                                photoPath,
+                                framePath,
+                                width,
+                                height,
+                                call.argument<Int>("quality") ?: 88,
+                            )
+                        }
                     mainHandler.post { result.success(output) }
                 } catch (e: Throwable) {
                     Log.e(TAG, "composite failed for $photoPath", e)
