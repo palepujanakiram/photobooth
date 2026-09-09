@@ -233,6 +233,25 @@ class EventPipelineLedger {
     return updated;
   }
 
+  /// Removes an item and its renditions, returning it to "never seen".
+  ///
+  /// Used when the **source** went away mid-import rather than the photograph
+  /// being at fault. Leaving a `FAILED` row behind would be worse than useless:
+  /// the tier-1 dedupe matches on every row regardless of stage, so a rescan
+  /// would report the photo as already imported and the operator could never
+  /// reach it again. Deleting the row lets the rescan find it as new.
+  ///
+  /// A genuine decode failure still gets [MediaStage.failed] — that is a real
+  /// fault and deserves to stay visible.
+  Future<void> deleteItem(String id) async {
+    await _db.delete(
+      'evp_media_renditions',
+      where: 'media_id = ?',
+      whereArgs: [id],
+    );
+    await _db.delete('evp_media_items', where: 'id = ?', whereArgs: [id]);
+  }
+
   Future<void> setStage(String id, String stage, {String? error}) async {
     await _db.update(
       'evp_media_items',

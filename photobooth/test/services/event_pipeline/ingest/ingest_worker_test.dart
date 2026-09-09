@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/models/event_pipeline/event_pipeline_settings.dart';
 import 'package:photobooth/models/event_pipeline/media_item.dart';
@@ -15,9 +16,17 @@ import 'package:photobooth/services/event_pipeline/ingest/ingest_worker.dart';
 
 /// Manual fake by subclass-and-override, per the repo's convention.
 class FakeDownscaler implements ImageDownscaler {
-  FakeDownscaler({this.failOn = const <String>{}});
+  FakeDownscaler({
+    this.failOn = const <String>{},
+    this.vanishFrom,
+  });
 
   final Set<String> failOn;
+
+  /// Once this many downscales have been attempted, every later one fails the
+  /// way a pulled card fails: the native side cannot open the item at all.
+  final int? vanishFrom;
+
   final List<int> requestedShortSides = <int>[];
   int calls = 0;
 
@@ -30,6 +39,14 @@ class FakeDownscaler implements ImageDownscaler {
   }) async {
     calls++;
     requestedShortSides.add(targetShortSide);
+    if (vanishFrom != null && calls > vanishFrom!) {
+      // Exactly what EventImageDownscaler.kt reports when the volume has gone.
+      throw PlatformException(
+        code: 'downscale_failed',
+        message: 'java.io.FileNotFoundException: $sourceUri: '
+            'open failed: ENOENT (No such file or directory)',
+      );
+    }
     if (failOn.any(sourceUri.endsWith)) {
       throw StateError('cannot decode $sourceUri');
     }
@@ -289,6 +306,128 @@ void main() {
       for (final id in report.mediaIds) {
         expect(await ledger.bestRenditionForPrint(id), isNotNull);
       }
+    });
+
+    test('a card pulled mid-import rolls back rather than failing the rest',
+        () async {
+      for (var i = 0; i < 5; i++) {
+        await writePhoto('DCIM/IMG_$i.JPG', fill: i + 1);
+      }
+      worker = IngestWorker(
+        ledger: ledger,
+        mediaStore: mediaStore,
+        downscaler: FakeDownscaler(vanishFrom: 2),
+        nowMs: () => 1,
+      );
+
+      final scan = await worker.scan(source(), scanFolders: const ['DCIM']);
+      final report = await worker.import(source(), scan.newCandidates,
+          settings: settingsWith());
+
+      expect(report.imported, 2);
+      expect(report.failed, 0, reason: 'the card going away is not 3 faults');
+      expect(report.stoppedEarly, isTrue);
+      expect(report.stopReason, IngestReport.cardRemovedReason);
+      expect(report.stoppedOnCardRemoval, isTrue);
+
+      expect(await ledger.listByStage(MediaStage.failed), isEmpty);
+      expect(await ledger.listByStage(MediaStage.ingested), hasLength(2),
+          reason: 'only the two that completed have rows');
+    });
+
+    test('the rows for photos left on the card are absent, not FAILED',
+        () async {
+      await writePhoto('DCIM/A.JPG');
+      await writePhoto('DCIM/B.JPG', fill: 4);
+      worker = IngestWorker(
+        ledger: ledger,
+        mediaStore: mediaStore,
+        downscaler: FakeDownscaler(vanishFrom: 0),
+        nowMs: () => 1,
+      );
+
+      final scan = await worker.scan(source(), scanFolders: const ['DCIM']);
+      await worker.import(source(), scan.newCandidates,
+          settings: settingsWith());
+
+      expect(await ledger.knownSourceRefs(MediaSource.sdCard), isEmpty,
+          reason: 'a half-written row would make the rescan report "0 new"');
+    });
+
+    test('a rescan after a card removal finds the photos new again', () async {
+      for (var i = 0; i < 4; i++) {
+        await writePhoto('DCIM/IMG_$i.JPG', fill: i + 1);
+      }
+      final interrupted = IngestWorker(
+        ledger: ledger,
+        mediaStore: mediaStore,
+        downscaler: FakeDownscaler(vanishFrom: 1),
+        nowMs: () => 1,
+      );
+      final first = await interrupted.scan(source(), scanFolders: const ['DCIM']);
+      final firstReport = await interrupted.import(
+        source(),
+        first.newCandidates,
+        settings: settingsWith(),
+      );
+      expect(firstReport.imported, 1);
+
+      // The operator reinserts the card and scans again.
+      final second = await worker.scan(source(), scanFolders: const ['DCIM']);
+      expect(second.newCandidates, hasLength(3),
+          reason: 'the three still on the card must be reachable');
+      expect(second.alreadyImported, 1, reason: 'the finished one dedupes away');
+
+      final report = await worker.import(source(), second.newCandidates,
+          settings: settingsWith());
+      expect(report.imported, 3);
+      expect(await ledger.listByStage(MediaStage.ingested), hasLength(4));
+    });
+
+    test('the removal signal stops the run instead of failing every item',
+        () async {
+      for (var i = 0; i < 40; i++) {
+        await writePhoto('DCIM/IMG_$i.JPG', fill: i + 1);
+      }
+      final scan = await worker.scan(source(), scanFolders: const ['DCIM']);
+      var removed = false;
+      final report = await worker.import(
+        source(),
+        scan.newCandidates,
+        settings: settingsWith(),
+        onProgress: (p) {
+          if (p.done == 3) removed = true;
+        },
+        shouldContinue: () async =>
+            removed ? IngestReport.cardRemovedReason : null,
+      );
+
+      expect(report.imported, 3);
+      expect(report.failed, 0);
+      expect(report.stoppedOnCardRemoval, isTrue);
+      expect(downscaler.calls, 3,
+          reason: 'the other 37 are never attempted');
+    });
+
+    test('a genuinely undecodable photo still lands FAILED', () async {
+      await writePhoto('DCIM/A.JPG');
+      await writePhoto('DCIM/B.JPG', fill: 4);
+      worker = IngestWorker(
+        ledger: ledger,
+        mediaStore: mediaStore,
+        downscaler: FakeDownscaler(failOn: {'B.JPG'}),
+        nowMs: () => 1,
+      );
+
+      final scan = await worker.scan(source(), scanFolders: const ['DCIM']);
+      final report = await worker.import(source(), scan.newCandidates,
+          settings: settingsWith());
+
+      expect(report.failed, 1);
+      expect(report.stoppedEarly, isFalse,
+          reason: 'one bad photo is not a reason to stop the card');
+      final failed = await ledger.listByStage(MediaStage.failed);
+      expect(failed.single.originalFilename, 'B.JPG');
     });
 
     test('an empty candidate list is a no-op', () async {

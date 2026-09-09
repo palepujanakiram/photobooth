@@ -149,6 +149,22 @@ class _IngestBody extends StatelessWidget {
 
   Widget _complete(AppColors colors) {
     final report = vm.report;
+    // A run cut short by the card leaving must not say "safe to remove" — the
+    // rest of the photos are still on it, and their rows were rolled back so
+    // reinserting and scanning again really does pick them up (spec §9A).
+    if (report != null && report.stoppedOnCardRemoval) {
+      return IngestMessagePanel(
+        appColors: colors,
+        icon: Icons.warning_amber_outlined,
+        tone: colors.warningColor,
+        title: 'Card removed',
+        detail: 'Imported ${report.imported} of ${vm.importTotal}. '
+            'The rest are still on the card — reinsert it and scan again '
+            'to continue.',
+        actionLabel: 'Done',
+        onAction: vm.done,
+      );
+    }
     final detail = report == null
         ? ''
         : '${report.imported} imported'

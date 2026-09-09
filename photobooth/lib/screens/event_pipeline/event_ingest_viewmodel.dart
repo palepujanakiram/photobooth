@@ -103,6 +103,16 @@ class EventIngestViewModel extends ChangeNotifier {
   IngestReport? _report;
   bool _busy = false;
 
+  /// Set by the card-detect stream, read by the import loop's [shouldContinue].
+  ///
+  /// This is what turns a pulled card into one clean stop instead of a failure
+  /// per remaining photo — see screens spec §9A.
+  bool _cardRemoved = false;
+
+  /// How many photos the interrupted run was asked to import, so the operator
+  /// can be told "imported 50 of 400" rather than just "50".
+  int _importTotal = 0;
+
   /// Tier-1 keys of the items the operator has ticked.
   final Set<String> _selected = <String>{};
 
@@ -118,6 +128,12 @@ class EventIngestViewModel extends ChangeNotifier {
   int get scanningCount => _scanningCount;
   IngestProgress? get progress => _progress;
   IngestReport? get report => _report;
+  int get importTotal => _importTotal;
+
+  /// True when the last run stopped because the card went away. The remaining
+  /// photos are untouched on the card and their rows were rolled back, so
+  /// "scan again to continue" is truthful.
+  bool get stoppedOnCardRemoval => _report?.stoppedOnCardRemoval ?? false;
   Set<String> get extraFolders => Set.unmodifiable(_extraFolders);
 
   List<IngestCandidate> get candidates => _scan?.newCandidates ?? const [];
@@ -162,6 +178,11 @@ class EventIngestViewModel extends ChangeNotifier {
 
   void _onCardEvent(CardEvent event) {
     if (event.isRemoval) {
+      _cardRemoved = true;
+      // Mid-import the loop stops itself at the next check and the report says
+      // why. Wiping the screen here instead would replace an honest "imported
+      // 50 of 400 — reinsert and scan again" with a blank "insert a card".
+      if (_phase == IngestPhase.importing) return;
       _volume = null;
       _source = null;
       _scan = null;
@@ -169,6 +190,7 @@ class EventIngestViewModel extends ChangeNotifier {
       _setPhase(IngestPhase.noCard);
       return;
     }
+    _cardRemoved = false;
     // An insert is only a hint that something appeared. The volume may not be
     // mounted yet, and even once mounted MediaStore has not indexed it.
     unawaited(refresh());
@@ -330,6 +352,7 @@ class EventIngestViewModel extends ChangeNotifier {
 
     _busy = true;
     _error = null;
+    _importTotal = chosen.length;
     _progress = IngestProgress(
       done: 0,
       total: chosen.length,
@@ -349,6 +372,8 @@ class EventIngestViewModel extends ChangeNotifier {
           _progress = p;
           notifyListeners();
         },
+        shouldContinue: () async =>
+            _cardRemoved ? IngestReport.cardRemovedReason : null,
       );
       _report = report;
       // Freeze each item's chain and enqueue its first step. Settings are read
@@ -370,6 +395,7 @@ class EventIngestViewModel extends ChangeNotifier {
   Future<void> done() async {
     _report = null;
     _scan = null;
+    _cardRemoved = false;
     _selected.clear();
     await refresh();
   }

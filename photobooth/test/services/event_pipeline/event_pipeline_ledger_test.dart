@@ -298,4 +298,41 @@ void main() {
       expect(reloaded.lastError, 'no printer');
     });
   });
+
+  group('deleteItem', () {
+    test('the photo becomes unknown again, so a rescan re-imports it',
+        () async {
+      final r = await insert();
+      expect(await ledger.knownSourceRefs(MediaSource.sdCard), hasLength(1));
+
+      await ledger.deleteItem(r.item.id);
+
+      expect(await ledger.findById(r.item.id), isNull);
+      expect(await ledger.knownSourceRefs(MediaSource.sdCard), isEmpty,
+          reason: 'a surviving key would report the photo already imported');
+      expect((await insert()).isNew, isTrue);
+    });
+
+    test('renditions go with the row rather than being orphaned', () async {
+      final r = await insert();
+      await ledger.putRendition(MediaRendition(
+        mediaId: r.item.id,
+        kind: RenditionKind.source,
+        path: 'src/${r.item.id}.jpg',
+        width: 2880,
+        height: 1920,
+        bytes: 500000,
+        createdAtMs: 1,
+      ));
+
+      await ledger.deleteItem(r.item.id);
+
+      expect(await ledger.renditionsFor(r.item.id), isEmpty);
+    });
+
+    test('deleting an unknown id is harmless', () async {
+      await ledger.deleteItem('nope');
+      expect(await ledger.findById('nope'), isNull);
+    });
+  });
 }

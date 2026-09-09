@@ -54,6 +54,9 @@ class FakeCardDetect extends CardDetectChannel {
 class FakeDownscaler implements ImageDownscaler {
   int calls = 0;
 
+  /// Runs after each downscale, so a test can pull the card mid-import.
+  void Function(int call)? onCall;
+
   @override
   Future<DownscaleResult> downscale({
     required String sourceUri,
@@ -62,6 +65,9 @@ class FakeDownscaler implements ImageDownscaler {
     int quality = 88,
   }) async {
     calls++;
+    onCall?.call(calls);
+    // Let the card-detect stream deliver between photos, as it would on device.
+    await Future<void>.delayed(Duration.zero);
     return DownscaleResult(
       bytes: Uint8List.fromList(List<int>.filled(512, 1)),
       width: targetShortSide,
@@ -329,6 +335,62 @@ void main() {
       expect(vm.phase, IngestPhase.noCard);
       expect(vm.scan, isNull);
       expect(vm.selectedCount, 0);
+      addTearDown(vm.dispose);
+    });
+
+    test('a card pulled mid-import stops the run and reports it', () async {
+      storage.volumes = [usableVolume];
+      storage.rows = [row('A.JPG'), row('B.JPG'), row('C.JPG')];
+      final vm = build();
+      await vm.start();
+      expect(vm.phase, IngestPhase.review);
+      expect(vm.selectedCount, 3);
+
+      downscaler.onCall = (call) {
+        if (call == 1) {
+          cardDetect.controller.add(
+            const CardEvent(kind: CardEventKind.unmounted),
+          );
+        }
+      };
+      await vm.importSelected();
+
+      expect(vm.phase, IngestPhase.complete,
+          reason: 'the screen must stay on the report, not blank to no-card');
+      expect(vm.stoppedOnCardRemoval, isTrue);
+      expect(vm.report!.imported, 1);
+      expect(vm.report!.failed, 0);
+      expect(vm.importTotal, 3);
+      expect(downscaler.calls, 1, reason: 'the other two are never attempted');
+      addTearDown(vm.dispose);
+    });
+
+    test('the photos left on the card are found again after reinsertion',
+        () async {
+      storage.volumes = [usableVolume];
+      storage.rows = [row('A.JPG'), row('B.JPG'), row('C.JPG')];
+      final vm = build();
+      await vm.start();
+      downscaler.onCall = (call) {
+        if (call == 1) {
+          cardDetect.controller.add(
+            const CardEvent(kind: CardEventKind.unmounted),
+          );
+        }
+      };
+      await vm.importSelected();
+      downscaler.onCall = null;
+
+      // Operator reinserts the card and scans again.
+      await vm.done();
+      expect(vm.phase, IngestPhase.review);
+      expect(vm.candidates, hasLength(2),
+          reason: 'rolled-back rows must not read as already imported');
+      expect(vm.alreadyImported, 1);
+
+      await vm.importSelected();
+      expect(vm.report!.imported, 2);
+      expect(vm.stoppedOnCardRemoval, isFalse);
       addTearDown(vm.dispose);
     });
 

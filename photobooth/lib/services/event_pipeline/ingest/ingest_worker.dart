@@ -6,6 +6,7 @@ import '../event_media_store.dart';
 import '../event_pipeline_ledger.dart';
 import 'image_downscaler.dart';
 import 'ingest_diff.dart';
+import 'ingest_failure.dart';
 import 'ingest_source.dart';
 
 /// Progress while an import runs, for the station's progress bar.
@@ -45,10 +46,19 @@ class IngestReport {
   final int failed;
   final List<String> mediaIds;
 
-  /// True when the run halted before processing everything — a free-space floor
-  /// or an operator cancel.
+  /// True when the run halted before processing everything — a free-space floor,
+  /// an operator cancel, or the card being pulled.
   final bool stoppedEarly;
   final String? stopReason;
+
+  /// The reason reported when the source disappears mid-run.
+  ///
+  /// A constant because the operator screen keys its "reinsert it and scan
+  /// again" message off it, and that message is only truthful because the
+  /// rollback happened — see screens spec §9A.
+  static const String cardRemovedReason = 'Card removed';
+
+  bool get stoppedOnCardRemoval => stopReason == cardRemovedReason;
 
   int get processed => imported + duplicates + failed;
 }
@@ -122,6 +132,14 @@ class IngestWorker {
         settings: settings,
         eventId: eventId,
       );
+      if (outcome.kind == _OutcomeKind.sourceGone) {
+        // Not this photo's fault and not a per-item failure: its row is already
+        // rolled back, and every remaining candidate would fail identically.
+        // One clean stop beats grinding through 350 doomed items.
+        stopReason = IngestReport.cardRemovedReason;
+        break;
+      }
+
       switch (outcome.kind) {
         case _OutcomeKind.imported:
           imported++;
@@ -130,6 +148,8 @@ class IngestWorker {
           duplicates++;
         case _OutcomeKind.failed:
           failed++;
+        case _OutcomeKind.sourceGone:
+          break;
       }
 
       onProgress?.call(IngestProgress(
@@ -157,6 +177,11 @@ class IngestWorker {
     required EventPipelineSettings settings,
     String? eventId,
   }) async {
+    if (IngestFailure.isUnreachableUri(candidate.uri)) {
+      // A MediaStore row whose volume has gone resolves to nothing to open.
+      return const _Outcome(_OutcomeKind.sourceGone);
+    }
+    String? createdId;
     try {
       // Tier 2. Only reached by candidates the path key already called new, so
       // this reads 128 KiB for genuinely new photos and nothing for a rescan.
@@ -177,38 +202,51 @@ class IngestWorker {
       if (!result.isNew) {
         return const _Outcome(_OutcomeKind.duplicate);
       }
+      createdId = result.item.id;
 
       final stored = await _storeDerivative(
         source,
         candidate,
-        mediaId: result.item.id,
+        mediaId: createdId,
         eventId: eventId,
         settings: settings,
       );
-      if (!stored) {
-        // The row exists but has no rendition, so it would be unprintable.
-        // Marking it failed keeps it visible for retry instead of looking
-        // imported and silently producing nothing at print time.
-        await _ledger.setStage(
-          result.item.id,
-          MediaStage.failed,
-          error: 'Could not store a print-ready copy',
-        );
-        return const _Outcome(_OutcomeKind.failed);
+      switch (stored) {
+        case _StoreResult.stored:
+          return _Outcome(_OutcomeKind.imported, mediaId: createdId);
+        case _StoreResult.sourceGone:
+          return await _rollBack(createdId);
+        case _StoreResult.failed:
+          // The row exists but has no rendition, so it would be unprintable.
+          // Marking it failed keeps it visible for retry instead of looking
+          // imported and silently producing nothing at print time.
+          await _ledger.setStage(
+            createdId,
+            MediaStage.failed,
+            error: 'Could not store a print-ready copy',
+          );
+          return const _Outcome(_OutcomeKind.failed);
       }
-
-      return _Outcome(_OutcomeKind.imported, mediaId: result.item.id);
     } catch (e, st) {
       AppLogger.error(
         'Ingest failed for ${candidate.relativePath}',
         error: e,
         stackTrace: st,
       );
+      if (IngestFailure.classify(e) == IngestFailureKind.sourceUnavailable) {
+        return await _rollBack(createdId);
+      }
       return const _Outcome(_OutcomeKind.failed);
     }
   }
 
-  Future<bool> _storeDerivative(
+  /// Returns a half-written item to "never seen" so a rescan finds it again.
+  Future<_Outcome> _rollBack(String? mediaId) async {
+    if (mediaId != null) await _ledger.deleteItem(mediaId);
+    return const _Outcome(_OutcomeKind.sourceGone);
+  }
+
+  Future<_StoreResult> _storeDerivative(
     IngestSource source,
     IngestCandidate candidate, {
     required String mediaId,
@@ -227,7 +265,7 @@ class IngestWorker {
             DownscaleTarget.shortSideFor(settings.qualityFactor),
       );
       final file = await _media.putBytes(relativePath, scaled.bytes);
-      if (file == null) return false;
+      if (file == null) return _StoreResult.failed;
 
       await _ledger.putRendition(MediaRendition(
         mediaId: mediaId,
@@ -238,19 +276,23 @@ class IngestWorker {
         bytes: scaled.bytes.length,
         createdAtMs: _nowMs(),
       ));
-      return true;
+      return _StoreResult.stored;
     } catch (e, st) {
       AppLogger.error(
         'Downscale failed for ${candidate.relativePath}',
         error: e,
         stackTrace: st,
       );
-      return false;
+      return IngestFailure.classify(e) == IngestFailureKind.sourceUnavailable
+          ? _StoreResult.sourceGone
+          : _StoreResult.failed;
     }
   }
 }
 
-enum _OutcomeKind { imported, duplicate, failed }
+enum _StoreResult { stored, failed, sourceGone }
+
+enum _OutcomeKind { imported, duplicate, failed, sourceGone }
 
 class _Outcome {
   const _Outcome(this.kind, {this.mediaId});
