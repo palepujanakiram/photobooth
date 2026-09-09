@@ -35,6 +35,18 @@ void main() {
     expect(out.single, same(kTinyJpegBytes));
   });
 
+  test('compactJpegsForLocalStripPrint drops oversized plates when downscale throws',
+      () async {
+    final huge = Uint8List(80 * 1024);
+    huge[0] = 0xFF;
+    huge[1] = 0xD8;
+    final out = await compactJpegsForLocalStripPrint(
+      [huge],
+      downscale: (_) async => throw StateError('skia failed'),
+    );
+    expect(out, isEmpty);
+  });
+
   test('compactJpegsForLocalStripPrint accepts a cell-sized long edge',
       () async {
     var calls = 0;
@@ -149,7 +161,7 @@ void main() {
     expect(out, isNull);
   });
 
-  test('compactOverlayForLocalStripPrint keeps a small overlay when Skia fails',
+  test('compactOverlayForLocalStripPrint drops oversized overlay when Skia fails',
       () async {
     final png = _pngHeader(width: 2000, height: 3000);
     final overlay = LocalStripOverlay(pngBytes: png);
@@ -159,6 +171,27 @@ void main() {
       landscape: false,
       resize: (_, __, ___) async => throw StateError('skia failed'),
     );
+    expect(out, isNull);
+  });
+
+  test('compactOverlayForLocalStripPrint keeps a sheet-sized overlay when Skia fails',
+      () async {
+    final png = _pngHeader(
+      width: kLocalStripSheetWidth,
+      height: kLocalStripSheetHeight,
+    );
+    final overlay = LocalStripOverlay(pngBytes: png);
+    var resized = 0;
+    final out = await compactOverlayForLocalStripPrint(
+      overlay,
+      single: true,
+      landscape: false,
+      resize: (_, __, ___) async {
+        resized++;
+        throw StateError('skia failed');
+      },
+    );
+    expect(resized, 0);
     expect(out, isNotNull);
     expect(out!.pngBytes, same(png));
   });

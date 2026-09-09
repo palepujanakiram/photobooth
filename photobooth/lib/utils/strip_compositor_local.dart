@@ -207,14 +207,20 @@ bool _isRemoteSource(String source) {
 }
 
 Uint8List _composeLocalStripSheetIsolate(_LocalStripIsolateInput input) {
-  return composeLocalStripSheetJpegForTest(
-    sourceBytes: input.sources,
-    filterId: input.filterId,
-    frameId: input.frameId,
-    single: input.single,
-    landscape: input.landscape,
-    overlay: _overlayFromIsolate(input.overlayPng, input.overlaySlots),
-  );
+  try {
+    return composeLocalStripSheetJpegForTest(
+      sourceBytes: input.sources,
+      filterId: input.filterId,
+      frameId: input.frameId,
+      single: input.single,
+      landscape: input.landscape,
+      overlay: _overlayFromIsolate(input.overlayPng, input.overlaySlots),
+    );
+  } catch (_) {
+    // Fail open so a dart-image decode error does not take down the kiosk
+    // process. Native OOM can still LMK the VM; callers then skip the bake.
+    return Uint8List(0);
+  }
 }
 
 /// Test hook for cell resize. Classic dual-strip cells contain-fit.

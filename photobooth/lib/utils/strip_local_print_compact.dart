@@ -27,7 +27,11 @@ Future<List<Uint8List>> compactJpegsForLocalStripPrint(
     try {
       out.add(await resize(shot));
     } catch (_) {
-      out.add(shot);
+      if (_jpegFitsLocalPrint(shot, maxLongEdge)) {
+        out.add(shot);
+      } else {
+        return const [];
+      }
     }
   }
   return out;
@@ -44,10 +48,16 @@ Future<Uint8List> _downscaleForLocalStrip(
   );
 }
 
+bool _jpegFitsLocalPrint(Uint8List shot, int maxLongEdge) {
+  final size = peekJpegSofDimensions(shot);
+  if (size == null) return shot.lengthInBytes < 64 * 1024;
+  return size.width <= maxLongEdge && size.height <= maxLongEdge;
+}
+
 /// Skia-resize an occasion overlay to the print sheet before dart-image.
 ///
-/// Fail-open: keep a small PNG; drop a huge PNG so the isolate cannot allocate
-/// a full-resolution RGBA buffer on 4GB TV boxes.
+/// If Skia cannot shrink an oversized PNG, drop it. A 2 MB file can still
+/// decode to tens of MB of RGBA and OOM 4GB TVs in the compose isolate.
 Future<LocalStripOverlay?> compactOverlayForLocalStripPrint(
   LocalStripOverlay? overlay, {
   required bool single,
@@ -68,10 +78,10 @@ Future<LocalStripOverlay?> compactOverlayForLocalStripPrint(
       dest.width,
       dest.height,
     );
-    if (scaled.isEmpty) return _overlayIfIsolateSafe(overlay);
+    if (scaled.isEmpty) return null;
     return LocalStripOverlay(pngBytes: scaled, slots: overlay.slots);
   } catch (_) {
-    return _overlayIfIsolateSafe(overlay);
+    return null;
   }
 }
 
@@ -81,11 +91,4 @@ Future<Uint8List> _skiaResizeOverlay(Uint8List bytes, int width, int height) {
     width: width,
     height: height,
   );
-}
-
-LocalStripOverlay? _overlayIfIsolateSafe(LocalStripOverlay overlay) {
-  if (overlay.pngBytes.lengthInBytes <= kLocalOverlayIsolateMaxBytes) {
-    return overlay;
-  }
-  return null;
 }
