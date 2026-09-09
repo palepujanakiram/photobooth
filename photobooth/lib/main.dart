@@ -32,6 +32,7 @@ import 'services/firebase_messaging_background.dart';
 import 'services/payment_push_coordinator.dart';
 import 'services/api_service.dart';
 import 'services/client_identification.dart';
+import 'services/kiosk_health_service.dart';
 import 'services/session_manager.dart';
 import 'services/local_kiosk_store.dart';
 import 'services/local_media_store.dart';
@@ -137,6 +138,16 @@ Future<void> main() async {
 
   if (!kIsWeb) {
     LowMemoryMonitor.instance.start();
+    KioskHealthService.sendHeartbeat = (request) {
+      return ApiService().postKioskHeartbeat(
+        kioskCode: request.kioskCode,
+        appVersion: request.appVersion,
+        processExits: [
+          for (final exit in request.processExits) exit.toJson(),
+        ],
+      );
+    };
+    KioskHealthService.instance.start();
   }
 
   final navigatorKey = GlobalKey<NavigatorState>();
@@ -293,6 +304,7 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
   void dispose() {
     if (!kIsWeb) {
       LowMemoryMonitor.instance.stop();
+      KioskHealthService.instance.stop();
     }
     _fcmForegroundSub?.cancel();
     _fcmOpenedAppSub?.cancel();
@@ -314,6 +326,9 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
       // Disk/memory only when unbound — do not GET `/api/settings` with no
       // `?kiosk=`. Splash bind still force-refreshes kiosk-scoped settings.
       unawaited(_appSettingsManager.refreshOnAppResume());
+      if (!kIsWeb) {
+        unawaited(KioskHealthService.instance.ping());
+      }
       if (supportsFirebaseMessaging) {
         unawaited(
           PaymentPushCoordinator.instance.flushPendingStoragePayment(),
