@@ -6,6 +6,7 @@ import '../../models/event_pipeline/event_pipeline_chain.dart';
 import '../../models/event_pipeline/event_pipeline_settings.dart';
 import '../../models/event_pipeline/media_item.dart';
 import '../../models/event_pipeline/media_rendition.dart';
+import '../../models/event_pipeline/pipeline_job.dart';
 import '../../services/event_pipeline/ai_job_worker.dart';
 import '../../services/event_pipeline/event_media_store.dart';
 import '../../services/event_pipeline/event_pipeline_runner.dart';
@@ -34,6 +35,55 @@ class ItemRendition {
       (width == null || height == null) ? null : '$width×$height';
 }
 
+/// What one step of the chain cost, read back from its job record.
+class StepTiming {
+  const StepTiming({
+    required this.step,
+    required this.label,
+    required this.status,
+    this.queuedAtMs,
+    this.startedAtMs,
+    this.finishedAtMs,
+  });
+
+  final String step;
+  final String label;
+  final String status;
+
+  final int? queuedAtMs;
+
+  /// When the work began. Null while the job is still waiting.
+  final int? startedAtMs;
+
+  /// When it finished, for a step that has.
+  final int? finishedAtMs;
+
+  DateTime? get finishedAt => finishedAtMs == null
+      ? null
+      : DateTime.fromMillisecondsSinceEpoch(finishedAtMs!);
+
+  /// How long the step waited in the queue before anything ran.
+  ///
+  /// Reported separately from [work] because they are different problems: a
+  /// long wait means the queue is backed up, a long run means the step itself
+  /// is slow, and an operator chasing "why is this taking so long" needs to
+  /// know which.
+  Duration? get wait {
+    if (queuedAtMs == null || startedAtMs == null) return null;
+    final ms = startedAtMs! - queuedAtMs!;
+    return ms < 0 ? null : Duration(milliseconds: ms);
+  }
+
+  /// How long the work itself took.
+  Duration? get work {
+    if (startedAtMs == null || finishedAtMs == null) return null;
+    final ms = finishedAtMs! - startedAtMs!;
+    return ms < 0 ? null : Duration(milliseconds: ms);
+  }
+
+  bool get hasTiming => queuedAtMs != null;
+}
+
 /// Everything about one photograph, and what can still be done to it.
 ///
 /// The screen that did not exist before, and its absence was a real gap: an
@@ -53,6 +103,7 @@ class EventItemDetailViewModel extends ChangeNotifier {
 
   MediaItem? _item;
   List<ItemRendition> _renditions = const [];
+  List<StepTiming> _timings = const [];
   String? _error;
   String? _jobError;
   bool _busy = false;
@@ -69,6 +120,10 @@ class EventItemDetailViewModel extends ChangeNotifier {
   /// Source, AI and framed side by side — how an operator answers "did the
   /// frame come out right" without going to the printer.
   List<ItemRendition> get renditions => _renditions;
+
+  /// One row per step of the frozen chain: when it was queued, when it ran, and
+  /// what it cost. This is how "the AI is slow today" stops being a hunch.
+  List<StepTiming> get timings => _timings;
 
   String get title => _item?.originalFilename ?? mediaId;
 
@@ -142,6 +197,7 @@ class EventItemDetailViewModel extends ChangeNotifier {
         return;
       }
       _renditions = await _loadRenditions();
+      _timings = await _loadTimings(item);
       _jobError = await _readJobError(item);
       _error = null;
     } catch (e, st) {
@@ -173,6 +229,35 @@ class EventItemDetailViewModel extends ChangeNotifier {
         file: r == null ? null : await _media.getFile(r.path),
         width: r?.width,
         height: r?.height,
+      ));
+    }
+    return out;
+  }
+
+  /// Reads each step's job row for its timings.
+  ///
+  /// Derived rather than stored on the item: the job already records when it
+  /// was enqueued, claimed and last transitioned, so a second copy on the item
+  /// would only be another thing to keep in step.
+  Future<List<StepTiming>> _loadTimings(MediaItem item) async {
+    final queue = _runner.queue;
+    if (queue == null || item.steps.isEmpty) return const [];
+    final out = <StepTiming>[];
+    for (final step in item.steps) {
+      final job = await queue.findFor(kind: step, mediaId: item.id);
+      if (job == null) continue;
+      final finished = job.status == PipelineJobStatus.done ||
+          job.status == PipelineJobStatus.failed;
+      out.add(StepTiming(
+        step: step,
+        label: EventPipelineChain.labelFor(step),
+        status: job.status,
+        queuedAtMs: job.createdAtMs,
+        startedAtMs: job.startedAtMs,
+        // updated_at_ms is the last transition, which for a finished job is
+        // the moment it finished. For one still running it is the claim, so
+        // reporting it as a finish time would invent a duration.
+        finishedAtMs: finished ? job.updatedAtMs : null,
       ));
     }
     return out;

@@ -680,4 +680,87 @@ void main() {
       expect(vm.isProcessing, isFalse);
     });
   });
+
+  group('print queue position', () {
+    test('only the job on the printer says Printing', () async {
+      final queue = EventPipelineQueue(db: db);
+      final ids = <String>[];
+      for (var i = 0; i < 3; i++) {
+        final id = await seed(stage: MediaStage.printing);
+        ids.add(id);
+        await queue.enqueue(kind: 'print', mediaId: id, eventId: 'EVT1');
+      }
+      // One is claimed — that is the one actually on the printer.
+      await queue.claimReady('print', limit: 1);
+
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      final printing =
+          vm.visibleEntries.where((e) => e.stageLabel == 'Printing').toList();
+      expect(printing, hasLength(1),
+          reason: 'three photos all reading Printing is simply untrue');
+      expect(printing.single.isOnPrinter, isTrue);
+    });
+
+    test('the rest are numbered in the order they will run', () async {
+      final queue = EventPipelineQueue(db: db);
+      final ids = <String>[];
+      for (var i = 0; i < 3; i++) {
+        final id = await seed(stage: MediaStage.printing);
+        ids.add(id);
+        await queue.enqueue(kind: 'print', mediaId: id, eventId: 'EVT1');
+      }
+
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      final byId = {for (final e in vm.visibleEntries) e.item.id: e};
+      expect(byId[ids[0]]!.printPosition, 1);
+      expect(byId[ids[1]]!.printPosition, 2);
+      expect(byId[ids[2]]!.printPosition, 3);
+      expect(byId[ids[1]]!.stageLabel, 'In print queue · 2');
+    });
+
+    test('the one on the printer has left the queue, so has no number',
+        () async {
+      final queue = EventPipelineQueue(db: db);
+      final first = await seed(stage: MediaStage.printing);
+      final second = await seed(stage: MediaStage.printing);
+      await queue.enqueue(kind: 'print', mediaId: first, eventId: 'EVT1');
+      await queue.enqueue(kind: 'print', mediaId: second, eventId: 'EVT1');
+      await queue.claimReady('print', limit: 1);
+
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      final byId = {for (final e in vm.visibleEntries) e.item.id: e};
+      expect(byId[first]!.printPosition, isNull);
+      expect(byId[second]!.printPosition, 1,
+          reason: 'the next one up is first in the queue, not second');
+    });
+
+    test('a photo not waiting to print carries no position', () async {
+      await seed(stage: MediaStage.done);
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.visibleEntries.single.printPosition, isNull);
+      expect(vm.visibleEntries.single.isOnPrinter, isFalse);
+    });
+
+    test('a print stage with no job row still reads as queued, not printing',
+        () async {
+      await seed(stage: MediaStage.printing);
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.visibleEntries.single.stageLabel, 'In print queue');
+    });
+  });
 }

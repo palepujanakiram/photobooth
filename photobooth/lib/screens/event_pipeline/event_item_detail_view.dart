@@ -53,6 +53,8 @@ class _DetailBody extends StatelessWidget {
           ItemRenditionStrip(appColors: colors, renditions: vm.renditions),
           const SizedBox(height: 16),
           ItemFactsTable(appColors: colors, vm: vm),
+          const SizedBox(height: 12),
+          ItemTimingTable(appColors: colors, timings: vm.timings),
           const SizedBox(height: 16),
           ItemDetailActions(
             appColors: colors,

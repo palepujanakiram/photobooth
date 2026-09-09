@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../models/event_pipeline/media_item.dart';
 import '../../models/event_pipeline/media_rendition.dart';
+import '../../models/event_pipeline/pipeline_job.dart';
 import '../../services/event_manager.dart';
 import '../../services/event_pipeline/ai_job_worker.dart';
 import '../../services/event_pipeline/event_media_store.dart';
@@ -19,9 +20,20 @@ class QueueEntry {
     required this.item,
     this.thumbnailFile,
     this.jobError,
+    this.printPosition,
+    this.isOnPrinter = false,
   });
 
   final MediaItem item;
+
+  /// 1-based place in the print queue, or null when it is not waiting to print.
+  ///
+  /// Shown on the tile so an operator watching for a particular photo can see
+  /// how far down it is instead of guessing.
+  final int? printPosition;
+
+  /// True for the one job actually on the printer.
+  final bool isOnPrinter;
 
   /// Best rendition on disk — framed, else AI, else the imported derivative.
   final File? thumbnailFile;
@@ -40,7 +52,12 @@ class QueueEntry {
       case MediaStage.framing:
         return 'Framing';
       case MediaStage.printing:
-        return 'Printing';
+        // Forty photos all reading "Printing" is untrue: exactly one is on the
+        // printer and the rest are queued behind it.
+        if (isOnPrinter) return 'Printing';
+        return printPosition == null
+            ? 'In print queue'
+            : 'In print queue · $printPosition';
       case MediaStage.done:
         return item.aiSkipped ? 'Done · AI skipped' : 'Done';
       case MediaStage.failed:
@@ -250,13 +267,36 @@ class EventQueueViewModel extends ChangeNotifier {
     EventPipelineLedger ledger,
     List<MediaItem> items,
   ) async {
+    // One query for the whole print queue rather than one per tile: the order
+    // is a property of the queue, not of any single item.
+    final printOrder = await _printQueueOrder();
     final out = <QueueEntry>[];
     for (final item in items) {
+      final place = printOrder[item.id];
       out.add(QueueEntry(
         item: item,
         thumbnailFile: await _thumbFor(ledger, item),
         jobError: await _errorFor(item),
+        printPosition: place?.position,
+        isOnPrinter: place?.onPrinter ?? false,
       ));
+    }
+    return out;
+  }
+
+  Future<Map<String, _PrintPlace>> _printQueueOrder() async {
+    final queue = _runner.queue;
+    if (queue == null) return const <String, _PrintPlace>{};
+    final jobs = await queue.openJobsInOrder(EventPipelineStepNames.print);
+    final out = <String, _PrintPlace>{};
+    var waiting = 0;
+    for (final job in jobs) {
+      final onPrinter = job.status == PipelineJobStatus.claimed;
+      // The one on the printer has no place in the queue; it has left it.
+      out[job.mediaId] = _PrintPlace(
+        position: onPrinter ? null : ++waiting,
+        onPrinter: onPrinter,
+      );
     }
     return out;
   }
@@ -583,4 +623,12 @@ abstract final class EventPipelineStepNames {
   static const String frame = 'frame';
   static const String print = 'print';
   static const List<String> all = <String>[ai, frame, print];
+}
+
+/// Where one item sits in the print queue.
+class _PrintPlace {
+  const _PrintPlace({required this.position, required this.onPrinter});
+
+  final int? position;
+  final bool onPrinter;
 }

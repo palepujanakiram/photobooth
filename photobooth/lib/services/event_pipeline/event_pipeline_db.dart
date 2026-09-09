@@ -93,6 +93,36 @@ class EventPipelineDb {
     for (final statement in _schema) {
       await db.execute(statement);
     }
+    await _ensureColumns(db);
+  }
+
+  /// Columns added to a table that already exists on a booth in the field.
+  ///
+  /// `CREATE TABLE IF NOT EXISTS` does nothing to a table that is already
+  /// there, so a new column needs its own idempotent step. Deliberately **not**
+  /// sqflite's `onUpgrade`: this connection opens with no `version:`, which is
+  /// what keeps the kiosk database's own migration machinery out of reach, and
+  /// a guarded `ADD COLUMN` is the smallest thing that preserves that.
+  static Future<void> _ensureColumns(Database db) async {
+    const additions = <String, Map<String, String>>{
+      'evp_pipeline_jobs': <String, String>{
+        // When the work actually began, as opposed to when it was enqueued.
+        // Without it a queue wait is indistinguishable from a slow generation.
+        'started_at_ms': 'INTEGER',
+      },
+    };
+    for (final table in additions.entries) {
+      final existing = <String>{
+        for (final row in await db.rawQuery('PRAGMA table_info(${table.key})'))
+          (row['name'] ?? '').toString(),
+      };
+      for (final column in table.value.entries) {
+        if (existing.contains(column.key)) continue;
+        await db.execute(
+          'ALTER TABLE ${table.key} ADD COLUMN ${column.key} ${column.value}',
+        );
+      }
+    }
   }
 
   /// Drops every pipeline table. Tests and an operator "purge event" action.
@@ -133,6 +163,7 @@ CREATE TABLE IF NOT EXISTS evp_media_items (
   ai_skipped INTEGER NOT NULL DEFAULT 0,
   last_error TEXT,
   created_at_ms INTEGER NOT NULL,
+  started_at_ms INTEGER,
   updated_at_ms INTEGER NOT NULL
 )''',
     'CREATE UNIQUE INDEX IF NOT EXISTS evp_media_source_uidx '

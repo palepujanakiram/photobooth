@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/app_scaffold.dart';
+import 'event_image_viewer.dart';
 import 'event_settings_viewmodel.dart';
 
 /// What this device is running the event on. Read-only, with one `Sync`.
@@ -80,22 +81,37 @@ class _SettingsBody extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           for (final row in vm.rows) _SettingTile(row: row, colors: colors),
-          if (vm.needsFrameDownload)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton(
-                  onPressed:
-                      vm.isDownloadingFrames ? null : vm.downloadFrames,
-                  child: Text(
-                    vm.isDownloadingFrames
-                        ? 'Downloading…'
-                        : 'Download frame artwork',
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Wrap(
+              spacing: 4,
+              children: [
+                if (vm.needsFrameDownload)
+                  TextButton(
+                    onPressed:
+                        vm.isDownloadingFrames ? null : vm.downloadFrames,
+                    child: Text(
+                      vm.isDownloadingFrames
+                          ? 'Downloading…'
+                          : 'Download frame artwork',
+                    ),
                   ),
-                ),
-              ),
+                // "1 cached" says a file exists, not that it is the right
+                // artwork. Looking at it is the only way to know.
+                if (vm.canPreviewFrame)
+                  TextButton.icon(
+                    icon: const Icon(Icons.image_outlined, size: 18),
+                    label: const Text('View frame'),
+                    onPressed: () => EventImageViewer.show(
+                      context,
+                      file: vm.frameImage!,
+                      title: 'Event frame',
+                      subtitle: vm.settings?.frameId,
+                    ),
+                  ),
+              ],
             ),
+          ),
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),

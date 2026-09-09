@@ -25,22 +25,29 @@ class EventHubScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider<EventHubViewModel>(
       create: (_) => (viewModel ?? EventHubViewModel())..start(),
-      child: AppScaffold(
-        title: AppStrings.eventHubTitle,
-        showBackButton: true,
-        actions: [
-          // The gear from the spec's header: event settings are reached from
-          // the event, not from Kiosk settings.
-          IconButton(
-            tooltip: 'Event settings',
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () => Navigator.of(context)
-                .pushNamed(AppConstants.kRouteEventSettings),
-          ),
-        ],
-        child: EventStationBoundShell(
-          child: Consumer<EventHubViewModel>(
-            builder: (context, vm, _) => _HubBody(vm: vm),
+      // The hub is the event's root: splash reaches it with a replacement, so
+      // there is nothing beneath it and a back tap would drop the operator out
+      // of the app mid-event. Leaving an event is a deliberate action, not a
+      // stray tap — see the settings screen.
+      child: PopScope(
+        canPop: false,
+        child: AppScaffold(
+          title: AppStrings.eventHubTitle,
+          showBackButton: false,
+          actions: [
+            // The gear from the spec's header: event settings are reached from
+            // the event, not from Kiosk settings.
+            IconButton(
+              tooltip: 'Event settings',
+              icon: const Icon(Icons.settings_outlined),
+              onPressed: () => Navigator.of(context)
+                  .pushNamed(AppConstants.kRouteEventSettings),
+            ),
+          ],
+          child: EventStationBoundShell(
+            child: Consumer<EventHubViewModel>(
+              builder: (context, vm, _) => _HubBody(vm: vm),
+            ),
           ),
         ),
       ),

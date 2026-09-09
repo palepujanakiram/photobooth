@@ -142,6 +142,9 @@ class EventPipelineQueue {
         'evp_pipeline_jobs',
         <String, Object?>{
           'status': PipelineJobStatus.claimed,
+          // Stamped once, on the transition into work, so a retry does not
+          // erase how long the first attempt took.
+          'started_at_ms': now,
           'updated_at_ms': now,
         },
         // Re-check status so two drains racing cannot both claim the same job.
@@ -301,6 +304,23 @@ class EventPipelineQueue {
       where: 'kind = ? AND media_id = ? AND status = ?',
       whereArgs: [kind, mediaId, PipelineJobStatus.failed],
     );
+  }
+
+  /// Open print jobs in the order they will actually run.
+  ///
+  /// One item is `CLAIMED` and genuinely on the printer; the rest are waiting.
+  /// The queue screen needs the distinction because showing forty photos as
+  /// "Printing" is simply untrue, and an operator watching for their print to
+  /// come out has no way to tell how far down it is.
+  Future<List<PipelineJob>> openJobsInOrder(String kind) async {
+    final rows = await _db.query(
+      'evp_pipeline_jobs',
+      where: 'kind = ? AND status IN (?, ?)',
+      whereArgs: [kind, PipelineJobStatus.claimed, PipelineJobStatus.pending],
+      // Claimed first: it is the one on the printer right now.
+      orderBy: "CASE status WHEN 'CLAIMED' THEN 0 ELSE 1 END, created_at_ms ASC",
+    );
+    return [for (final r in rows) PipelineJob.fromRow(r)];
   }
 
   /// Deletes every job belonging to [mediaId], for an item being removed.

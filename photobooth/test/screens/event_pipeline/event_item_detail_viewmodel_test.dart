@@ -424,4 +424,100 @@ void main() {
     // Reopen so tearDown's close does not throw.
     db = (await EventPipelineDb.open(root))!;
   });
+
+  group('step timings', () {
+    test('reports when each step finished and what it cost', () async {
+      final id = await seed(stage: MediaStage.done, steps: const ['print']);
+      final queue = EventPipelineQueue(db: db);
+      await queue.enqueue(kind: 'print', mediaId: id, eventId: 'EVT1');
+      final claimed = await queue.claimReady('print');
+      await queue.markDone(claimed.single.id);
+
+      final vm = build(id);
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.timings, hasLength(1));
+      final t = vm.timings.single;
+      expect(t.label, 'Print');
+      expect(t.finishedAt, isNotNull);
+      expect(t.startedAtMs, isNotNull);
+      expect(t.work, isNotNull);
+    });
+
+    test('a step still waiting has no start and no duration', () async {
+      final id = await seed(stage: MediaStage.printing, steps: const ['print']);
+      final queue = EventPipelineQueue(db: db);
+      await queue.enqueue(kind: 'print', mediaId: id, eventId: 'EVT1');
+
+      final vm = build(id);
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      final t = vm.timings.single;
+      expect(t.startedAtMs, isNull);
+      expect(t.work, isNull);
+      expect(t.wait, isNull);
+      expect(t.finishedAt, isNull,
+          reason: 'reporting the last transition as a finish would invent a '
+              'duration for work that has not happened');
+    });
+
+    test('a running step reports no finish time', () async {
+      final id = await seed(stage: MediaStage.printing, steps: const ['print']);
+      final queue = EventPipelineQueue(db: db);
+      await queue.enqueue(kind: 'print', mediaId: id, eventId: 'EVT1');
+      await queue.claimReady('print');
+
+      final vm = build(id);
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      final t = vm.timings.single;
+      expect(t.startedAtMs, isNotNull);
+      expect(t.finishedAt, isNull);
+      expect(t.wait, isNotNull, reason: 'the queue wait is already known');
+    });
+
+    test('one row per step of the frozen chain', () async {
+      final id = await seed(
+        stage: MediaStage.done,
+        steps: const ['ai', 'frame', 'print'],
+      );
+      final queue = EventPipelineQueue(db: db);
+      for (final kind in const ['ai', 'frame', 'print']) {
+        await queue.enqueue(kind: kind, mediaId: id, eventId: 'EVT1');
+      }
+
+      final vm = build(id);
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.timings.map((t) => t.label), ['AI', 'Frame', 'Print']);
+    });
+
+    test('an item that was never queued has no timings', () async {
+      final id = await seed(stage: MediaStage.ingested, steps: const []);
+      final vm = build(id);
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.timings, isEmpty);
+    });
+
+    test('a failed step still reports what it cost before failing', () async {
+      final id = await seed(stage: MediaStage.failed, steps: const ['print']);
+      final queue = EventPipelineQueue(db: db);
+      await queue.enqueue(kind: 'print', mediaId: id, eventId: 'EVT1');
+      final claimed = await queue.claimReady('print');
+      await queue.markFailed(claimed.single.id,
+          error: 'ribbon', retryable: false);
+
+      final vm = build(id);
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.timings.single.finishedAt, isNotNull);
+    });
+  });
 }

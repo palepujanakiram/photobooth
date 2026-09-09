@@ -225,6 +225,31 @@ void main() {
     });
   });
 
+  group('frame preview', () {
+    test('there is nothing to view before the artwork is cached', () async {
+      await cache(const EventPipelineFlags(
+        pipelineEnabled: true,
+        frameEnabled: true,
+        frameId: 'frame-a',
+      ));
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.canPreviewFrame, isFalse);
+      expect(vm.frameImage, isNull);
+    });
+
+    test('an event with no frame configured offers no preview', () async {
+      await cache(const EventPipelineFlags(pipelineEnabled: true));
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.canPreviewFrame, isFalse);
+    });
+  });
+
   group('frame download', () {
     test('downloads the artwork on demand and clears the warning', () async {
       await cache(const EventPipelineFlags(

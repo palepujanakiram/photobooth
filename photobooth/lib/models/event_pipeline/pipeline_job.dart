@@ -30,6 +30,7 @@ class PipelineJob {
     required this.mediaId,
     required this.status,
     required this.createdAtMs,
+    this.startedAtMs,
     required this.updatedAtMs,
     this.eventId,
     this.payload = const <String, dynamic>{},
@@ -57,6 +58,14 @@ class PipelineJob {
 
   final String? lastError;
   final int createdAtMs;
+
+  /// When the work actually began — set on claim, null while still waiting.
+  ///
+  /// Separate from [createdAtMs] because the gap between the two is queue wait,
+  /// not work: without it a photo that sat behind forty prints is
+  /// indistinguishable from one that took four minutes to generate.
+  final int? startedAtMs;
+
   final int updatedAtMs;
 
   bool get isOpen => PipelineJobStatus.open.contains(status);
@@ -73,6 +82,7 @@ class PipelineJob {
         'next_attempt_at_ms': nextAttemptAtMs,
         'last_error': lastError,
         'created_at_ms': createdAtMs,
+        'started_at_ms': startedAtMs,
         'updated_at_ms': updatedAtMs,
       };
 
@@ -88,6 +98,7 @@ class PipelineJob {
       nextAttemptAtMs: (row['next_attempt_at_ms'] as int?) ?? 0,
       lastError: row['last_error'] as String?,
       createdAtMs: (row['created_at_ms'] as int?) ?? 0,
+      startedAtMs: row['started_at_ms'] as int?,
       updatedAtMs: (row['updated_at_ms'] as int?) ?? 0,
     );
   }

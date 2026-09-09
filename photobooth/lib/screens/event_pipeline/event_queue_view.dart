@@ -271,76 +271,115 @@ class _QueueTile extends StatelessWidget {
       onTap: onTap,
       onLongPress: onLongPress,
       child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-            file == null
-                ? Container(
-                    color: colors.cardBackgroundColor,
-                    child: Icon(
-                      Icons.image_not_supported_outlined,
-                      color: colors.secondaryTextColor,
-                    ),
-                  )
-                // The dedicated ~320px thumbnail, decoded small again for the
-                // tile. Never the print derivative: decoding dozens of 2880px
-                // JPEGs is the heap mistake the old import tray made.
-                : Image.file(
-                    file,
-                    fit: BoxFit.cover,
-                    cacheWidth: 240,
-                    gaplessPlayback: true,
-                    errorBuilder: (_, __, ___) => Container(
-                      color: colors.cardBackgroundColor,
-                    ),
-                  ),
-                if (selectable)
-                  Align(
-                    alignment: Alignment.topRight,
-                    child: Padding(
-                      padding: const EdgeInsets.all(4),
-                      child: Icon(
-                        selected
-                            ? Icons.check_box
-                            : Icons.check_box_outline_blank,
-                        size: 20,
-                        color: selected
-                            ? colors.successColor
-                            : colors.secondaryTextColor,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  file == null
+                      ? Container(
+                          color: colors.cardBackgroundColor,
+                          child: Icon(
+                            Icons.image_not_supported_outlined,
+                            color: colors.secondaryTextColor,
+                          ),
+                        )
+                      // The dedicated ~320px thumbnail, decoded small again for the
+                      // tile. Never the print derivative: decoding dozens of 2880px
+                      // JPEGs is the heap mistake the old import tray made.
+                      : Image.file(
+                          file,
+                          fit: BoxFit.cover,
+                          cacheWidth: 240,
+                          gaplessPlayback: true,
+                          errorBuilder: (_, __, ___) => Container(
+                            color: colors.cardBackgroundColor,
+                          ),
+                        ),
+                  // Where this photo is in the print queue, so an operator
+                  // waiting on one can see how far down it is.
+                  if (entry.printPosition != null)
+                    Align(
+                      alignment: Alignment.topLeft,
+                      child: Padding(
+                        padding: const EdgeInsets.all(4),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '#${entry.printPosition}',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-              ],
+                  if (entry.isOnPrinter)
+                    Align(
+                      alignment: Alignment.topLeft,
+                      child: Padding(
+                        padding: const EdgeInsets.all(4),
+                        child: Icon(
+                          Icons.print,
+                          size: 16,
+                          color: colors.successColor,
+                        ),
+                      ),
+                    ),
+                  if (selectable)
+                    Align(
+                      alignment: Alignment.topRight,
+                      child: Padding(
+                        padding: const EdgeInsets.all(4),
+                        child: Icon(
+                          selected
+                              ? Icons.check_box
+                              : Icons.check_box_outline_blank,
+                          size: 20,
+                          color: selected
+                              ? colors.successColor
+                              : colors.secondaryTextColor,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          entry.item.originalFilename ?? entry.item.id,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(fontSize: 11, color: colors.textColor),
-        ),
-        Text(
-          entry.stageLabel,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-            color: entry.isFailed
-                ? colors.errorColor
-                : entry.isDone
-                    ? colors.successColor
-                    : colors.secondaryTextColor,
+          const SizedBox(height: 4),
+          Text(
+            entry.item.originalFilename ?? entry.item.id,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 11, color: colors.textColor),
           ),
-        ),
-      ],
+          Text(
+            entry.stageLabel,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: entry.isFailed
+                  ? colors.errorColor
+                  : entry.isDone
+                      ? colors.successColor
+                      : colors.secondaryTextColor,
+            ),
+          ),
+        ],
       ),
     );
   }

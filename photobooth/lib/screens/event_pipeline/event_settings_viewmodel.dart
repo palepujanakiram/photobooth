@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 
 import '../../models/event_pipeline/event_frame.dart';
@@ -69,12 +71,22 @@ class EventSettingsViewModel extends ChangeNotifier {
   EventPipelineSettings? _settings;
   EventSyncStatus _syncStatus = const EventSyncStatus.never();
   FrameCacheStatus? _frames;
+  File? _frameImage;
   bool _busy = false;
   bool _downloadingFrames = false;
 
   EventPipelineSettings? get settings => _settings;
   EventSyncStatus get syncStatus => _syncStatus;
   FrameCacheStatus? get frames => _frames;
+
+  /// The cached overlay on disk, when there is one.
+  ///
+  /// Being able to *look* at it is the point: "1 cached" tells an operator a
+  /// file exists, not that it is the right artwork for this event, and finding
+  /// out at the printer is the expensive way.
+  File? get frameImage => _frameImage;
+
+  bool get canPreviewFrame => _frameImage != null;
   bool get isBusy => _busy;
   bool get isDownloadingFrames => _downloadingFrames;
 
@@ -173,6 +185,7 @@ class EventSettingsViewModel extends ChangeNotifier {
       ),
     );
     _frames = await _readFrameStatus();
+    _frameImage = await _readFrameImage();
     notifyListeners();
   }
 
@@ -209,6 +222,7 @@ class EventSettingsViewModel extends ChangeNotifier {
         eventId: eventId,
         selectedFrameId: _settings?.frameId,
       );
+      _frameImage = await _readFrameImage();
     } catch (e, st) {
       AppLogger.error('Frame download failed', error: e, stackTrace: st);
     } finally {
@@ -229,6 +243,23 @@ class EventSettingsViewModel extends ChangeNotifier {
       );
     } catch (e) {
       AppLogger.debug('Frame status unreadable: $e');
+      return null;
+    }
+  }
+
+  /// The event's own overlay, not just any cached one.
+  Future<File?> _readFrameImage() async {
+    final frameId = _settings?.frameId?.trim() ?? '';
+    if (frameId.isEmpty) return null;
+    try {
+      final cache = await _buildFrameCache();
+      if (cache == null) return null;
+      final path = await cache.localFilePath(frameId);
+      if (path == null) return null;
+      final file = File(path);
+      return await file.exists() ? file : null;
+    } catch (e) {
+      AppLogger.debug('Frame image unreadable: $e');
       return null;
     }
   }
