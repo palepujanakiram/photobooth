@@ -346,6 +346,21 @@ class CanonCaptureActivity : ComponentActivity() {
             // on the captured photo instead, which is what this does.
             if (shotReview.present(request, shots) == ReviewOutcome.RETAKE) {
                 dropLastShot()
+                // With no countdown there is no framing window, so continuing the
+                // loop fires the shutter the instant Retake is tapped — the
+                // photographer never sees live view again. Hand the button back
+                // instead: live view is already running, and the next press
+                // takes the shot. A countdown session keeps looping, because
+                // there the countdown *is* the framing window.
+                if (request.countdownSeconds == 0) {
+                    // Cleared before arming, not after: startShotSequence refuses
+                    // to start while captureJob is active, and this job is still
+                    // running until the return below — so a press landing in that
+                    // gap would be swallowed and the photographer would tap twice.
+                    captureJob = null
+                    armShutterForNextShot()
+                    return
+                }
             }
         }
 
@@ -376,6 +391,24 @@ class CanonCaptureActivity : ComponentActivity() {
             thumbStrip.clearAt(shots.size, shots.size)
         }
         CanonCaptureChrome.refreshUploads(uploadViews, uploadActions)
+    }
+
+    /**
+     * Returns to live view with the shutter armed, waiting for a press.
+     *
+     * The same state [request.autoStart] `false` starts a session in, reached
+     * again after a retake so a shutter-driven session stays shutter-driven.
+     */
+    private fun armShutterForNextShot() {
+        restoreShutterForCapture()
+        setStatus(
+            getString(
+                R.string.canon_status_ready_format,
+                shots.size + 1,
+                request.shotCount,
+            ),
+        )
+        shutterButton.isEnabled = true
     }
 
     /** Puts the primary button back to its "Take shot" identity after a review. */
