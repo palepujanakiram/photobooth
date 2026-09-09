@@ -7,6 +7,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../utils/logger.dart';
 import '../local_kiosk_db.dart' show kKioskDbFileName;
+import '../local_kiosk_store.dart' show kKioskDirName;
 
 /// Event pipeline tables, living inside the existing `kiosk.db` file.
 ///
@@ -37,12 +38,19 @@ class EventPipelineDb {
   static Future<Directory> Function() supportDirectory =
       getApplicationSupportDirectory;
 
+  /// The folder holding the kiosk ledger — **not** the support root.
+  ///
+  /// Getting this wrong is silent: `open()` happily creates a fresh database
+  /// wherever it is pointed, so the pipeline ran for a full import against a
+  /// second file at the support root while the real ledger sat untouched in
+  /// `fotozen_kiosk/`. Everything worked, which is what made it hard to see.
   static Future<Directory> defaultDirectory() async {
     final root = await supportDirectory();
-    if (!await root.exists()) {
-      await root.create(recursive: true);
+    final dir = Directory(p.join(root.path, kKioskDirName));
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
     }
-    return root;
+    return dir;
   }
 
   /// Opens the pipeline connection and ensures the schema exists.
