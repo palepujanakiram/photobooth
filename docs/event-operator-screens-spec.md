@@ -95,14 +95,29 @@ the operator on a spinner with nothing to look at, and a failed fetch needs a
 screen to report itself on anyway. The readiness block already exists to say
 "this part is not ready yet" — the first sync is simply another row in it.
 
-While syncing, actions that depend on config are disabled with the reason
-visible: Capture and card rows stay available (they need no server data), but the
-chain preview reads "Waiting for event settings".
+### Nothing is imported before settings arrive
+
+**Import and Capture are both disabled until the event has synced at least
+once**, with the reason on the button rather than a silent grey-out:
+
+```
+┌──────────────────┐
+│ Import from card │   Waiting for event settings
+└──────────────────┘
+```
+
+Photos taken in before settings exist would have **no chain frozen onto them** —
+no way to know whether they should be styled, framed or printed. They would sit
+at `INGESTED` indefinitely, and the operator would have imported four hundred
+photographs that do nothing.
+
+Blocking is the honest behaviour: the card is not going anywhere, and a sync is
+seconds once there is signal. It also removes a whole class of "why is nothing
+happening" support question.
 
 If the sync fails and **nothing is cached**, the hub says so plainly and offers
-Retry; the operator can still import, and those photos sit at `INGESTED` until
-settings arrive to give them a chain. If a **previous cache exists**, the event
-runs on it and the row reads "Using settings from 8 Sep".
+Retry — with import still blocked. If a **previous cache exists**, the event runs
+on it and the row reads "Using settings from 8 Sep".
 
 ---
 
@@ -125,32 +140,19 @@ The screen an operator can leave open all night. Lands here on entering an event
 │     12          3           148         0      │
 │   QUEUED     WORKING       DONE      FAILED    │
 ├────────────────────────────────────────────────┤
-│  CARDS INSERTED                                │
-│  ┌────────────────────────────────────────┐    │
-│  │ ▸ SD card  2609-0353   119 GB          │    │
-│  ├────────────────────────────────────────┤    │
-│  │ ▸ SD card  1E6F-0961   64 GB           │    │
-│  └────────────────────────────────────────┘    │
-├────────────────────────────────────────────────┤
 │  ┌──────────────────┐  ┌──────────────────┐    │
-│  │     Capture      │  │   Open queue     │    │
+│  │ Import from card │  │     Capture      │    │
 │  └──────────────────┘  └──────────────────┘    │
+│  ┌────────────────────────────────────────┐    │
+│  │            Open queue                  │    │
+│  └────────────────────────────────────────┘    │
 └────────────────────────────────────────────────┘
 ```
 
-### Cards are listed, never scanned on their own
-
-A multi-slot reader can hold several cards at once, so "the card" is not a thing
-the app can assume. Every mounted volume is listed with its label and size, and
-**nothing is read until the operator taps one**.
-
-Auto-scanning was wrong for two reasons beyond the ambiguity: it burns I/O on a
-card the operator did not mean, and on a slow box the scan competes with whatever
-the queue is already doing. An explicit tap also gives a natural moment to show
-which card is being read, which matters when two are seated.
-
-Removing a card removes its row. No card at all replaces the block with
-"Insert a card in the reader".
+The hub stays a **state** screen — readiness, counts, three ways out. Which cards
+happen to be seated is detail that belongs with the job of importing, not on the
+landing screen, and it would otherwise grow and shrink under the counters every
+time someone touched the reader.
 
 ### The readiness block is the point of this screen
 
@@ -195,11 +197,43 @@ device has it yet.
 
 Largely as built and verified on device.
 
-Entered **for a specific volume** chosen on the hub, so this screen never has to
-decide which card was meant.
+**States:** pick a volume · scanning · review · importing · safe to remove ·
+card not readable · card empty · only RAW · nothing new · needs photo permission.
 
-**States:** scanning · review · importing · safe to remove · card not readable ·
-card empty · only RAW · nothing new · needs photo permission.
+### Step 1 — pick a volume
+
+```
+┌────────────────────────────────────────────────┐
+│  ‹   Import from card                          │
+├────────────────────────────────────────────────┤
+│  Choose a card to scan                         │
+│                                                │
+│  ┌────────────────────────────────────────┐    │
+│  │ ▸ SD card  2609-0353         119 GB    │    │
+│  ├────────────────────────────────────────┤    │
+│  │ ▸ SD card  1E6F-0961          64 GB    │    │
+│  └────────────────────────────────────────┘    │
+│                                                │
+│  Nothing is read until you choose a card.      │
+└────────────────────────────────────────────────┘
+```
+
+A multi-slot reader can hold several cards at once, so "the card" is not
+something the app can assume. Every mounted volume is listed, and **nothing is
+read until the operator taps one**.
+
+Not auto-scanning matters beyond the ambiguity: a scan burns I/O on a card the
+operator did not mean, and on a slow box it competes with whatever the queue is
+already doing. The explicit tap also gives a natural moment to show *which* card
+is being read, which matters when two are seated.
+
+With one card the list still appears — a single row, one tap. Consistency beats
+saving a tap, and it keeps the "which card am I looking at" answer on screen.
+
+Removing a card removes its row; removing the one being scanned is §9A. No cards
+at all shows "Insert a card in the reader".
+
+### Step 2 — scan and select
 
 ```
 ┌────────────────────────────────────────────────┐
@@ -614,6 +648,9 @@ work — so it belongs behind an explicit, checked operator action, not a timer.
 | Card pulled mid-import | **Roll the row back**, stop cleanly, tell the operator to reinsert |
 | Photo scoping | Every screen filters on `event_id`; dedupe stays global |
 | Pre/post event | Acknowledged, designed later; per-event purge kept possible |
+| Card list location | **Inside Import**, not on the hub; hub keeps an Import button |
+| Import before sync | **Blocked** — no photo enters without a chain to run |
+| Misconfigured event | **No escape.** Fixed on ZenAI and re-synced; revisit later |
 
 ## 12. Backend: what exists today, and what is missing
 
@@ -674,9 +711,13 @@ rather than relying on an operator to say so.
 
 ## 13. Still open
 
-1. **Does a badly configured event need any on-site escape?** Read-only settings
-   mean it is fixed on the backend, which needs signal. Acceptable in most
-   venues; worth revisiting if a real event gets stuck behind it.
-2. **Should `INGESTED` photos be re-queueable** once settings arrive after an
-   offline import? The chain is frozen at selection, so photos imported before a
-   sync have no chain at all. Probably a "Queue these now" action on the hub.
+Nothing blocking. Both previous questions are closed:
+
+- **On-site escape for a misconfigured event** — none, deliberately. Fixed on
+  ZenAI and re-synced. Revisit if a real event gets stuck behind it.
+- **Re-queueing `INGESTED` photos** — cannot arise. Blocking import before sync
+  means no photo ever enters without a chain, so there is nothing to re-queue.
+
+The remaining unknown is not a design question but a dependency: **`themeId` and
+`frameId` (§12) must exist on the backend** before an AI or frame event can run
+on real config rather than hardcoded values.
