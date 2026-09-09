@@ -6,7 +6,6 @@ import 'package:photobooth/services/event_pipeline/event_pipeline_db.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_ledger.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_queue.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_stats.dart';
-import 'package:photobooth/utils/constants.dart';
 import 'package:photobooth/utils/event_station_role.dart';
 
 void main() {
@@ -74,18 +73,14 @@ void main() {
       }
     });
 
-    test('the sd-import role routes to the ingest station', () {
+    test('an unknown role still lands on the station picker', () {
       expect(
         resolveEventPostSplashRoute(
           eventCode: 'GALA',
-          stationRole: EventStationRole.sdImport,
+          stationRole: 'sd-import',
           pipelineEnabled: true,
         ),
-        EventPostSplashRoute.sdImport,
-      );
-      expect(
-        eventPostSplashRouteName(EventPostSplashRoute.sdImport),
-        AppConstants.kRouteEventIngestStation,
+        EventPostSplashRoute.stationPicker,
       );
     });
 

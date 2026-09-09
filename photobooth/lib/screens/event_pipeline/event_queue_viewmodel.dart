@@ -253,20 +253,6 @@ class EventQueueViewModel extends ChangeNotifier {
     }
   }
 
-  /// Runs the local stages now rather than waiting for the next tick.
-  Future<void> runNow() async {
-    if (_busy) return;
-    _busy = true;
-    notifyListeners();
-    try {
-      await _runner.drainAll();
-      await refresh();
-    } finally {
-      _busy = false;
-      notifyListeners();
-    }
-  }
-
   @override
   void dispose() {
     _timer?.cancel();

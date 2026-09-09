@@ -6,10 +6,7 @@ class EventStationRole {
   static const theme = 'theme';
   static const print = 'print';
 
-  /// Local-first SD card import. Only offered when the event pipeline is on.
-  static const sdImport = 'sd-import';
-
-  static const values = <String>[capture, theme, print, sdImport];
+  static const values = <String>[capture, theme, print];
 
   static bool isValid(String? role) => role != null && values.contains(role);
 
@@ -26,7 +23,6 @@ enum EventPostSplashRoute {
   capture,
   theme,
   print,
-  sdImport,
   needsInternet,
 }
 
@@ -72,8 +68,6 @@ EventPostSplashRoute resolveEventPostSplashRoute({
       return EventPostSplashRoute.theme;
     case EventStationRole.print:
       return EventPostSplashRoute.print;
-    case EventStationRole.sdImport:
-      return EventPostSplashRoute.sdImport;
     default:
       return EventPostSplashRoute.stationPicker;
   }
@@ -87,8 +81,6 @@ String eventPostSplashRouteName(EventPostSplashRoute route) {
       return AppConstants.kRouteEventThemeStation;
     case EventPostSplashRoute.print:
       return AppConstants.kRouteEventPrintStation;
-    case EventPostSplashRoute.sdImport:
-      return AppConstants.kRouteEventIngestStation;
     case EventPostSplashRoute.stationPicker:
       return AppConstants.kRouteEventStation;
     case EventPostSplashRoute.terms:

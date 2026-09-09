@@ -82,14 +82,16 @@ void main() {
     });
 
     test('starts when the pipeline is on', () async {
-      await config.setPipelineEnabledOverride(true);
+      await config.cacheFlags(
+          const EventPipelineFlags(pipelineEnabled: true));
       expect(await runner.ensureStarted(), isTrue);
       expect(runner.isRunning, isTrue);
       expect(EventPipelineRunner.instance, same(runner));
     });
 
     test('is idempotent — re-entering a station does not stack timers', () async {
-      await config.setPipelineEnabledOverride(true);
+      await config.cacheFlags(
+          const EventPipelineFlags(pipelineEnabled: true));
       await runner.ensureStarted();
       final queue = runner.queue;
       await runner.ensureStarted();
@@ -98,17 +100,20 @@ void main() {
 
     test('turning the setting off stops the workers without a restart',
         () async {
-      await config.setPipelineEnabledOverride(true);
+      await config.cacheFlags(
+          const EventPipelineFlags(pipelineEnabled: true));
       await runner.ensureStarted();
       expect(runner.isRunning, isTrue);
 
-      await config.setPipelineEnabledOverride(false);
+      await config.cacheFlags(
+          const EventPipelineFlags(pipelineEnabled: false));
       expect(await runner.ensureStarted(), isFalse);
       expect(runner.isRunning, isFalse);
     });
 
     test('unavailable storage does not start or throw', () async {
-      await config.setPipelineEnabledOverride(true);
+      await config.cacheFlags(
+          const EventPipelineFlags(pipelineEnabled: true));
       final noStorage = EventPipelineRunner(
         config: config,
         openDb: () async => null,
@@ -176,9 +181,13 @@ void main() {
       final mediaId = await seedItem();
       await runner.queueItems([mediaId]);
 
-      // Operator turns framing on mid-event.
-      await config.setFrameEnabledOverride(true);
-      await config.setFrameIdOverride('f9');
+      // The event is re-synced mid-event with framing switched on.
+      await config.cacheFlags(const EventPipelineFlags(
+        pipelineEnabled: true,
+        autoPrint: true,
+        frameEnabled: true,
+        frameId: 'f9',
+      ));
       await runner.refreshSettings();
 
       final item = await runner.ledger!.findById(mediaId);
@@ -194,8 +203,12 @@ void main() {
       final first = await seedItem();
       await runner.queueItems([first]);
 
-      await config.setFrameEnabledOverride(true);
-      await config.setFrameIdOverride('f9');
+      await config.cacheFlags(const EventPipelineFlags(
+        pipelineEnabled: true,
+        autoPrint: true,
+        frameEnabled: true,
+        frameId: 'f9',
+      ));
       await runner.refreshSettings();
 
       final second = await seedItem();
@@ -248,7 +261,8 @@ void main() {
     });
 
     test('an unknown id is skipped rather than counted', () async {
-      await config.setPipelineEnabledOverride(true);
+      await config.cacheFlags(
+          const EventPipelineFlags(pipelineEnabled: true));
       await runner.ensureStarted();
       expect(await runner.queueItems(['nope']), 0);
     });

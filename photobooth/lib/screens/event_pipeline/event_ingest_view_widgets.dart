@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../models/event_pipeline/event_pipeline_chain.dart';
 import '../../services/event_pipeline/ingest/ingest_diff.dart';
 import '../../services/event_pipeline/ingest/ingest_source.dart';
 import '../../services/event_pipeline/ingest/ingest_worker.dart';
 import '../../views/widgets/app_colors.dart';
-import 'event_pipeline_settings_rows.dart';
 
 /// Centred message with an optional action, for the empty and terminal states.
 class IngestMessagePanel extends StatelessWidget {
@@ -295,7 +295,7 @@ class IngestActionBar extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          EventPipelineChainPreview.describe(steps, copies, printSize),
+          EventPipelineChain.describe(steps, copies, printSize),
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 13,

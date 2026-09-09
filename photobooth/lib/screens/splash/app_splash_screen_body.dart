@@ -4,7 +4,6 @@ import '../../utils/api_environment.dart';
 import '../../utils/constants.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../models/kiosk_device_status.dart';
-import '../event_pipeline/event_pipeline_settings_panel.dart';
 import 'app_splash_copy_helpers.dart';
 import 'bootstrap_route_args.dart';
 import 'kiosk_device_status_widgets.dart';
@@ -127,11 +126,6 @@ class AppSplashScreenBody extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 20),
                               ],
-                              if (args.manageKiosk && showManageSummary)
-                                EventPipelineSettingsPanel(
-                                  appColors: appColors,
-                                  enabled: !busy,
-                                ),
                               if (showManageSummary)
                                 _AppSplashManageSummary(
                                   appColors: appColors,

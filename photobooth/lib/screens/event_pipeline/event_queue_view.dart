@@ -236,10 +236,6 @@ class _QueueActions extends StatelessWidget {
       spacing: 8,
       alignment: WrapAlignment.center,
       children: [
-        TextButton(
-          onPressed: vm.isBusy ? null : vm.runNow,
-          child: const Text('Run now'),
-        ),
         if (vm.hasFailed)
           TextButton(
             onPressed: vm.isBusy ? null : vm.retryFailed,

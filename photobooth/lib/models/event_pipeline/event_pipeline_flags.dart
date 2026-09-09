@@ -3,8 +3,8 @@ import '../../utils/json_parse_helpers.dart';
 /// Event pipeline flags as returned by `/api/event/by-code/:code`.
 ///
 /// Every field is nullable: **null means the backend did not send it**, which is
-/// different from the backend sending `false`. Null defers to the local override
-/// and then to [EventPipelineDefaults]; `false` is an explicit backend decision.
+/// different from the backend sending `false`. Null defers to
+/// [EventPipelineDefaults]; `false` is an explicit backend decision.
 ///
 /// Parsed by a standalone reader rather than extending `EventInfoModel`, so the
 /// existing guest-flow model is untouched by the pipeline work.
