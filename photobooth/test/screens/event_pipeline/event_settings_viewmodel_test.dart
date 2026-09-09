@@ -2,10 +2,16 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/models/event_info_model.dart';
 import 'package:photobooth/models/event_pipeline/event_pipeline_flags.dart';
+import 'package:photobooth/models/event_pipeline/media_rendition.dart';
 import 'package:photobooth/screens/event_pipeline/event_settings_viewmodel.dart';
 import 'package:photobooth/services/event_manager.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_config.dart';
+import 'package:photobooth/models/event_pipeline/media_item.dart';
+import 'package:photobooth/services/event_pipeline/event_media_store.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_db.dart';
+import 'package:photobooth/services/event_pipeline/event_pipeline_ledger.dart';
+import 'package:photobooth/services/event_pipeline/event_pipeline_queue.dart';
+import 'package:photobooth/services/event_pipeline/event_pipeline_runner.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_sync.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -38,21 +44,41 @@ void main() {
   late EventPipelineDb db;
   late EventPipelineConfig config;
   late EventManager events;
+  late EventMediaStore media;
+  late EventPipelineRunner runner;
+  var ids = 0;
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     EventPipelineConfig.resetCacheForTests();
+    EventPipelineRunner.resetInstanceForTests();
     EventManager.resetCacheForTests();
     root = await Directory.systemTemp.createTemp('fz_evp_settings_');
+    ids = 0;
     db = (await EventPipelineDb.open(root))!;
+    media = EventMediaStore(
+      resolveDirectory: () async =>
+          Directory('${root.path}/media')..createSync(recursive: true),
+    );
     config = EventPipelineConfig();
     events = EventManager();
+    runner = EventPipelineRunner(
+      config: config,
+      mediaStore: media,
+      openDb: () async => db,
+    );
     await events.cacheVerifyResult(
       const EventInfoModel(id: 'EVT1', code: 'GALA-01'),
     );
+    // The runner refuses to wire itself with the pipeline off, so the flag has
+    // to be cached before it starts; individual tests then cache their own.
+    await config.cacheFlags(const EventPipelineFlags(pipelineEnabled: true));
+    await runner.ensureStarted();
   });
 
   tearDown(() async {
+    runner.stop();
+    EventPipelineRunner.resetInstanceForTests();
     await db.close();
     if (await root.exists()) await root.delete(recursive: true);
   });
@@ -62,8 +88,28 @@ void main() {
       config: config,
       events: events,
       sync: FakeSync(result: status ?? synced),
+      runner: runner,
       openDb: () async => db,
     );
+  }
+
+  Future<String> seedItem({String stage = MediaStage.done}) async {
+    final ledger = EventPipelineLedger(db: db, newId: () => 'm${ids++}');
+    final r = await ledger.insertIfNew(
+      source: MediaSource.sdCard,
+      sourceRef: 'V:$ids',
+      contentKey: 'ck$ids',
+      eventId: 'EVT1',
+    );
+    await media.putBytes('EVT1/${r.item.id}-source.jpg', [1, 2, 3]);
+    await ledger.putRendition(MediaRendition(
+      mediaId: r.item.id,
+      kind: RenditionKind.source,
+      path: 'EVT1/${r.item.id}-source.jpg',
+      createdAtMs: 1,
+    ));
+    if (stage != MediaStage.ingested) await ledger.setStage(r.item.id, stage);
+    return r.item.id;
   }
 
   Future<void> cache(EventPipelineFlags flags) => config.cacheFlags(flags);
@@ -271,6 +317,120 @@ void main() {
       await vm.downloadFrames();
 
       expect(vm.isDownloadingFrames, isFalse);
+    });
+  });
+
+  group('leaving the event', () {
+    test('unbinds the device but leaves the photos alone', () async {
+      await cache(const EventPipelineFlags(pipelineEnabled: true));
+      final id = await seedItem();
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      await vm.leaveEvent();
+
+      expect(await events.getEventCode(), isNull);
+      // Stepping out of an event, or handing the tablet on, must not destroy a
+      // night's work.
+      final ledger = EventPipelineLedger(db: db);
+      expect(await ledger.findById(id), isNotNull);
+      expect(await media.getFile('EVT1/$id-source.jpg'), isNotNull);
+    });
+
+    test('the cached settings go with the binding', () async {
+      await cache(const EventPipelineFlags(pipelineEnabled: true));
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      await vm.leaveEvent();
+      expect((await config.readCachedFlags()).isEmpty, isTrue);
+    });
+  });
+
+  group('clearing event data', () {
+    test('deletes the rows and the files, and reports how many', () async {
+      await cache(const EventPipelineFlags(pipelineEnabled: true));
+      final a = await seedItem();
+      final b = await seedItem();
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      final removed = await vm.clearEventData();
+
+      expect(removed, 2);
+      final ledger = EventPipelineLedger(db: db);
+      expect(await ledger.findById(a), isNull);
+      expect(await ledger.findById(b), isNull);
+      expect(await media.getFile('EVT1/$a-source.jpg'), isNull);
+    });
+
+    test('takes the jobs with it', () async {
+      await cache(const EventPipelineFlags(pipelineEnabled: true));
+      final id = await seedItem();
+      final queue = EventPipelineQueue(db: db);
+      await queue.enqueue(kind: 'print', mediaId: id, eventId: 'EVT1');
+
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+      await vm.clearEventData();
+
+      expect(await queue.findFor(kind: 'print', mediaId: id), isNull);
+    });
+
+    test("another event's photos are untouched", () async {
+      await cache(const EventPipelineFlags(pipelineEnabled: true));
+      await seedItem();
+      final ledger = EventPipelineLedger(db: db, newId: () => 'other-1');
+      final other = await ledger.insertIfNew(
+        source: MediaSource.sdCard,
+        sourceRef: 'V:other',
+        contentKey: 'ck-other',
+        eventId: 'OTHER-EVENT',
+      );
+
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+      await vm.clearEventData();
+
+      // event_id on every row is exactly what makes this a single delete.
+      expect(await ledger.findById(other.item.id), isNotNull);
+    });
+
+    test('unfinished work is named rather than silently destroyed', () async {
+      await cache(const EventPipelineFlags(pipelineEnabled: true));
+      await seedItem(stage: MediaStage.printing);
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.purgeBlockers, hasLength(1));
+      expect(vm.purgeBlockers.single, contains('not finished'));
+    });
+
+    test('a finished event has nothing to warn about', () async {
+      await cache(const EventPipelineFlags(pipelineEnabled: true));
+      await seedItem();
+      await seedItem(stage: MediaStage.failed);
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.purgeBlockers, isEmpty);
+    });
+
+    test('clearing with no event bound is harmless', () async {
+      await cache(const EventPipelineFlags(pipelineEnabled: true));
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+      await events.clearEvent();
+
+      expect(await vm.clearEventData(), 0);
     });
   });
 }

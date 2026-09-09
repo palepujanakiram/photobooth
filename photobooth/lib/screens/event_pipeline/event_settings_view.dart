@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../utils/constants.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/app_scaffold.dart';
 import 'event_image_viewer.dart';
@@ -141,9 +142,138 @@ class _SettingsBody extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(height: 24),
+          _DangerZone(vm: vm, colors: colors),
         ],
       ),
     );
+  }
+}
+
+/// Leaving the event, and clearing what it left behind.
+///
+/// Two separate actions on purpose. Leaving is what an operator does to hand
+/// the tablet on or step out; clearing is what frees the disk. Folding them
+/// together would mean every exit destroyed a night's work.
+class _DangerZone extends StatelessWidget {
+  const _DangerZone({required this.vm, required this.colors});
+
+  final EventSettingsViewModel vm;
+  final AppColors colors;
+
+  @override
+  Widget build(BuildContext context) {
+    final blockers = vm.purgeBlockers;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Divider(color: colors.dividerColor),
+        const SizedBox(height: 8),
+        OutlinedButton(
+          onPressed: vm.isBusy ? null : () => _leave(context),
+          child: const Text('Leave event'),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 4, bottom: 12),
+          child: Text(
+            'Unbinds this device. Photos already imported stay on it.',
+            style: TextStyle(fontSize: 11, color: colors.secondaryTextColor),
+          ),
+        ),
+        OutlinedButton(
+          onPressed: vm.isPurging ? null : () => _clear(context),
+          style: OutlinedButton.styleFrom(foregroundColor: colors.errorColor),
+          child: Text(vm.isPurging ? 'Clearing…' : 'Clear event data'),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            blockers.isEmpty
+                ? "Deletes this event's photos and prints from the device. "
+                    'Frees space for the next one.'
+                // Named rather than blocked: the operator is told exactly what
+                // they would destroy and decides.
+                : 'Not finished yet — ${blockers.join(', ')}.',
+            style: TextStyle(
+              fontSize: 11,
+              color: blockers.isEmpty
+                  ? colors.secondaryTextColor
+                  : colors.warningColor,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _leave(BuildContext context) async {
+    final ok = await _confirm(
+      context,
+      title: 'Leave this event?',
+      body: 'This device stops running the event. Photos already imported are '
+          'left on it, and you can bind the event again.',
+      action: 'Leave',
+    );
+    if (!ok || !context.mounted) return;
+    await vm.leaveEvent();
+    if (!context.mounted) return;
+    // Back to the bind screen, which is where an unbound device belongs.
+    Navigator.of(context).pushNamedAndRemoveUntil(
+      AppConstants.kRouteSplash,
+      (route) => false,
+    );
+  }
+
+  Future<void> _clear(BuildContext context) async {
+    final blockers = vm.purgeBlockers;
+    final ok = await _confirm(
+      context,
+      title: 'Clear this event\'s data?',
+      body: blockers.isEmpty
+          ? 'Every photo, print and derivative for this event is deleted from '
+              'this device. This cannot be undone.'
+          : 'Every photo, print and derivative for this event is deleted from '
+              'this device, including work that has not finished — '
+              '${blockers.join(', ')}. This cannot be undone.',
+      action: 'Clear',
+      destructive: true,
+    );
+    if (!ok || !context.mounted) return;
+    final removed = await vm.clearEventData();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Cleared $removed photos')),
+    );
+  }
+
+  Future<bool> _confirm(
+    BuildContext context, {
+    required String title,
+    required String body,
+    required String action,
+    bool destructive = false,
+  }) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Text(body),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: destructive
+                ? TextButton.styleFrom(foregroundColor: colors.errorColor)
+                : null,
+            child: Text(action),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 }
 

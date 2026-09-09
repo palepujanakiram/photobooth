@@ -9,6 +9,7 @@ import '../../services/event_manager.dart';
 import '../../services/event_pipeline/event_frame_cache.dart';
 import '../../services/event_pipeline/event_pipeline_config.dart';
 import '../../services/event_pipeline/event_pipeline_db.dart';
+import '../../services/event_pipeline/event_pipeline_runner.dart';
 import '../../services/event_pipeline/event_pipeline_sync.dart';
 import '../../utils/logger.dart';
 
@@ -51,9 +52,12 @@ class EventSettingsViewModel extends ChangeNotifier {
     EventPipelineConfig? config,
     EventManager? events,
     EventPipelineSync? sync,
+    EventPipelineRunner? runner,
     Future<EventPipelineDb?> Function()? openDb,
   })  : _config = config ?? EventPipelineConfig(),
         _events = events ?? EventManager(),
+        _runner =
+            runner ?? EventPipelineRunner.instance ?? EventPipelineRunner(),
         _openDb = openDb ?? EventPipelineDb.openDefault {
     _sync = sync ??
         EventPipelineSync(
@@ -65,6 +69,7 @@ class EventSettingsViewModel extends ChangeNotifier {
 
   final EventPipelineConfig _config;
   final EventManager _events;
+  final EventPipelineRunner _runner;
   final Future<EventPipelineDb?> Function() _openDb;
   late final EventPipelineSync _sync;
 
@@ -74,6 +79,8 @@ class EventSettingsViewModel extends ChangeNotifier {
   File? _frameImage;
   bool _busy = false;
   bool _downloadingFrames = false;
+  bool _purging = false;
+  List<String> _purgeBlockers = const [];
 
   EventPipelineSettings? get settings => _settings;
   EventSyncStatus get syncStatus => _syncStatus;
@@ -89,6 +96,13 @@ class EventSettingsViewModel extends ChangeNotifier {
   bool get canPreviewFrame => _frameImage != null;
   bool get isBusy => _busy;
   bool get isDownloadingFrames => _downloadingFrames;
+  bool get isPurging => _purging;
+
+  /// Why clearing this event's data would lose work, if it would.
+  ///
+  /// Surfaced rather than enforced: the operator is told what they are about to
+  /// destroy and decides. How this gets gated properly is still open.
+  List<String> get purgeBlockers => List.unmodifiable(_purgeBlockers);
 
   /// `Synced from ZenAI · 9 Sep 09:12`, the same timestamp the hub shows.
   String get syncedLabel {
@@ -186,7 +200,52 @@ class EventSettingsViewModel extends ChangeNotifier {
     );
     _frames = await _readFrameStatus();
     _frameImage = await _readFrameImage();
+    final eventId = await _events.getEventId();
+    _purgeBlockers =
+        eventId == null ? const [] : await _runner.purgeBlockers(eventId);
     notifyListeners();
+  }
+
+  /// Unbinds this device from the event. **Leaves the event's data alone.**
+  ///
+  /// Leaving and purging are deliberately separate: an operator stepping out of
+  /// an event to check something, or handing the tablet to a colleague, must
+  /// not destroy a night's work by doing so. Clearing is its own action with
+  /// its own confirmation.
+  Future<void> leaveEvent() async {
+    if (_busy) return;
+    _busy = true;
+    notifyListeners();
+    try {
+      await _events.clearEvent();
+      await _config.clearCachedFlags();
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
+  }
+
+  /// Deletes this event's photos, derivatives and jobs from the device.
+  ///
+  /// Returns how many items went. Without this a box does three events and
+  /// fills its disk (spec §9C).
+  Future<int> clearEventData() async {
+    if (_purging) return 0;
+    _purging = true;
+    notifyListeners();
+    try {
+      final eventId = await _events.getEventId();
+      if (eventId == null) return 0;
+      final removed = await _runner.purgeEvent(eventId);
+      await refresh();
+      return removed;
+    } catch (e, st) {
+      AppLogger.error('Event purge failed', error: e, stackTrace: st);
+      return 0;
+    } finally {
+      _purging = false;
+      notifyListeners();
+    }
   }
 
   /// Re-fetches on demand, for when something changed on the backend mid-event.

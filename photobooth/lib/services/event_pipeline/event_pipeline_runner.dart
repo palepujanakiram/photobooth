@@ -334,6 +334,54 @@ class EventPipelineRunner {
     return true;
   }
 
+  /// Deletes everything this event holds locally: rows, jobs and files.
+  ///
+  /// A 3,000-frame event is roughly 4 GB of derivatives, so without a purge a
+  /// box does three events and fills its disk (spec §9C). Scoped to one event
+  /// by design — `event_id` on every row is exactly what makes this a single
+  /// delete rather than an archaeology exercise.
+  ///
+  /// Deliberately says nothing about whether it is *safe* to run. It must not
+  /// destroy unprinted or unmirrored work, and deciding that is the caller's
+  /// job — see [purgeBlockers].
+  Future<int> purgeEvent(String eventId) async {
+    final ledger = _ledger;
+    final queue = _queue;
+    if (ledger == null || queue == null) return 0;
+
+    final items = await ledger.listPage(limit: 100000, eventId: eventId);
+    for (final item in items) {
+      await queue.deleteFor(item.id);
+      await ledger.deleteItem(item.id);
+    }
+    await _media.purgeEvent(eventId);
+    await syncServiceState();
+    return items.length;
+  }
+
+  /// Reasons this event should not be purged yet, in words an operator can act
+  /// on. Empty means nothing would be lost.
+  ///
+  /// Checked rather than assumed: the cleanup is the part with teeth, and
+  /// running it over work that has not printed destroys the event.
+  Future<List<String>> purgeBlockers(String eventId) async {
+    final ledger = _ledger;
+    if (ledger == null) return const <String>[];
+    final counts = await ledger.stageCounts(eventId: eventId);
+    var unfinished = 0;
+    for (final entry in counts.entries) {
+      if (entry.key == MediaStage.done || entry.key == MediaStage.failed) {
+        continue;
+      }
+      unfinished += entry.value;
+    }
+    return <String>[
+      if (unfinished > 0)
+        '$unfinished ${unfinished == 1 ? 'photo has' : 'photos have'} not '
+            'finished yet',
+    ];
+  }
+
   /// Runs every local stage to completion — the console's "run now".
   Future<void> drainAll() async {
     await _frame?.drainUntilIdle();
