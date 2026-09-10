@@ -35,6 +35,13 @@ void main() {
     expect(find.text(AppStrings.captureCountdownIntro), findsNothing);
   });
 
+  test('constructor is accessible with a non-const argument', () {
+    final count = 8;
+    final widget = CaptureCountdownOverlay(countdownValue: count);
+    expect(widget.countdownValue, count);
+    expect(widget.headline, isNull);
+  });
+
   testWidgets('shows the intro headline above the numeral', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(

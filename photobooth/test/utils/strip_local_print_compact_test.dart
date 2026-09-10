@@ -216,6 +216,7 @@ void main() {
       same(empty),
     );
   });
+
 }
 
 Uint8List _solidPng(int width, int height) {

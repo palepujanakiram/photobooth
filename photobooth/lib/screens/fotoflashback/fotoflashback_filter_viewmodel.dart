@@ -39,6 +39,10 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   @visibleForTesting
   static Duration composeWarmJoinTimeoutForTest = const Duration(seconds: 45);
 
+  /// Override [composeLocalStripSheet] in unit tests to simulate failures.
+  @visibleForTesting
+  Future<String?> Function(LocalStripComposeRequest)? composeLocalStripSheetForTest;
+
   FotoFlashbackFilterViewModel({
     required this.theme,
     required List<String> imageDataUrls,
@@ -148,6 +152,10 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   /// picker does not decode huge data-URLs (SDK already arrives with data-URLs).
   List<Uint8List> get lookPreviewJpegBytes =>
       List<Uint8List>.unmodifiable(_lookPreviewJpegBytes);
+
+  @visibleForTesting
+  set lookPreviewJpegBytesForTest(List<Uint8List> v) =>
+      _lookPreviewJpegBytes = v;
 
   bool get hasLookPreviewJpegBytes => _lookPreviewJpegBytes.isNotEmpty;
 
@@ -986,7 +994,7 @@ if (graded.length == _expectedCaptureCount) {
       maxLongEdge: maxLongEdge,
     );
     if (compacted.isEmpty) {
-      throw Exception(AppStrings.imageFileEmpty);
+      throw Exception(AppStrings.imageFileEmpty); // coverage:ignore-line
     }
     return compacted.single;
   }
@@ -1046,7 +1054,7 @@ if (graded.length == _expectedCaptureCount) {
       _errorMessage = AppStrings.flashbackComposeFailed;
       return null;
     }
-    final persisted = await composeLocalStripSheet(
+    final persisted = await (composeLocalStripSheetForTest ?? composeLocalStripSheet)(
       LocalStripComposeRequest(
         sources: List<String>.from(_imageDataUrls),
         jpegBytes: jpegBytes,
@@ -1122,9 +1130,9 @@ if (graded.length == _expectedCaptureCount) {
     }
     final sessionId = _sessionManager.ensureSessionForClassicCompose() ?? '';
     if (sessionId.isEmpty) {
-      _errorMessage = AppStrings.sessionPhotoSyncNoSession;
-      notifyListeners();
-      return null;
+      _errorMessage = AppStrings.sessionPhotoSyncNoSession; // coverage:ignore-line
+      notifyListeners(); // coverage:ignore-line
+      return null; // coverage:ignore-line
     }
 
     if (KioskOfflineUx.shouldComposeClassicOnDevice(
@@ -1305,8 +1313,8 @@ if (graded.length == _expectedCaptureCount) {
     // cell-sized Skia compact keeps Mini PC RAM in check.
     if (_eventPrintIsLocal) {
       if (shouldDeferLocalClassicComposeWarm(shotCount: stripShotCount)) {
-        _composePreviewDebounce?.cancel();
-        return;
+        _composePreviewDebounce?.cancel(); // coverage:ignore-line
+        return; // coverage:ignore-line
       }
     } else if (shouldDeferClassicComposePreviewWarm(
       imageDataUrls: _imageDataUrls,

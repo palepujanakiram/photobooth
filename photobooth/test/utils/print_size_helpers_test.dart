@@ -341,21 +341,22 @@ void main() {
   });
 
   group('resolveClassicCheckoutSessionPrintSize', () {
+    ThemeModel _theme() => ThemeModel(
+          id: 't1',
+          categoryId: 'c',
+          name: 'Theme',
+          description: '',
+          promptText: '',
+        );
+
     test('Classic 1-shot checkout hint is never dual-strip', () {
-      final theme = ThemeModel(
-        id: 't1',
-        categoryId: 'c',
-        name: 'Theme',
-        description: '',
-        promptText: '',
-      );
       expect(
         resolveClassicCheckoutSessionPrintSize(
           selected: [
             GeneratedImage(
               id: 'g',
               imageUrl: 'https://cdn/one.jpg',
-              theme: theme,
+              theme: _theme(),
               printSize: AppConstants.kPrintSizeStripDual2x6,
             ),
           ],
@@ -364,6 +365,93 @@ void main() {
           orientation: PrintOrientation.portrait,
         ),
         AppConstants.kPrintSizePortrait4x6,
+      );
+    });
+
+    test('empty selected returns null', () {
+      expect(
+        resolveClassicCheckoutSessionPrintSize(
+          selected: [],
+          orientation: PrintOrientation.portrait,
+        ),
+        isNull,
+      );
+    });
+
+    test('unanimous print size across images is returned', () {
+      final t = _theme();
+      expect(
+        resolveClassicCheckoutSessionPrintSize(
+          selected: [
+            GeneratedImage(
+                id: 'a',
+                imageUrl: 'u',
+                theme: t,
+                printSize: AppConstants.kPrintSizeStripDual2x6),
+            GeneratedImage(
+                id: 'b',
+                imageUrl: 'u',
+                theme: t,
+                printSize: AppConstants.kPrintSizeStripDual2x6),
+          ],
+          orientation: PrintOrientation.portrait,
+        ),
+        AppConstants.kPrintSizeStripDual2x6,
+      );
+    });
+
+    test('landscape6x4 wins when present without dual-strip', () {
+      final t = _theme();
+      expect(
+        resolveClassicCheckoutSessionPrintSize(
+          selected: [
+            GeneratedImage(
+                id: 'a',
+                imageUrl: 'u',
+                theme: t,
+                printSize: AppConstants.kPrintSizeLandscape6x4),
+            GeneratedImage(
+                id: 'b',
+                imageUrl: 'u',
+                theme: t,
+                printSize: AppConstants.kPrintSizePortrait4x6),
+          ],
+          orientation: PrintOrientation.portrait,
+        ),
+        AppConstants.kPrintSizeLandscape6x4,
+      );
+    });
+
+    test('stripPrintSize hint returned when sizes are mixed', () {
+      final t = _theme();
+      expect(
+        resolveClassicCheckoutSessionPrintSize(
+          selected: [
+            GeneratedImage(
+                id: 'a', imageUrl: 'u', theme: t, printSize: 'size_a'),
+            GeneratedImage(
+                id: 'b', imageUrl: 'u', theme: t, printSize: 'size_b'),
+          ],
+          stripPrintSize: AppConstants.kPrintSizeStripDual2x6,
+          orientation: PrintOrientation.portrait,
+        ),
+        AppConstants.kPrintSizeStripDual2x6,
+      );
+    });
+
+    test('returns null when mixed sizes and no hint', () {
+      final t = _theme();
+      expect(
+        resolveClassicCheckoutSessionPrintSize(
+          selected: [
+            GeneratedImage(
+                id: 'a', imageUrl: 'u', theme: t, printSize: 'size_a'),
+            GeneratedImage(
+                id: 'b', imageUrl: 'u', theme: t, printSize: 'size_b'),
+          ],
+          orientation: PrintOrientation.portrait,
+        ),
+        isNull,
       );
     });
   });
