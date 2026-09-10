@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../models/event_pipeline/media_item.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../views/widgets/app_colors.dart';
@@ -107,6 +108,7 @@ class _QueueBody extends StatelessWidget {
             ),
           const SizedBox(height: 8),
           _QueueFilterBar(vm: vm, colors: colors),
+          _QueueSourceBar(vm: vm, colors: colors),
           const SizedBox(height: 8),
           Expanded(
             child: vm.isFilteredEmpty
@@ -242,6 +244,46 @@ class _QueueFilterBar extends StatelessWidget {
             onSelected: (_) => vm.setFilter(option.value),
           );
         },
+      ),
+    );
+  }
+}
+
+/// Source chips, shown only when photos came from more than one place.
+///
+/// A card import and a tethered shot land in the same grid, and telling them
+/// apart is how an operator answers "did the photographer's last set arrive".
+class _QueueSourceBar extends StatelessWidget {
+  const _QueueSourceBar({required this.vm, required this.colors});
+
+  final EventQueueViewModel vm;
+  final AppColors colors;
+
+  @override
+  Widget build(BuildContext context) {
+    final options = vm.sourceOptions;
+    if (options.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: SizedBox(
+        height: 34,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: options.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 6),
+          itemBuilder: (context, i) {
+            final option = options[i];
+            final selected = option.value == QueueFilter.allSources
+                ? vm.sourceFilter == null
+                : vm.sourceFilter == option.value;
+            return ChoiceChip(
+              label: Text('${option.label} ${option.count}'),
+              labelStyle: const TextStyle(fontSize: 11),
+              selected: selected,
+              onSelected: (_) => vm.setSourceFilter(option.value),
+            );
+          },
+        ),
       ),
     );
   }

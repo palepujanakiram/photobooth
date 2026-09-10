@@ -110,6 +110,8 @@ class EventQueueViewModel extends ChangeNotifier {
   List<QueueEntry> _entries = const [];
   EventPipelineStats _stats = const EventPipelineStats();
   String _filter;
+  String? _sourceFilter;
+  Map<String, int> _sourceCounts = const <String, int>{};
   String? _eventId;
   int _loaded = 0;
   int _totalInFilter = 0;
@@ -131,6 +133,45 @@ class EventQueueViewModel extends ChangeNotifier {
 
   /// Total matching the current filter, which is more than is loaded.
   int get totalInFilter => _totalInFilter;
+
+  /// The source being shown, or null for all of them.
+  String? get sourceFilter => _sourceFilter;
+
+  /// Sources that actually contributed photos, with their counts.
+  ///
+  /// Only shown when there is more than one: an event that only ever imported
+  /// from a card has nothing to choose between, and a single dead chip is
+  /// clutter on a screen that needs to stay readable.
+  List<QueueFilterOption> get sourceOptions {
+    final present = <QueueFilterOption>[
+      for (final source in MediaSource.filterOrder)
+        if ((_sourceCounts[source] ?? 0) > 0)
+          QueueFilterOption(
+            value: source,
+            label: MediaSource.labelFor(source),
+            count: _sourceCounts[source]!,
+          ),
+    ];
+    if (present.length < 2) return const [];
+    return <QueueFilterOption>[
+      QueueFilterOption(
+        value: QueueFilter.allSources,
+        label: 'All sources',
+        count: present.fold<int>(0, (sum, o) => sum + o.count),
+      ),
+      ...present,
+    ];
+  }
+
+  /// Narrows the grid to one source, or back to all of them.
+  Future<void> setSourceFilter(String? source) async {
+    final next = source == QueueFilter.allSources ? null : source;
+    if (_sourceFilter == next) return;
+    _sourceFilter = next;
+    _selectedIds.clear();
+    _loaded = 0;
+    await refresh();
+  }
 
   /// Filters that actually have photos behind them, with their counts.
   ///
@@ -235,6 +276,7 @@ class EventQueueViewModel extends ChangeNotifier {
         eventId: _eventId,
         stage: stages == null ? stage : null,
         stages: stages,
+        source: _sourceFilter,
       );
       final page = await _decorate(ledger, items);
       _entries = append ? <QueueEntry>[..._entries, ...page] : page;
@@ -243,7 +285,9 @@ class EventQueueViewModel extends ChangeNotifier {
         eventId: _eventId,
         stage: stages == null ? stage : null,
         stages: stages,
+        source: _sourceFilter,
       );
+      _sourceCounts = await ledger.sourceCounts(eventId: _eventId);
       _stats = await _readStats(ledger);
       _error = null;
     } catch (e, st) {
@@ -557,6 +601,9 @@ class QueueFilterOption {
 /// Status filters, in pipeline order.
 abstract final class QueueFilter {
   static const String all = 'ALL';
+
+  /// The "no source filter" sentinel, distinct from any [MediaSource].
+  static const String allSources = 'ALL_SOURCES';
 
   /// Everything in flight, as the hub's single "WORKING" counter shows it.
   ///

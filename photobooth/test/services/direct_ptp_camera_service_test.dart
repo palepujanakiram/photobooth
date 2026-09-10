@@ -487,6 +487,7 @@ void main() {
         inkColor: '#FFFFFF',
         accentColor: '#E3A65C',
         backgroundColor: '#6E5391',
+        continuous: true,
       );
       expect(request.toArguments(), <String, Object?>{
         'shotCount': 4,
@@ -508,6 +509,7 @@ void main() {
         'inkColor': '#FFFFFF',
         'accentColor': '#E3A65C',
         'backgroundColor': '#6E5391',
+        'continuous': true,
       });
     });
 

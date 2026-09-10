@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/screens/photo_capture/direct_ptp_capture_helpers.dart';
+import 'package:photobooth/services/direct_ptp_camera_service.dart';
 import 'package:photobooth/services/event_pipeline/capture/direct_ptp_capture_source.dart';
 import 'package:photobooth/utils/capture_session_kind.dart';
 import 'package:photobooth/utils/classic_pose_countdown.dart';
@@ -9,10 +10,13 @@ import 'package:photobooth/utils/classic_pose_countdown.dart';
 /// the kiosk. Both of them are gated the same way, on `countdownSeconds == 0`:
 ///
 /// - the retake-returns-to-live-view branch in `CanonCaptureActivity`
-/// - nothing else; the event colours are null for a kiosk request
 ///
-/// So the guarantee reduces to one fact: **no kiosk path can produce a
-/// countdown of zero.** These tests pin that.
+/// and the stay-open branch is gated on `continuous`, which only the event
+/// coordinator sets. The event colours are null for a kiosk request, so
+/// `applyEventChrome` leaves every view as the layout declared it.
+///
+/// So the guarantee reduces to two facts: **no kiosk path produces a zero
+/// countdown, and none asks to stay open.** These tests pin both.
 void main() {
   group('the event session is the only one with no countdown', () {
     test('the event capture request has no countdown', () {
@@ -39,6 +43,28 @@ void main() {
           reason: 'raw=$raw',
         );
       }
+    });
+  });
+
+  group('only the event session stays open', () {
+    test('the event session is continuous', () {
+      final args =
+          DirectPtpCaptureSource.requestFor(continuous: true).toArguments();
+      expect(args['continuous'], isTrue);
+    });
+
+    test('a request defaults to ending after its shots, as a guest one does',
+        () {
+      // A guest pose is one set of photos; the screen must return so Dart can
+      // take them on to the look picker.
+      expect(
+        const DirectPtpCaptureRequest().toArguments()['continuous'],
+        isFalse,
+      );
+      expect(
+        DirectPtpCaptureSource.requestFor().toArguments()['continuous'],
+        isFalse,
+      );
     });
   });
 

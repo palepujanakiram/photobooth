@@ -67,10 +67,11 @@ void main() {
     bool withRendition = true,
     String? filename,
     String? eventId = 'EVT1',
+    String source = MediaSource.sdCard,
   }) async {
     final ledger = EventPipelineLedger(db: db, newId: () => 'm${ids++}');
     final r = await ledger.insertIfNew(
-      source: MediaSource.sdCard,
+      source: source,
       sourceRef: 'V:$ids',
       contentKey: 'ck$ids',
       eventId: eventId,
@@ -761,6 +762,132 @@ void main() {
       addTearDown(vm.dispose);
 
       expect(vm.visibleEntries.single.stageLabel, 'In print queue');
+    });
+  });
+
+  group('source', () {
+    test('one source alone offers nothing to choose between', () async {
+      await seed(stage: MediaStage.done);
+      await seed(stage: MediaStage.done);
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      // A single dead chip is clutter on a screen that must stay readable.
+      expect(vm.sourceOptions, isEmpty);
+    });
+
+    test('two sources get chips with their counts', () async {
+      await seed(stage: MediaStage.done);
+      await seed(stage: MediaStage.done, source: MediaSource.ptp);
+      await seed(stage: MediaStage.done, source: MediaSource.ptp);
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      final byLabel = {for (final o in vm.sourceOptions) o.label: o.count};
+      expect(byLabel['All sources'], 3);
+      expect(byLabel['Camera'], 2);
+      expect(byLabel['Card'], 1);
+    });
+
+    test('tethered shots come first, being what is actively producing',
+        () async {
+      await seed(stage: MediaStage.done);
+      await seed(stage: MediaStage.done, source: MediaSource.ptp);
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.sourceOptions[1].label, 'Camera');
+      expect(vm.sourceOptions[2].label, 'Card');
+    });
+
+    test('filtering to a source narrows the grid', () async {
+      await seed(stage: MediaStage.done);
+      final camera = await seed(
+        stage: MediaStage.done,
+        source: MediaSource.ptp,
+      );
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+      expect(vm.visibleEntries, hasLength(2));
+
+      await vm.setSourceFilter(MediaSource.ptp);
+      expect(vm.visibleEntries, hasLength(1));
+      expect(vm.visibleEntries.single.item.id, camera);
+      expect(vm.totalInFilter, 1);
+    });
+
+    test('All sources restores everything', () async {
+      await seed(stage: MediaStage.done);
+      await seed(stage: MediaStage.done, source: MediaSource.ptp);
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      await vm.setSourceFilter(MediaSource.ptp);
+      await vm.setSourceFilter(QueueFilter.allSources);
+      expect(vm.sourceFilter, isNull);
+      expect(vm.visibleEntries, hasLength(2));
+    });
+
+    test('source and stage filters compose', () async {
+      await seed(stage: MediaStage.failed);
+      await seed(stage: MediaStage.failed, source: MediaSource.ptp);
+      await seed(stage: MediaStage.done, source: MediaSource.ptp);
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      await vm.setSourceFilter(MediaSource.ptp);
+      await vm.setFilter(MediaStage.failed);
+      expect(vm.visibleEntries, hasLength(1));
+    });
+
+    test('changing source clears the ticks', () async {
+      await seed(stage: MediaStage.done);
+      await seed(stage: MediaStage.done, source: MediaSource.ptp);
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      vm.selectAllLoaded();
+      expect(vm.selectedCount, 2);
+      await vm.setSourceFilter(MediaSource.ptp);
+      expect(vm.selectedCount, 0);
+    });
+
+    test('source counts are scoped to the event like everything else',
+        () async {
+      await seed(stage: MediaStage.done, source: MediaSource.ptp);
+      await seed(
+        stage: MediaStage.done,
+        source: MediaSource.ptp,
+        eventId: 'OTHER-EVENT',
+      );
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      // Only one source present for this event, so no chips at all.
+      expect(vm.sourceOptions, isEmpty);
+      expect(vm.visibleEntries, hasLength(1));
+    });
+  });
+
+  group('MediaSource labels', () {
+    test('every source an operator can see has a name', () {
+      for (final source in MediaSource.filterOrder) {
+        expect(MediaSource.labelFor(source), isNotEmpty);
+      }
+      expect(MediaSource.labelFor(MediaSource.sdCard), 'Card');
+      expect(MediaSource.labelFor(MediaSource.ptp), 'Camera');
+    });
+
+    test('an unknown source falls back to its raw value', () {
+      expect(MediaSource.labelFor('telepathy'), 'telepathy');
     });
   });
 }

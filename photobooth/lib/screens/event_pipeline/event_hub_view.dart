@@ -108,10 +108,9 @@ class _HubBody extends StatelessWidget {
                   label: AppStrings.eventHubCapture,
                   enabled: vm.canCapture,
                   disabledReason: vm.captureBlockedReason,
-                  onPressed: () => Navigator.pushNamed(
-                    context,
-                    AppConstants.kRouteEventCapture,
-                  ),
+                  // Straight into the native viewfinder — there is no Dart
+                  // capture screen to stop at on the way.
+                  onPressed: () => _capture(context, vm),
                 ),
               ),
             ],
@@ -124,6 +123,22 @@ class _HubBody extends StatelessWidget {
             onPressed: () => _openQueue(context, null),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Opens the native viewfinder and reports what the session queued.
+  ///
+  /// The screen stays up until the operator closes it, queueing each frame they
+  /// accept as it lands, so this returns once — with the evening's count.
+  Future<void> _capture(BuildContext context, EventHubViewModel vm) async {
+    final queued = await vm.capture();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          queued == 0 ? 'No photos captured' : 'Queued $queued photos',
+        ),
       ),
     );
   }

@@ -12,6 +12,43 @@ abstract final class MediaSource {
   static const String ptp = 'ptp';
   static const String sidecar = 'sidecar';
   static const String uvc = 'uvc';
+
+  /// What an operator calls it. The queue shows this so a photo's origin is
+  /// visible without opening it — which matters when a card import and a
+  /// tethered shot sit side by side in the same grid.
+  static String labelFor(String source) {
+    switch (source) {
+      case sdCard:
+        return 'Card';
+      case folder:
+        return 'Folder';
+      case gallery:
+        return 'Gallery';
+      case ptp:
+      case camera:
+        return 'Camera';
+      case sidecar:
+        return 'Canon';
+      case uvc:
+        return 'UVC';
+      default:
+        return source;
+    }
+  }
+
+  /// Sources the queue offers as filters, in the order they appear.
+  ///
+  /// Tethered first: during an event the camera is what is actively producing
+  /// photos, while a card import is a batch that has already happened.
+  static const List<String> filterOrder = <String>[
+    ptp,
+    sdCard,
+    folder,
+    gallery,
+    sidecar,
+    uvc,
+    camera,
+  ];
 }
 
 /// Coarse position of an item, denormalised so the console can group without

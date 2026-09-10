@@ -32,6 +32,7 @@ class DirectPtpCaptureSource implements EventCaptureSource {
     String? ink,
     String? accent,
     String? background,
+    bool continuous = false,
   }) {
     return DirectPtpCaptureRequest(
       shotCount: 1,
@@ -49,6 +50,7 @@ class DirectPtpCaptureSource implements EventCaptureSource {
       inkColor: ink,
       accentColor: accent,
       backgroundColor: background,
+      continuous: continuous,
     );
   }
 

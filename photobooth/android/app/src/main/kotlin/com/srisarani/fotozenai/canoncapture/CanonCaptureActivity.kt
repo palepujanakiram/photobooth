@@ -208,6 +208,11 @@ class CanonCaptureActivity : ComponentActivity() {
         request.shutterText?.let { shutterButton.text = it }
         request.cancelText?.let { cancelButton.text = it }
         applyEventChrome()
+        if (request.continuous) {
+            CaptureShotBus.onMessage = { text ->
+                runOnUiThread { if (isCaptureUiAlive()) setStatus(text) }
+            }
+        }
 
         shutterButton.setOnClickListener { onShutter() }
         val cancel =
@@ -344,7 +349,19 @@ class CanonCaptureActivity : ComponentActivity() {
             // *before* the next countdown and showed live view — so the guest was told to
             // rearrange while watching themselves move, never seeing the shot. Flutter holds
             // on the captured photo instead, which is what this does.
-            if (shotReview.present(request, shots) == ReviewOutcome.RETAKE) {
+            val outcome = shotReview.present(request, shots)
+
+            // An operator session never ends on its own. Hand the accepted frame
+            // to Dart, tell the photographer it landed, and go back to live view
+            // for the next one — the screen stays up all evening.
+            if (request.continuous && outcome != ReviewOutcome.RETAKE) {
+                publishAcceptedShot()
+                captureJob = null
+                armShutterForNextShot()
+                return
+            }
+
+            if (outcome == ReviewOutcome.RETAKE) {
                 dropLastShot()
                 // With no countdown there is no framing window, so continuing the
                 // loop fires the shutter the instant Retake is tapped — the
@@ -391,6 +408,23 @@ class CanonCaptureActivity : ComponentActivity() {
             thumbStrip.clearAt(shots.size, shots.size)
         }
         CanonCaptureChrome.refreshUploads(uploadViews, uploadActions)
+    }
+
+    /**
+     * Hands the just-accepted shot to Dart and clears it from this session.
+     *
+     * Removed from [shots] deliberately: it has left, so the session's own list
+     * must not also report it when the screen finally closes, or an evening's
+     * photos would be queued twice.
+     */
+    private fun publishAcceptedShot() {
+        val accepted = shots.removeLastOrNull() ?: return
+        if (::thumbStrip.isInitialized) {
+            thumbStrip.clearAt(shots.size, shots.size)
+        }
+        setStatus(getString(R.string.canon_status_added_to_queue))
+        CanonLog.i("Accepted shot handed to the queue: %s", accepted.originalPath)
+        CaptureShotBus.publish(accepted)
     }
 
     /**
@@ -591,6 +625,8 @@ class CanonCaptureActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        // Dart must not be able to write to a status line that has gone.
+        CaptureShotBus.onMessage = null
         // Leave the camera connected: the session is process-scoped and reconnecting for
         // every shot would cost seconds and an extra permission round trip.
         stopLiveView()

@@ -8,6 +8,7 @@ import '../../models/event_pipeline/event_readiness.dart';
 import '../../models/event_pipeline/printer_consumables.dart';
 import '../../services/direct_ptp_camera_service.dart';
 import '../../services/event_manager.dart';
+import '../../services/event_pipeline/capture/event_capture_coordinator.dart';
 import '../../services/event_pipeline/event_frame_cache.dart';
 import '../../services/event_pipeline/event_pipeline_config.dart';
 import '../../services/event_pipeline/event_pipeline_db.dart';
@@ -38,6 +39,7 @@ class EventHubViewModel extends ChangeNotifier {
     EventStorageChannel? storage,
     EventMediaStore? mediaStore,
     DirectPtpCameraService? camera,
+    EventCaptureCoordinator? capture,
     Future<EventPipelineDb?> Function()? openDb,
     Duration refreshInterval = const Duration(seconds: 4),
     Duration hardwareWindow = const Duration(seconds: 15),
@@ -50,6 +52,13 @@ class EventHubViewModel extends ChangeNotifier {
         _storage = storage ?? EventStorageChannel(),
         _media = mediaStore ?? EventMediaStore(),
         _camera = camera ?? DirectPtpCameraService(),
+        _capture = capture ??
+            EventCaptureCoordinator(
+              camera: camera ?? DirectPtpCameraService(),
+              runner: runner ?? EventPipelineRunner.instance,
+              events: events,
+              mediaStore: mediaStore,
+            ),
         _openDb = openDb ?? EventPipelineDb.openDefault,
         _refreshInterval = refreshInterval,
         _hardwareWindow = hardwareWindow,
@@ -70,6 +79,7 @@ class EventHubViewModel extends ChangeNotifier {
   final EventStorageChannel _storage;
   final EventMediaStore _media;
   final DirectPtpCameraService _camera;
+  final EventCaptureCoordinator _capture;
   final Future<EventPipelineDb?> Function() _openDb;
   final Duration _refreshInterval;
 
@@ -144,6 +154,18 @@ class EventHubViewModel extends ChangeNotifier {
     // whole of §3A — "not a blocking fetch before the hub appears".
     await resync();
     _timer = Timer.periodic(_refreshInterval, (_) => unawaited(refresh()));
+  }
+
+  /// Opens the native viewfinder for as long as the operator wants it.
+  ///
+  /// Returns how many photos the session queued. Each one was queued as it was
+  /// accepted, not at the end — this count is the tally, not the commit.
+  Future<int> capture() async {
+    if (!canCapture) return 0;
+    final queued = await _capture.runSession();
+    // Whatever landed is in the ledger now, so the counters are stale.
+    await refresh();
+    return queued;
   }
 
   /// Re-fetches the event config, for the tap on the sync row.

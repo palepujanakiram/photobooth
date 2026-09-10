@@ -160,6 +160,7 @@ class EventPipelineLedger {
     String? eventId,
     String? stage,
     List<String>? stages,
+    String? source,
   }) async {
     final scope = _eventScope(eventId);
     final where = StringBuffer('1 = 1${scope.clause}');
@@ -170,6 +171,10 @@ class EventPipelineLedger {
     } else if (stages != null && stages.isNotEmpty) {
       where.write(' AND stage IN (${List.filled(stages.length, '?').join(',')})');
       args.addAll(stages);
+    }
+    if (source != null) {
+      where.write(' AND source = ?');
+      args.add(source);
     }
     final rows = await _db.query(
       'evp_media_items',
@@ -188,6 +193,7 @@ class EventPipelineLedger {
     String? eventId,
     String? stage,
     List<String>? stages,
+    String? source,
   }) async {
     final scope = _eventScope(eventId);
     final where = StringBuffer('1 = 1${scope.clause}');
@@ -198,6 +204,10 @@ class EventPipelineLedger {
     } else if (stages != null && stages.isNotEmpty) {
       where.write(' AND stage IN (${List.filled(stages.length, '?').join(',')})');
       args.addAll(stages);
+    }
+    if (source != null) {
+      where.write(' AND source = ?');
+      args.add(source);
     }
     final rows = await _db.rawQuery(
       'SELECT COUNT(*) AS n FROM evp_media_items WHERE ${where.toString()}',
@@ -242,6 +252,23 @@ END''';
       limit: limit,
     );
     return [for (final r in rows) MediaItem.fromRow(r)];
+  }
+
+  /// How many items each source contributed, for the queue's source chips.
+  ///
+  /// Counted rather than derived from the loaded page: with pagination the page
+  /// is a window, and chips built from it would shrink as an operator scrolled.
+  Future<Map<String, int>> sourceCounts({String? eventId}) async {
+    final scope = _eventScope(eventId);
+    final rows = await _db.rawQuery(
+      'SELECT source, COUNT(*) AS n FROM evp_media_items '
+      'WHERE 1 = 1${scope.clause} GROUP BY source',
+      scope.args,
+    );
+    return {
+      for (final r in rows)
+        (r['source'] ?? '').toString(): (r['n'] as int?) ?? 0,
+    };
   }
 
   /// Item counts per stage, for the hub's counters and the queue's chips.
