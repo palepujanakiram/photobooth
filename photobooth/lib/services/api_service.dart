@@ -255,6 +255,39 @@ class ApiService {
     }
   }
 
+  /// POST `/api/kiosk/heartbeat` — liveness + historical Android process exits.
+  Future<void> postKioskHeartbeat({
+    required String kioskCode,
+    required String appVersion,
+    List<Map<String, dynamic>> processExits = const [],
+  }) async {
+    final code = kioskCode.trim().toUpperCase();
+    if (code.isEmpty) {
+      throw ApiException('kioskCode is required');
+    }
+    try {
+      final r = await _dio.post<dynamic>(
+        '/api/kiosk/heartbeat',
+        data: <String, dynamic>{
+          'kioskCode': code,
+          'appVersion': appVersion,
+          'processExits': processExits,
+        },
+        options: Options(
+          headers: {'X-Kiosk-Code': code},
+          responseType: ResponseType.json,
+          validateStatus: (c) => c != null && c >= 200 && c < 500,
+        ),
+      );
+      throwIfHttpErrorResponse(r, operationLabel: 'Kiosk heartbeat failed');
+    } on DioException catch (e) {
+      throwApiExceptionAfterWebCors(
+        e,
+        messagePrefix: 'Kiosk heartbeat failed',
+      );
+    }
+  }
+
   /// POST `/api/sessions/:id/receipt` — create/update receipt + optional WhatsApp queue.
   ///
   /// Requires `session.paymentStatus == APPROVED` server-side.

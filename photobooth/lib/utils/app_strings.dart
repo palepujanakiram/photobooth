@@ -913,4 +913,11 @@ abstract final class AppStrings {
   static const eventStationPickLook = 'Pick your look';
   static const eventStationPoweredBy = 'Photobooth powered by';
   static const eventStationPoweredByBrand = 'FotoZen AI';
+
+  /// Historical Android process death (LMK / SIGKILL / ANR) with no Dart exception.
+  static const androidProcessExitUnhandled =
+      'Android process died without a Dart exception';
+
+  /// Heartbeat POST to `/api/kiosk/heartbeat` failed; will retry on the next ping.
+  static const kioskHeartbeatFailed = 'Kiosk heartbeat failed';
 }

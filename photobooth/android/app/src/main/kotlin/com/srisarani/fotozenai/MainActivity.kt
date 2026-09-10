@@ -43,6 +43,7 @@ class MainActivity : FlutterFragmentActivity() {
         super.configureFlutterEngine(flutterEngine)
         DisplayMethodChannel.register(flutterEngine, this)
         DeviceMemoryMethodChannel.register(flutterEngine, this)
+        ProcessExitMethodChannel.register(flutterEngine, this)
         DnpUsbMethodChannel.register(flutterEngine, this)
         ReceiptUsbMethodChannel.register(flutterEngine, this)
         SelphyMethodChannel.register(flutterEngine, this)
