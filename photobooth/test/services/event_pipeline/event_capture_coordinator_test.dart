@@ -54,6 +54,9 @@ class FakeCamera extends DirectPtpCameraService {
     }
   }
 
+  /// The screen fails outright rather than returning a result.
+  void failSession(Object error) => _sessionDone.completeError(error);
+
   /// The operator closes the screen.
   void closeSession() {
     _sessionDone.complete(
@@ -275,5 +278,94 @@ void main() {
 
     expect(await session, 0);
     expect(camera.listenCalls, 1);
+  });
+
+  test('a coordinator built before anything started still queues', () async {
+    // The hub view model builds this inside its own initializer list, before
+    // any runner exists — so `EventPipelineRunner.instance` is null at that
+    // moment. Capturing it there bound the coordinator to a second, unstarted
+    // runner whose ledger never appeared, and every accepted frame reported
+    // "Storage unavailable" while the hub's counters worked perfectly.
+    EventPipelineRunner.resetInstanceForTests();
+    expect(EventPipelineRunner.instance, isNull);
+
+    final coordinator = EventCaptureCoordinator(
+      camera: camera,
+      // Exactly what the hub passes when nothing has started yet.
+      runner: EventPipelineRunner.instance,
+      events: EventManager(),
+      mediaStore: media,
+      downscaler: FakeDownscaler(),
+    );
+
+    // The pipeline starts afterwards, as it does on a real cold boot.
+    await runner.ensureStarted();
+    expect(EventPipelineRunner.instance, isNotNull);
+
+    final session = coordinator.runSession();
+    await camera.accept(await frameOnDisk());
+    camera.closeSession();
+
+    expect(await session, 1);
+    expect(camera.messages, isEmpty, reason: 'nothing went wrong to report');
+    expect(await EventPipelineLedger(db: db).countItems(eventId: 'EVT1'), 1);
+  });
+
+  test('a shot with no capture time is stamped on arrival', () async {
+    final coordinator = build();
+    final session = coordinator.runSession();
+    final shot = await frameOnDisk();
+    final before = DateTime.now().millisecondsSinceEpoch;
+    // Some stacks return 0 rather than a time; the frame still has to be
+    // orderable in the queue.
+    await camera.accept(DirectPtpShot(
+      originalPath: shot.originalPath,
+      capturedAtMs: 0,
+      widthPx: shot.widthPx,
+      heightPx: shot.heightPx,
+      bytes: shot.bytes,
+    ));
+    camera.closeSession();
+    await session;
+
+    final item = await EventPipelineLedger(db: db)
+        .findById(coordinator.queuedIds.single);
+    expect(item!.capturedAtMs, greaterThanOrEqualTo(before));
+  });
+
+  test('a capture session that throws leaves the operator on the hub',
+      () async {
+    final coordinator = build();
+    final session = coordinator.runSession();
+    // Let runSession reach its await, or the error has no listener yet and the
+    // zone reports it as unhandled before the try/catch can see it.
+    for (var i = 0; i < 40; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    camera.failSession(StateError('activity died'));
+
+    // Never rethrown: a failed session is a message, not a crash.
+    expect(await session, 0);
+  });
+
+  test('storage going away mid-session is reported on the screen', () async {
+    final coordinator = build();
+    final session = coordinator.runSession();
+    final shot = await frameOnDisk();
+    await db.close();
+    await camera.accept(shot);
+    camera.closeSession();
+    await session;
+
+    // The import path swallows the per-item failure and returns no ids, so the
+    // operator is told the photo did not store rather than that it queued.
+    expect(camera.messages, contains('Could not store the photo'));
+    expect(coordinator.queuedIds, isEmpty);
+    db = (await EventPipelineDb.open(root))!;
+  });
+
+  test('it reports the attached camera by name', () async {
+    expect(await build().cameraName(), isNull,
+        reason: 'the fake probes nothing, so there is no camera to name');
   });
 }

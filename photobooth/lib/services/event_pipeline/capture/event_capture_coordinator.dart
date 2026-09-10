@@ -39,16 +39,31 @@ class EventCaptureCoordinator {
     EventMediaStore? mediaStore,
     ImageDownscaler? downscaler,
   })  : _camera = camera ?? DirectPtpCameraService(),
-        _runner = runner ?? EventPipelineRunner.instance ?? EventPipelineRunner(),
+        _injectedRunner = runner,
         _events = events ?? EventManager(),
         _media = mediaStore ?? EventMediaStore(),
         _downscaler = downscaler ?? PlatformImageDownscaler();
 
   final DirectPtpCameraService _camera;
-  final EventPipelineRunner _runner;
   final EventManager _events;
   final EventMediaStore _media;
   final ImageDownscaler _downscaler;
+
+  final EventPipelineRunner? _injectedRunner;
+  EventPipelineRunner? _fallbackRunner;
+
+  /// Resolved when it is used, never at construction.
+  ///
+  /// `EventPipelineRunner.instance` is set by whichever runner started, and
+  /// this coordinator is built inside the hub view model's initializer list —
+  /// before anything has started, so the static is still null there. Capturing
+  /// it at that moment bound this to a *second*, unstarted runner whose ledger
+  /// stayed null forever, and every accepted frame reported "Storage
+  /// unavailable — not queued" while the hub's own counters worked fine.
+  EventPipelineRunner get _runner =>
+      _injectedRunner ??
+      EventPipelineRunner.instance ??
+      (_fallbackRunner ??= EventPipelineRunner());
 
   StreamSubscription<DirectPtpShot>? _subscription;
 
@@ -65,9 +80,10 @@ class EventCaptureCoordinator {
   Future<int> runSession() async {
     _queuedIds.clear();
     _camera.listenForAcceptedShots();
-    // Subscribed before anything is awaited. The stream is a broadcast, so a
-    // frame accepted before the listener attaches is simply dropped — and the
-    // event id is a prefs read, which is long enough for that to happen.
+
+    // Subscribed before **anything** is awaited. The stream is a broadcast, so
+    // a frame accepted before the listener attaches is dropped silently, and
+    // every line below yields to the event loop.
     final eventId = _events.getEventId();
     _subscription = _camera.acceptedShots.listen((shot) {
       // Not awaited: the native screen has already returned to live view and
@@ -76,6 +92,10 @@ class EventCaptureCoordinator {
       unawaited(_commit(shot, eventId));
     });
     try {
+      // Cheap and idempotent, and safely after the subscription: a coordinator
+      // reached before anything started the pipeline would otherwise queue
+      // nothing and only say so once per frame.
+      await _runner.ensureStarted();
       await _camera.runCaptureSession(await _requestForEvent());
     } catch (e, st) {
       AppLogger.error('Capture session failed', error: e, stackTrace: st);
