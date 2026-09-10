@@ -753,6 +753,25 @@ void main() {
     expect(body.b, greaterThan(150));
     expect(body.g, lessThan(100));
   });
+
+  group('composeLocalStripSheetFaultTolerantForTest', () {
+    test('returns empty bytes when source bytes are invalid JPEG', () {
+      final result = composeLocalStripSheetFaultTolerantForTest(
+        [Uint8List.fromList([0, 1, 2, 3])],
+        single: true,
+      );
+      expect(result, isEmpty);
+    });
+
+    test('returns composed bytes when source bytes are valid', () {
+      final jpeg = _solidJpeg(20, 220, 20, width: 60, height: 80);
+      final result = composeLocalStripSheetFaultTolerantForTest(
+        [jpeg],
+        single: true,
+      );
+      expect(result, isNotEmpty);
+    });
+  });
 }
 
 void _expectLandscapeContainInClassicCells(int shotCount) {

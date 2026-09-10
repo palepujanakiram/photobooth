@@ -206,15 +206,33 @@ bool _isRemoteSource(String source) {
       source.contains(kApiImgPathPrefix);
 }
 
-Uint8List _composeLocalStripSheetIsolate(_LocalStripIsolateInput input) {
-  try {
-    return composeLocalStripSheetJpegForTest(
-      sourceBytes: input.sources,
+Uint8List _composeLocalStripSheetIsolate(_LocalStripIsolateInput input) =>
+    composeLocalStripSheetFaultTolerantForTest(
+      input.sources,
       filterId: input.filterId,
       frameId: input.frameId,
       single: input.single,
       landscape: input.landscape,
       overlay: _overlayFromIsolate(input.overlayPng, input.overlaySlots),
+    );
+
+@visibleForTesting
+Uint8List composeLocalStripSheetFaultTolerantForTest(
+  List<Uint8List> sources, {
+  String filterId = kDefaultStripFilterId,
+  String frameId = kDefaultStripFrameId,
+  bool single = false,
+  bool landscape = false,
+  LocalStripOverlay? overlay,
+}) {
+  try {
+    return composeLocalStripSheetJpegForTest(
+      sourceBytes: sources,
+      filterId: filterId,
+      frameId: frameId,
+      single: single,
+      landscape: landscape,
+      overlay: overlay,
     );
   } catch (_) {
     // Fail open so a dart-image decode error does not take down the kiosk

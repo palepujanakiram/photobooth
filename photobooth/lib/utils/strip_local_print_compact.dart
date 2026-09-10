@@ -85,6 +85,7 @@ Future<LocalStripOverlay?> compactOverlayForLocalStripPrint(
   }
 }
 
+// coverage:ignore-start
 Future<Uint8List> _skiaResizeOverlay(Uint8List bytes, int width, int height) {
   return ImageHelper.resizeImageBytesToPng(
     bytes: bytes,
@@ -92,3 +93,4 @@ Future<Uint8List> _skiaResizeOverlay(Uint8List bytes, int width, int height) {
     height: height,
   );
 }
+// coverage:ignore-end

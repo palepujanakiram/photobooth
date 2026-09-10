@@ -1867,6 +1867,69 @@ void main() {
     expect(api.composeCalls, greaterThan(0));
     vm.dispose();
   });
+
+  test('FotoFlashbackFilterViewModel compose uses cached jpeg bytes when available',
+      () async {
+    SessionManager().setSessionFromResponse(_sessionJson('sess-cached-bytes'));
+    final vm = FotoFlashbackFilterViewModel(
+      eventPrintIsLocal: true,
+      theme: stripTheme,
+      imageDataUrls: [_tinyJpegDataUrl()],
+      overlayCleanupBuildGate: false,
+    );
+    await vm.loadFilters();
+    vm.lookPreviewJpegBytesForTest = [kTinyJpegBytes];
+    final image = await vm.compose();
+    expect(image, isNotNull);
+    vm.dispose();
+  });
+
+  test('FotoFlashbackFilterViewModel compose shows error when local sheet fails',
+      () async {
+    SessionManager().setSessionFromResponse(_sessionJson('sess-sheet-fail'));
+    final vm = FotoFlashbackFilterViewModel(
+      eventPrintIsLocal: true,
+      theme: stripTheme,
+      imageDataUrls: [_tinyJpegDataUrl()],
+      overlayCleanupBuildGate: false,
+    );
+    await vm.loadFilters();
+    vm.composeLocalStripSheetForTest = (_) async => null;
+    final image = await vm.compose();
+    expect(image, isNull);
+    expect(vm.errorMessage, AppStrings.flashbackComposeFailed);
+    vm.dispose();
+  });
+
+  test('FotoFlashbackFilterViewModel compose restarts warm after filter change',
+      () async {
+    SessionManager().setSessionFromResponse(_sessionJson('sess-fp-miss'));
+    final gate = Completer<void>();
+    final vm = FotoFlashbackFilterViewModel(
+      eventPrintIsLocal: true,
+      theme: stripTheme,
+      imageDataUrls: [_tinyJpegDataUrl()],
+      overlayCleanupBuildGate: false,
+    );
+    await vm.loadFilters();
+    // Block the local compose so the warm stays in flight.
+    vm.composeLocalStripSheetForTest = (_) async {
+      await gate.future;
+      return 'data:image/jpeg;base64,/9j/4AAQ';
+    };
+    unawaited(vm.refreshComposePreview());
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    // Change filter → fingerprint changes; warm is still in flight.
+    if (vm.filters.length > 1) {
+      vm.selectFilter(vm.filters[1].id);
+    }
+    // Let compose run without the blocking override.
+    vm.composeLocalStripSheetForTest = null;
+    gate.complete();
+    final image = await vm.compose();
+    expect(image, isNotNull);
+    vm.dispose();
+  });
 }
 
 Map<String, dynamic> _sessionJson(String id) => {
