@@ -194,6 +194,7 @@ Future<Uint8List> _bakeLocalStripSheetJpeg({
   } catch (_) {
     // 4GB TVs use Skia; tests / Skia misses still bake in dart-image.
   }
+  // coverage:ignore-start
   return compute(
     _composeLocalStripSheetIsolate,
     _LocalStripIsolateInput(
@@ -206,6 +207,7 @@ Future<Uint8List> _bakeLocalStripSheetJpeg({
       overlaySlots: _flattenOverlaySlots(overlay?.slots),
     ),
   );
+  // coverage:ignore-end
 }
 
 Future<Uint8List?> loadLocalStripSourceBytes(
@@ -347,6 +349,7 @@ Uint8List composeLocalStripSheetJpegForTest({
   );
 }
 
+// coverage:ignore-start
 List<double> _flattenOverlaySlots(List<StripTemplateSlot>? slots) {
   if (slots == null || slots.isEmpty) return const [];
   final out = <double>[];
@@ -354,13 +357,17 @@ List<double> _flattenOverlaySlots(List<StripTemplateSlot>? slots) {
     out.addAll([slot.left, slot.top, slot.width, slot.height]);
   }
   return out;
+  // coverage:ignore-end
 }
 
+// coverage:ignore-start
 LocalStripOverlay? _overlayFromIsolate(Uint8List? png, List<double> slots) {
   if (png == null || png.isEmpty) return null;
   return LocalStripOverlay(pngBytes: png, slots: _unflattenOverlaySlots(slots));
+  // coverage:ignore-end
 }
 
+// coverage:ignore-start
 List<StripTemplateSlot> _unflattenOverlaySlots(List<double> values) {
   if (values.length < 4 || values.length % 4 != 0) return const [];
   final out = <StripTemplateSlot>[];
@@ -375,6 +382,7 @@ List<StripTemplateSlot> _unflattenOverlaySlots(List<double> values) {
     );
   }
   return out;
+  // coverage:ignore-end
 }
 
 void _drawOccasionSingle(

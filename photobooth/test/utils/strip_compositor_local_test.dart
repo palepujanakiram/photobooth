@@ -33,6 +33,27 @@ void main() {
       expect(decoded.height, kLocalStripSheetHeight);
     });
 
+    test('noir dual-strip sheet uses the dark chrome fill', () {
+      final jpeg = composeLocalStripSheetJpegForTest(
+        sourceBytes: [
+          _solidJpeg(220, 20, 20, width: 40, height: 20),
+          _solidJpeg(20, 220, 20),
+          _solidJpeg(20, 20, 220),
+          _solidJpeg(220, 180, 20),
+        ],
+        filterId: 'clean',
+        frameId: 'noir',
+        single: false,
+      );
+      expect(jpeg, isNotEmpty);
+      final decoded = img.decodeJpg(jpeg);
+      expect(decoded, isNotNull);
+      final corner = decoded!.getPixel(0, 0);
+      expect(corner.r, lessThan(40));
+      expect(corner.g, lessThan(40));
+      expect(corner.b, lessThan(40));
+    });
+
     test('three plates fill the same sheet with taller cells', () {
       final sources = <Uint8List>[
         _solidJpeg(220, 20, 20, width: 40, height: 20),

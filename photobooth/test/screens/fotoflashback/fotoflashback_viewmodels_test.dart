@@ -1604,8 +1604,98 @@ void main() {
     if (vm.frames.length > 1) {
       vm.selectFrame(vm.frames[1].id);
     }
+    vm.addSticker('hearts');
     await pumpEventQueue();
     expect(vm.isWarmingPrintPreview, isFalse);
+    vm.dispose();
+  });
+
+  test('FotoFlashbackFilterViewModel Fly 1-shot look taps skip print-twin warm',
+      () async {
+    SessionManager().setSessionFromResponse(_sessionJson('sess-look-tap-fly'));
+    final api = _StripFakeApi();
+    final vm = FotoFlashbackFilterViewModel(
+      eventPrintIsLocal: false,
+      theme: stripTheme,
+      imageDataUrls: [_tinyJpegDataUrl()],
+      apiService: api,
+      overlayCleanupBuildGate: false,
+    );
+    await vm.loadFilters();
+    final callsAfterLoad = api.composeCalls;
+    final other = vm.filters.firstWhere(
+      (f) => f.id != vm.selectedFilterId,
+      orElse: () => vm.filters.first,
+    );
+    vm.selectFilter(other.id);
+    if (vm.frames.length > 1) {
+      vm.selectFrame(vm.frames[1].id);
+    }
+    vm.addSticker('hearts');
+    await pumpEventQueue();
+    expect(vm.isWarmingPrintPreview, isFalse);
+    expect(api.composeCalls, callsAfterLoad);
+    vm.dispose();
+  });
+
+  test('FotoFlashbackFilterViewModel local compose reloads JPEGs from data URLs',
+      () async {
+    SessionManager().setSessionFromResponse(_sessionJson('sess-reload-jpeg'));
+    final vm = FotoFlashbackFilterViewModel(
+      eventPrintIsLocal: true,
+      theme: stripTheme,
+      imageDataUrls: [_tinyJpegDataUrl()],
+      overlayCleanupBuildGate: false,
+    );
+    await vm.loadFilters();
+    await pumpEventQueue();
+    vm.lookPreviewJpegBytesForTest = [];
+    final image = await vm.compose();
+    expect(image, isNotNull);
+    vm.dispose();
+  });
+
+  test('FotoFlashbackFilterViewModel local compose fails on undecodable shots',
+      () async {
+    SessionManager().setSessionFromResponse(_sessionJson('sess-bad-jpeg'));
+    final vm = FotoFlashbackFilterViewModel(
+      eventPrintIsLocal: true,
+      theme: stripTheme,
+      imageDataUrls: const ['data:image/jpeg;base64,@@@'],
+      overlayCleanupBuildGate: false,
+    );
+    await vm.loadFilters();
+    vm.lookPreviewJpegBytesForTest = [];
+    expect(await vm.compose(), isNull);
+    expect(vm.errorMessage, AppStrings.flashbackComposeFailed);
+    vm.dispose();
+  });
+
+  test('FotoFlashbackFilterViewModel local compose warm join times out',
+      () async {
+    SessionManager().setSessionFromResponse(_sessionJson('sess-local-warm-to'));
+    FotoFlashbackFilterViewModel.composeWarmJoinTimeoutForTest =
+        const Duration(milliseconds: 30);
+    final gate = Completer<void>();
+    final vm = FotoFlashbackFilterViewModel(
+      eventPrintIsLocal: true,
+      theme: stripTheme,
+      imageDataUrls: [_tinyJpegDataUrl()],
+      overlayCleanupBuildGate: false,
+    );
+    await vm.loadFilters();
+    vm.composeLocalStripSheetForTest = (_) async {
+      await gate.future;
+      return 'data:image/jpeg;base64,/9j/4AAQ';
+    };
+    unawaited(vm.refreshComposePreview());
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    final composeFuture = vm.compose();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    vm.composeLocalStripSheetForTest = null;
+    gate.complete();
+    final image = await composeFuture;
+    expect(image, isNotNull);
     vm.dispose();
   });
 

@@ -50,6 +50,10 @@ void main() {
     });
   });
 
+  test('look option taps never start a print-twin bake', () {
+    expect(shouldSkipPrintTwinWarmOnLookOptionTap(), isTrue);
+  });
+
   group('shouldSkipClassicClientLookBake', () {
     test('skips bake for 4-shot strips', () {
       expect(

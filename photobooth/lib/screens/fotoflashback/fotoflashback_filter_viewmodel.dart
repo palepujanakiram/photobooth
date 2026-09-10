@@ -753,8 +753,7 @@ if (graded.length == _expectedCaptureCount) {
     if (filterId == _selectedFilterId) return;
     _selectedFilterId = filterId;
     _notifyIfMounted();
-    // Instant Flutter ColorFilter browse; compose warms for Continue / print.
-    _scheduleComposePreview(allowLargePayloadWarm: true);
+    _scheduleComposePreviewAfterLookOptionTap();
   }
 
   void selectFrame(String frameId) {
@@ -774,10 +773,8 @@ if (graded.length == _expectedCaptureCount) {
       _drawMode = false;
     }
     _notifyIfMounted();
-    _scheduleComposePreview(allowLargePayloadWarm: true);
+    _scheduleComposePreviewAfterLookOptionTap();
   }
-
-  /// Tap a sticker chip: `none` clears; placeable types add one per photo cell.
   void selectSticker(String stickerId) {
     if (stickerId == kDefaultStripStickerId || stickerId == 'none') {
       clearStickers();
@@ -814,7 +811,7 @@ if (graded.length == _expectedCaptureCount) {
     }
     _selectedStickerId = type;
     _notifyIfMounted();
-    _scheduleComposePreview(allowLargePayloadWarm: true);
+    _scheduleComposePreviewAfterLookOptionTap();
   }
 
   void moveSticker(String id, double x, double y) {
@@ -826,7 +823,7 @@ if (graded.length == _expectedCaptureCount) {
     if (cur.x == nx && cur.y == ny) return;
     _placements[i] = cur.copyWith(x: nx, y: ny);
     _notifyIfMounted();
-    _scheduleComposePreview(allowLargePayloadWarm: true);
+    _scheduleComposePreviewAfterLookOptionTap();
   }
 
   void removeSticker(String id) {
@@ -836,7 +833,7 @@ if (graded.length == _expectedCaptureCount) {
     _selectedStickerId =
         _placements.isEmpty ? kDefaultStripStickerId : _placements.last.type;
     _notifyIfMounted();
-    _scheduleComposePreview(allowLargePayloadWarm: true);
+    _scheduleComposePreviewAfterLookOptionTap();
   }
 
   void clearStickers() {
@@ -846,14 +843,14 @@ if (graded.length == _expectedCaptureCount) {
     _placements.clear();
     _selectedStickerId = kDefaultStripStickerId;
     _notifyIfMounted();
-    _scheduleComposePreview(allowLargePayloadWarm: true);
+    _scheduleComposePreviewAfterLookOptionTap();
   }
 
   void setDrawMode(bool enabled) {
     if (_drawMode == enabled) return;
     if (!enabled) {
       _commitActiveScribble();
-      _scheduleComposePreview(allowLargePayloadWarm: true);
+      _scheduleComposePreviewAfterLookOptionTap();
     }
     _drawMode = enabled;
     _notifyIfMounted();
@@ -889,7 +886,7 @@ if (graded.length == _expectedCaptureCount) {
   void endScribble() {
     _commitActiveScribble();
     _notifyIfMounted();
-    _scheduleComposePreview(allowLargePayloadWarm: true);
+    _scheduleComposePreviewAfterLookOptionTap();
   }
 
   void undoScribble() {
@@ -901,7 +898,7 @@ if (graded.length == _expectedCaptureCount) {
     if (_scribbles.isEmpty) return;
     _scribbles.removeLast();
     _notifyIfMounted();
-    _scheduleComposePreview(allowLargePayloadWarm: true);
+    _scheduleComposePreviewAfterLookOptionTap();
   }
 
   void clearScribbles() {
@@ -909,7 +906,7 @@ if (graded.length == _expectedCaptureCount) {
     _scribbles.clear();
     _activeScribblePoints = null;
     _notifyIfMounted();
-    _scheduleComposePreview(allowLargePayloadWarm: true);
+    _scheduleComposePreviewAfterLookOptionTap();
   }
 
   @visibleForTesting
@@ -1324,6 +1321,13 @@ if (graded.length == _expectedCaptureCount) {
       scribbles,
       '$_previewCleaned',
     ].join('::');
+  }
+
+  /// Look chips stay on ColorFilter / overlay swap. Never bake a print twin
+  /// on the UI isolate — that froze 4GB Android TV when guests tapped frames
+  /// or stickers. Cancel a pending idle warm so it cannot start mid-browse.
+  void _scheduleComposePreviewAfterLookOptionTap() {
+    _composePreviewDebounce?.cancel();
   }
 
   void _scheduleComposePreview({

@@ -87,6 +87,12 @@ const int kClassicComposeCompactPayloadChars = 200000;
 bool shouldDeferLocalClassicComposeWarm({required int shotCount}) =>
     shotCount >= 0;
 
+/// Look chips (filter / frame / sticker / scribble) never start a print-twin
+/// bake. ColorFilter + overlay swap is the live preview; Continue composes
+/// once. Idle warm from [loadFilters] / orientation can still run for Fly
+/// 1-shot.
+bool shouldSkipPrintTwinWarmOnLookOptionTap() => true;
+
 /// True when compose uploads are large enough to stall Mini PC Continue.
 bool shouldCompactClassicComposeUploads({
   required List<String> imageDataUrls,
