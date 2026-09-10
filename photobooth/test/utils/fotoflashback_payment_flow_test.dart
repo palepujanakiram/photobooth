@@ -54,11 +54,16 @@ void main() {
     KioskManager.resetPaymentOverrideCacheForTests();
     SessionManager().clearSession();
     PrintSelectionCoordinator.instance.clear();
+    // Drain the warm-compose timeout timer immediately so testWidgets doesn't
+    // see a pending 45-second timer after the widget tree is disposed.
+    FotoFlashbackFilterViewModel.composeWarmJoinTimeoutForTest = Duration.zero;
   });
 
   tearDown(() {
     SessionManager().clearSession();
     PrintSelectionCoordinator.instance.clear();
+    FotoFlashbackFilterViewModel.composeWarmJoinTimeoutForTest =
+        const Duration(seconds: 45);
   });
 
   testWidgets('continueAfterFlashbackLook routes to pre-payment when configured',
