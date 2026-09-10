@@ -200,7 +200,7 @@ void main() {
   });
 
   test('FotoFlashbackFilterViewModel clearCapturePreview drops stale bytes',
-      () {
+      () async {
     final vm = FotoFlashbackFilterViewModel(
       eventPrintIsLocal: false,
       theme: stripTheme,
@@ -210,10 +210,15 @@ void main() {
     expect(vm.previewImageDataUrls, isNotEmpty);
 
     vm.clearCapturePreview();
+    for (var i = 0; i < 20; i++) {
+      await pumpEventQueue();
+    }
 
     expect(vm.previewImageDataUrls, isEmpty);
     expect(vm.imageDataUrls, isEmpty);
+    expect(vm.hasLookPreviewJpegBytes, isFalse);
     expect(vm.canCompose, isFalse);
+    vm.dispose();
   });
 
   test(
@@ -1574,6 +1579,33 @@ void main() {
     );
     expect(vm.isRefreshingComposePreview, isFalse);
     expect(vm.isRefreshingLookPreview, isFalse);
+    vm.dispose();
+  });
+
+  test('FotoFlashbackFilterViewModel event-local look taps skip print-twin warm',
+      () async {
+    SessionManager().setSessionFromResponse(_sessionJson('sess-look-tap'));
+    final vm = FotoFlashbackFilterViewModel(
+      eventPrintIsLocal: true,
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, _tinyJpegDataUrl()),
+      apiService: _StripFakeApi(),
+      overlayCleanupBuildGate: false,
+    );
+    await vm.loadFilters();
+    expect(vm.filters, isNotEmpty);
+    expect(vm.isWarmingPrintPreview, isFalse);
+
+    final other = vm.filters.firstWhere(
+      (f) => f.id != vm.selectedFilterId,
+      orElse: () => vm.filters.first,
+    );
+    vm.selectFilter(other.id);
+    if (vm.frames.length > 1) {
+      vm.selectFrame(vm.frames[1].id);
+    }
+    await pumpEventQueue();
+    expect(vm.isWarmingPrintPreview, isFalse);
     vm.dispose();
   });
 

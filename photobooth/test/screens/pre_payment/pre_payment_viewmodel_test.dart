@@ -70,6 +70,28 @@ void main() {
       });
     });
 
+    test('loadPaymentQr treats APPROVED initiate as paid immediately', () async {
+      SessionManager().setSessionFromResponse(_sessionJson('sess-approved'));
+      var approved = false;
+      final vm = PrePaymentViewModel(
+        appSettingsManager: _SeededAppSettingsManager(),
+        apiService: FakeApiService(
+          initiatePaymentResult: PaymentInitiateResult(
+            id: 'pay-approved',
+            status: 'APPROVED',
+          ),
+        ),
+        sessionManager: SessionManager(),
+      )..onApproved = () {
+          approved = true;
+        };
+
+      await vm.loadPaymentQr();
+      expect(vm.fcmPaymentPushSuccess, isTrue);
+      expect(approved, isTrue);
+      expect(vm.paymentInitError, isNull);
+    });
+
     test('retryLoadPaymentQr forces a fresh initiate', () async {
       SessionManager().setSessionFromResponse(_sessionJson('sess-retry'));
       final api = FakeApiService();

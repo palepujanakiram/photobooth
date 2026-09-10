@@ -12,6 +12,7 @@ import 'image_helper_channel_fix.dart';
 import 'image_helper_encode.dart';
 import 'session_user_image_validation.dart';
 import 'app_strings.dart';
+import 'encode_rgba_jpeg.dart';
 import 'jpeg_sof_peek.dart';
 import 'web_flow_trace.dart';
 
@@ -347,15 +348,11 @@ class ImageHelper {
         throw Exception('Skia downscale produced empty pixels');
       }
       final rgba = bd.buffer.asUint8List(bd.offsetInBytes, bd.lengthInBytes);
-      return compute(
-        _encodeRgbaToJpegIsolate,
-        (
-          rgba: rgba,
-          width: image.width,
-          height: image.height,
-          jpegQuality: quality,
-          quarterTurns: 0,
-        ),
+      return encodeRgbaToJpeg(
+        rgba: rgba,
+        width: image.width,
+        height: image.height,
+        quality: quality,
       );
     } finally {
       image.dispose();

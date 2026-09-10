@@ -110,8 +110,21 @@ bool payScreenShowsStaffPinConfirm({
   required bool sessionOffline,
   required bool isWeb,
   bool skipOfflineCashPin = false,
+  bool autoApproveCashPrint = false,
 }) =>
-    sessionOffline && !isWeb && !skipOfflineCashPin;
+    sessionOffline &&
+    !isWeb &&
+    !skipCashStaffApproval(
+      skipOfflineCashPin: skipOfflineCashPin,
+      autoApproveCashPrint: autoApproveCashPrint,
+    );
+
+/// Skip booth PIN and/or Payments wait — cash is recorded and print starts.
+bool skipCashStaffApproval({
+  bool skipOfflineCashPin = false,
+  bool autoApproveCashPrint = false,
+}) =>
+    skipOfflineCashPin || autoApproveCashPrint;
 
 /// Navigates to pre-payment or generation based on account payment timing.
 Future<void> navigateToGenerationOrPrePayment({

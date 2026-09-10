@@ -199,6 +199,26 @@ List<StripPhotoCellRect> _filmstripCells(
   ];
 }
 
+/// Letterbox destination that fits [sourceWidth]×[sourceHeight] inside [window].
+Rect containFitDestination({
+  required double sourceWidth,
+  required double sourceHeight,
+  required Rect window,
+}) {
+  if (sourceWidth <= 0 || sourceHeight <= 0 || window.isEmpty) return window;
+  final scale = window.width / sourceWidth < window.height / sourceHeight
+      ? window.width / sourceWidth
+      : window.height / sourceHeight;
+  final width = sourceWidth * scale;
+  final height = sourceHeight * scale;
+  return Rect.fromLTWH(
+    window.left + (window.width - width) / 2,
+    window.top + (window.height - height) / 2,
+    width,
+    height,
+  );
+}
+
 /// Chrome overlay inset (rails for filmstrip, thin border otherwise).
 double stripChromeBorderPad({
   required String frameId,

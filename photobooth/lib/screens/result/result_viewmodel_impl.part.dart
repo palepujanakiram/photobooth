@@ -69,6 +69,19 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       );
       if (generation != _r._paymentInitiateGeneration) return;
       _applyPaymentInitiateResult(result);
+      if (paymentVerdictFromStatusString(result.status) ==
+          PaymentPollVerdict.approved) {
+        _r._paymentInitError = null;
+        await onFcmPaymentPush(
+          PaymentPushPayload(
+            type: PaymentPushCoordinator.typeApproved,
+            paymentId: result.id,
+            title: AppStrings.paymentConfirmedTitle,
+            body: 'Payment approved. Printing...',
+          ),
+        );
+        return;
+      }
       if (kDebugMode) {
         AppLogger.debug(
           'Payment initiate OK: id=${result.id} status=${result.status} '

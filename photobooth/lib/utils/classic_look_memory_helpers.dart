@@ -79,10 +79,13 @@ bool shouldBakeClassicLooksSequentially({
 /// the isolate. Four Canon plates are well above it.
 const int kClassicComposeCompactPayloadChars = 200000;
 
-/// Event-local Classic warms on-device so Continue joins instead of baking
-/// from scratch. Cell-sized Skia compact keeps 3-/4-shot RAM in check.
+/// Event-local Pick-a-look browses with ColorFilter only.
+///
+/// Warming the print twin on every look/frame tap baked a 1200×1800 sheet on
+/// the UI isolate and froze 4GB Android TV kiosks. Continue still composes
+/// once (Skia / native JPEG).
 bool shouldDeferLocalClassicComposeWarm({required int shotCount}) =>
-    shotCount <= 0;
+    shotCount >= 0;
 
 /// True when compose uploads are large enough to stall Mini PC Continue.
 bool shouldCompactClassicComposeUploads({

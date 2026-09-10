@@ -90,6 +90,8 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
             ) {
     if (_pendingImageFilePaths != null) {
       unawaited(_hydratePendingCaptureFiles());
+    } else if (_imageDataUrls.isNotEmpty) {
+      unawaited(_ensureLookPreviewJpegBytes());
     }
   }
 
@@ -99,6 +101,12 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   int _hydrateGeneration = 0;
   final bool _captureUploadsAlreadyCompact;
   List<Uint8List> _lookPreviewJpegBytes = [];
+  Future<void>? _lookPreviewCompactInFlight;
+  bool _disposed = false;
+
+  void _notifyIfMounted() {
+    if (!_disposed) notifyListeners();
+  }
 
   final ThemeModel theme;
   final List<String> _imageDataUrls;
@@ -265,7 +273,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     if (_printOrientation == orientation) return;
     _printOrientation = orientation;
     _sessionManager.setPrintOrientation(orientation);
-    notifyListeners();
+    _notifyIfMounted();
     _scheduleComposePreview(allowLargePayloadWarm: true);
   }
 
@@ -363,7 +371,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _lookPreviewJpegBytes = [];
     _hydratingCaptures = true;
     _errorMessage = null;
-    notifyListeners();
+    _notifyIfMounted();
     try {
       final jpegBytes = <Uint8List>[];
       final maxLongEdge = localStripPrintJpegMaxLongEdge(
@@ -377,7 +385,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       }
       if (gen != _hydrateGeneration) return;
       _lookPreviewJpegBytes = jpegBytes;
-      notifyListeners();
+      _notifyIfMounted();
 
       final encoded = await Future.wait(
         jpegBytes.map(ImageHelper.encodeBytesToBase64DataUrl),
@@ -405,7 +413,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     } finally {
       if (gen == _hydrateGeneration) {
         _hydratingCaptures = false;
-        notifyListeners();
+        _notifyIfMounted();
       }
     }
   }
@@ -418,20 +426,21 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _hydratingCaptures = false;
     _imageDataUrls.clear();
     _lookPreviewJpegBytes = [];
+    _lookPreviewCompactInFlight = null;
     _pendingImageFilePaths = null;
     _composePreview = null;
     _composePreviewFingerprint = null;
     _composeResult = null;
     _gradedByFilter.clear();
     _warmingPrintPreview = false;
-    notifyListeners();
+    _notifyIfMounted();
   }
 
   Future<void> loadFilters() async {
     final gen = ++_catalogLoadGen;
     _loading = true;
     _errorMessage = null;
-    notifyListeners();
+    _notifyIfMounted();
     try {
       await _loadCatalog(gen).timeout(
         const Duration(seconds: 15),
@@ -454,7 +463,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
           _applyFallbackCatalog(soft);
         }
         _loading = false;
-        notifyListeners();
+        _notifyIfMounted();
       }
     }
     if (gen != _catalogLoadGen) return;
@@ -588,13 +597,13 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _gradedByFilter.clear();
     // Drop failed capture results so Refresh re-POSTs instead of re-adopting.
     ClassicStripScrubCoordinator.instance.releaseFailedShots();
-    notifyListeners();
+    _notifyIfMounted();
     await preparePreview();
   }
 
   Future<void> _runPreparePreview(String sessionId) async {
     _preparingPreview = true;
-    notifyListeners();
+    _notifyIfMounted();
     CaptureFlowLog.event(
       'classic.scrub_start',
       fields: {
@@ -610,7 +619,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
           continue;
         }
         _scrubbingIndex = i;
-        notifyListeners();
+        _notifyIfMounted();
         final applied = await _polishUnfinishedShot(sessionId, i);
         if (!applied) allClean = false;
       }
@@ -637,7 +646,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     } finally {
       _scrubPassCompleted = true;
       _preparingPreview = false;
-      notifyListeners();
+      _notifyIfMounted();
     }
   }
 
@@ -695,7 +704,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _imageDataUrls[i] = result.dataUrl;
     if (i < _shotCleaned.length) _shotCleaned[i] = result.scrubbed;
     _gradedByFilter.clear();
-    notifyListeners();
+    _notifyIfMounted();
     return result.scrubbed;
   }
 
@@ -713,7 +722,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
 
     final seq = ++_gradeSeq;
     _gradingPreview = true;
-    notifyListeners();
+    _notifyIfMounted();
     try {
       // Cap uploads below full Canon plates, but high enough for sharp tablet
       // look-picker cells (see [kStripPreviewGradeUploadMaxEdge]).
@@ -735,7 +744,7 @@ if (graded.length == _expectedCaptureCount) {
     } finally {
       if (seq == _gradeSeq) {
         _gradingPreview = false;
-        notifyListeners();
+        _notifyIfMounted();
       }
     }
   }
@@ -743,7 +752,7 @@ if (graded.length == _expectedCaptureCount) {
   void selectFilter(String filterId) {
     if (filterId == _selectedFilterId) return;
     _selectedFilterId = filterId;
-    notifyListeners();
+    _notifyIfMounted();
     // Instant Flutter ColorFilter browse; compose warms for Continue / print.
     _scheduleComposePreview(allowLargePayloadWarm: true);
   }
@@ -764,7 +773,7 @@ if (graded.length == _expectedCaptureCount) {
       _selectedStickerId = kDefaultStripStickerId;
       _drawMode = false;
     }
-    notifyListeners();
+    _notifyIfMounted();
     _scheduleComposePreview(allowLargePayloadWarm: true);
   }
 
@@ -804,7 +813,7 @@ if (graded.length == _expectedCaptureCount) {
       );
     }
     _selectedStickerId = type;
-    notifyListeners();
+    _notifyIfMounted();
     _scheduleComposePreview(allowLargePayloadWarm: true);
   }
 
@@ -816,7 +825,7 @@ if (graded.length == _expectedCaptureCount) {
     final cur = _placements[i];
     if (cur.x == nx && cur.y == ny) return;
     _placements[i] = cur.copyWith(x: nx, y: ny);
-    notifyListeners();
+    _notifyIfMounted();
     _scheduleComposePreview(allowLargePayloadWarm: true);
   }
 
@@ -826,7 +835,7 @@ if (graded.length == _expectedCaptureCount) {
     if (_placements.length == before) return;
     _selectedStickerId =
         _placements.isEmpty ? kDefaultStripStickerId : _placements.last.type;
-    notifyListeners();
+    _notifyIfMounted();
     _scheduleComposePreview(allowLargePayloadWarm: true);
   }
 
@@ -836,7 +845,7 @@ if (graded.length == _expectedCaptureCount) {
     }
     _placements.clear();
     _selectedStickerId = kDefaultStripStickerId;
-    notifyListeners();
+    _notifyIfMounted();
     _scheduleComposePreview(allowLargePayloadWarm: true);
   }
 
@@ -847,7 +856,7 @@ if (graded.length == _expectedCaptureCount) {
       _scheduleComposePreview(allowLargePayloadWarm: true);
     }
     _drawMode = enabled;
-    notifyListeners();
+    _notifyIfMounted();
   }
 
   void setPenColor(String color) {
@@ -855,7 +864,7 @@ if (graded.length == _expectedCaptureCount) {
     if (!kStripScribblePenColors.contains(normalized)) return;
     if (_penColor == normalized) return;
     _penColor = normalized;
-    notifyListeners();
+    _notifyIfMounted();
   }
 
   void beginScribble(double x, double y) {
@@ -863,7 +872,7 @@ if (graded.length == _expectedCaptureCount) {
     _activeScribblePoints = [
       StripScribblePoint(x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)),
     ];
-    notifyListeners();
+    _notifyIfMounted();
   }
 
   void extendScribble(double x, double y) {
@@ -874,24 +883,24 @@ if (graded.length == _expectedCaptureCount) {
     final last = active.last;
     if ((last.x - nx).abs() < 0.004 && (last.y - ny).abs() < 0.004) return;
     active.add(StripScribblePoint(nx, ny));
-    notifyListeners();
+    _notifyIfMounted();
   }
 
   void endScribble() {
     _commitActiveScribble();
-    notifyListeners();
+    _notifyIfMounted();
     _scheduleComposePreview(allowLargePayloadWarm: true);
   }
 
   void undoScribble() {
     if (_activeScribblePoints != null) {
       _activeScribblePoints = null;
-      notifyListeners();
+      _notifyIfMounted();
       return;
     }
     if (_scribbles.isEmpty) return;
     _scribbles.removeLast();
-    notifyListeners();
+    _notifyIfMounted();
     _scheduleComposePreview(allowLargePayloadWarm: true);
   }
 
@@ -899,7 +908,7 @@ if (graded.length == _expectedCaptureCount) {
     if (_scribbles.isEmpty && _activeScribblePoints == null) return;
     _scribbles.clear();
     _activeScribblePoints = null;
-    notifyListeners();
+    _notifyIfMounted();
     _scheduleComposePreview(allowLargePayloadWarm: true);
   }
 
@@ -981,6 +990,24 @@ if (graded.length == _expectedCaptureCount) {
     return out;
   }
 
+  Future<void> _ensureLookPreviewJpegBytes() async {
+    if (_lookPreviewJpegBytes.length == _expectedCaptureCount) return;
+    if (_pendingImageFilePaths != null) return;
+    final gen = _hydrateGeneration;
+    _lookPreviewCompactInFlight ??= () async {
+      final compacted = await compactLookPreviewFromDataUrls(
+        existing: _lookPreviewJpegBytes,
+        dataUrls: List<String>.from(_imageDataUrls),
+        expectedCount: _expectedCaptureCount,
+        single: isSingleClassic,
+      );
+      if (_disposed || gen != _hydrateGeneration) return;
+      _lookPreviewJpegBytes = compacted;
+      _notifyIfMounted();
+    }();
+    await _lookPreviewCompactInFlight;
+  }
+
   Future<Uint8List> _readCompactLookJpeg(
     String path, {
     required int maxLongEdge,
@@ -1033,6 +1060,7 @@ if (graded.length == _expectedCaptureCount) {
   }
 
   Future<GeneratedImage?> _completeLocalLook() async {
+    await _ensureLookPreviewJpegBytes();
     final started = DateTime.now();
     CaptureFlowLog.event(
       'classic.local_compose_start',
@@ -1087,15 +1115,9 @@ if (graded.length == _expectedCaptureCount) {
     final alreadyReady = _composePreview != null &&
         _composePreviewFingerprint == fingerprint &&
         (_composePreview!.printImageUrl.trim().isNotEmpty);
-    // Start / join idle warm before [_composing] — refresh bails if composing.
-    var warm = _composeWarmInFlight;
-    if (!alreadyReady &&
-        (warm == null || _composeWarmFingerprint != fingerprint)) {
-      unawaited(_refreshLocalComposePreview());
-      warm = _composeWarmInFlight;
-    }
+    final warm = _composeWarmInFlight;
     _composing = true;
-    notifyListeners();
+    _notifyIfMounted();
     if (!alreadyReady &&
         warm != null &&
         _composeWarmFingerprint == fingerprint) {
@@ -1125,13 +1147,13 @@ if (graded.length == _expectedCaptureCount) {
       _errorMessage = isSingleClassic
           ? AppStrings.flashbackComposeFailed
           : AppStrings.flashbackNeedAllShots(_expectedCaptureCount);
-      notifyListeners();
+      _notifyIfMounted();
       return null;
     }
     final sessionId = _sessionManager.ensureSessionForClassicCompose() ?? '';
     if (sessionId.isEmpty) {
       _errorMessage = AppStrings.sessionPhotoSyncNoSession; // coverage:ignore-line
-      notifyListeners(); // coverage:ignore-line
+      _notifyIfMounted(); // coverage:ignore-line
       return null; // coverage:ignore-line
     }
 
@@ -1141,12 +1163,12 @@ if (graded.length == _expectedCaptureCount) {
     )) {
       _composePreviewDebounce?.cancel();
       _errorMessage = null;
-      notifyListeners();
+      _notifyIfMounted();
       try {
         return await _composeLocalLookJoiningWarm();
       } finally {
         _composing = false;
-        notifyListeners();
+        _notifyIfMounted();
       }
     }
 
@@ -1193,7 +1215,7 @@ if (graded.length == _expectedCaptureCount) {
 
     _composing = true;
     _errorMessage = null;
-    notifyListeners();
+    _notifyIfMounted();
     try {
       final reuse = _composePreview != null &&
           _composePreviewFingerprint == fingerprint &&
@@ -1278,7 +1300,7 @@ if (graded.length == _expectedCaptureCount) {
       return null;
     } finally {
       _composing = false;
-      notifyListeners();
+      _notifyIfMounted();
     }
   }
 
@@ -1309,13 +1331,12 @@ if (graded.length == _expectedCaptureCount) {
     Duration? delay,
   }) {
     if (!_hasComposableShotCount) return;
-    // Event-local 1-/3-/4-shot warm on-device even when data URLs are huge —
-    // cell-sized Skia compact keeps Mini PC RAM in check.
-    if (_eventPrintIsLocal) {
-      if (shouldDeferLocalClassicComposeWarm(shotCount: stripShotCount)) {
-        _composePreviewDebounce?.cancel(); // coverage:ignore-line
-        return; // coverage:ignore-line
-      }
+    // Event-local Pick-a-look stays on ColorFilter. Baking a 1200×1800 print
+    // twin on every look/frame tap froze 4GB Android TV kiosks.
+    if (_eventPrintIsLocal &&
+        shouldDeferLocalClassicComposeWarm(shotCount: stripShotCount)) {
+      _composePreviewDebounce?.cancel();
+      return;
     } else if (shouldDeferClassicComposePreviewWarm(
       imageDataUrls: _imageDataUrls,
       captureUploadsAlreadyCompact: _captureUploadsAlreadyCompact,
@@ -1335,7 +1356,8 @@ if (graded.length == _expectedCaptureCount) {
   }
 
   Future<void> _refreshLocalComposePreview() async {
-    if (!_hasComposableShotCount || _composing) return;
+    if (_disposed || !_hasComposableShotCount || _composing) return;
+    await _ensureLookPreviewJpegBytes();
     final fingerprint = _lookComposeFingerprint();
     if (_composePreviewFingerprint == fingerprint &&
         (_composePreview?.printImageUrl.trim().isNotEmpty ?? false)) {
@@ -1343,7 +1365,7 @@ if (graded.length == _expectedCaptureCount) {
     }
     final seq = ++_composePreviewSeq;
     _warmingPrintPreview = true;
-    notifyListeners();
+    _notifyIfMounted();
     final done = Completer<void>();
     _composeWarmInFlight = done.future;
     _composeWarmFingerprint = fingerprint;
@@ -1362,7 +1384,7 @@ if (graded.length == _expectedCaptureCount) {
       }
       if (seq == _composePreviewSeq) {
         _warmingPrintPreview = false;
-        notifyListeners();
+        _notifyIfMounted();
       }
     }
   }
@@ -1386,7 +1408,7 @@ if (graded.length == _expectedCaptureCount) {
 
     final seq = ++_composePreviewSeq;
     _warmingPrintPreview = true;
-    notifyListeners();
+    _notifyIfMounted();
     final done = Completer<void>();
     _composeWarmInFlight = done.future;
     _composeWarmFingerprint = fingerprint;
@@ -1407,7 +1429,7 @@ if (graded.length == _expectedCaptureCount) {
       }
       if (seq == _composePreviewSeq) {
         _warmingPrintPreview = false;
-        notifyListeners();
+        _notifyIfMounted();
       }
     }
   }
@@ -1445,6 +1467,7 @@ if (graded.length == _expectedCaptureCount) {
 
   @override
   void dispose() {
+    _disposed = true;
     clearCapturePreview();
     super.dispose();
   }

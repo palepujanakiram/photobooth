@@ -44,6 +44,7 @@ class MainActivity : FlutterFragmentActivity() {
         DisplayMethodChannel.register(flutterEngine, this)
         DeviceMemoryMethodChannel.register(flutterEngine, this)
         ProcessExitMethodChannel.register(flutterEngine, this)
+        JpegEncodeMethodChannel.register(flutterEngine)
         DnpUsbMethodChannel.register(flutterEngine, this)
         ReceiptUsbMethodChannel.register(flutterEngine, this)
         SelphyMethodChannel.register(flutterEngine, this)

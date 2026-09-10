@@ -159,20 +159,24 @@ class _ResultScreenState extends State<ResultScreen> {
     }
   }
 
+  bool _skipCashStaffApproval() {
+    final s = context.read<AppSettingsManager>().settings;
+    return skipCashStaffApproval(
+      skipOfflineCashPin: s?.skipOfflineCashPin == true,
+      autoApproveCashPrint: s?.autoApproveCashPrint == true,
+    );
+  }
+
   Future<void> _maybeAutoSettleOfflineCash() async {
     if (_offlineCashAutoSettled || kIsWeb) return;
     final vm = _viewModel;
     if (vm == null || !vm.cashOnlyOffline) return;
-    final skip =
-        context.read<AppSettingsManager>().settings?.skipOfflineCashPin == true;
-    if (!skip) return;
+    if (!_skipCashStaffApproval()) return;
     await _settleOfflineCashWithoutPin(vm);
   }
 
   Future<void> _onStaffCashConfirm(ResultViewModel viewModel) async {
-    final skip =
-        context.read<AppSettingsManager>().settings?.skipOfflineCashPin == true;
-    if (skip) {
+    if (_skipCashStaffApproval()) {
       await _settleOfflineCashWithoutPin(viewModel);
       return;
     }

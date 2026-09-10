@@ -42,10 +42,10 @@ void main() {
   });
 
   group('shouldDeferLocalClassicComposeWarm', () {
-    test('warms 1-shot, 3-shot, and 4-shot', () {
-      expect(shouldDeferLocalClassicComposeWarm(shotCount: 1), isFalse);
-      expect(shouldDeferLocalClassicComposeWarm(shotCount: 3), isFalse);
-      expect(shouldDeferLocalClassicComposeWarm(shotCount: 4), isFalse);
+    test('skips idle print-twin warm so look taps stay on ColorFilter', () {
+      expect(shouldDeferLocalClassicComposeWarm(shotCount: 1), isTrue);
+      expect(shouldDeferLocalClassicComposeWarm(shotCount: 3), isTrue);
+      expect(shouldDeferLocalClassicComposeWarm(shotCount: 4), isTrue);
       expect(shouldDeferLocalClassicComposeWarm(shotCount: 0), isTrue);
     });
   });

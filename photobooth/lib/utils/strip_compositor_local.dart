@@ -10,6 +10,7 @@ import '../services/local_guest_media_write.dart';
 import '../services/local_media_store.dart';
 import 'logger.dart';
 import 'print_orientation.dart';
+import 'strip_compositor_skia.dart';
 import 'strip_look_color_matrices.dart';
 import 'strip_look_matrix_bake.dart';
 
@@ -146,17 +147,13 @@ Future<String?> composeLocalStripSheet(LocalStripComposeRequest request) async {
         bytes.add(loaded);
       }
     }
-    final jpeg = await compute(
-      _composeLocalStripSheetIsolate,
-      _LocalStripIsolateInput(
-        sources: bytes,
-        filterId: request.filterId,
-        frameId: request.frameId,
-        single: request.single,
-        landscape: request.orientation == PrintOrientation.landscape,
-        overlayPng: request.overlay?.pngBytes,
-        overlaySlots: _flattenOverlaySlots(request.overlay?.slots),
-      ),
+    final jpeg = await _bakeLocalStripSheetJpeg(
+      bytes: bytes,
+      filterId: request.filterId,
+      frameId: request.frameId,
+      single: request.single,
+      landscape: request.orientation == PrintOrientation.landscape,
+      overlay: request.overlay,
     );
     if (jpeg.isEmpty) return null;
     final written = await putGuestJpeg(
@@ -174,6 +171,41 @@ Future<String?> composeLocalStripSheet(LocalStripComposeRequest request) async {
     );
     return null;
   }
+}
+
+Future<Uint8List> _bakeLocalStripSheetJpeg({
+  required List<Uint8List> bytes,
+  required String filterId,
+  required String frameId,
+  required bool single,
+  required bool landscape,
+  LocalStripOverlay? overlay,
+}) async {
+  try {
+    final skia = await composeLocalStripSheetWithSkia(
+      sources: bytes,
+      filterId: filterId,
+      frameId: frameId,
+      single: single,
+      landscape: landscape,
+      overlay: overlay,
+    );
+    if (skia.isNotEmpty) return skia;
+  } catch (_) {
+    // 4GB TVs use Skia; tests / Skia misses still bake in dart-image.
+  }
+  return compute(
+    _composeLocalStripSheetIsolate,
+    _LocalStripIsolateInput(
+      sources: bytes,
+      filterId: filterId,
+      frameId: frameId,
+      single: single,
+      landscape: landscape,
+      overlayPng: overlay?.pngBytes,
+      overlaySlots: _flattenOverlaySlots(overlay?.slots),
+    ),
+  );
 }
 
 Future<Uint8List?> loadLocalStripSourceBytes(
