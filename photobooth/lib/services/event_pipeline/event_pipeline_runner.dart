@@ -6,7 +6,11 @@ import '../../models/event_pipeline/event_frame.dart';
 import '../../models/event_pipeline/event_pipeline_settings.dart';
 import '../../models/event_pipeline/media_item.dart';
 import '../../utils/logger.dart';
+import 'package:cross_file/cross_file.dart';
+
+import '../app_settings_manager.dart';
 import '../event_manager.dart';
+import '../print_service.dart';
 import 'ai_job_worker.dart';
 import 'event_frame_cache.dart';
 import 'event_media_store.dart';
@@ -43,7 +47,7 @@ class EventPipelineRunner {
         _media = mediaStore ?? EventMediaStore(),
         _compositor = compositor ?? PlatformFrameCompositor(),
         _openDb = openDb ?? EventPipelineDb.openDefault,
-        _printFn = printFn;
+        _printFn = printFn ?? defaultPrintFn;
 
   final EventPipelineConfig _config;
   final EventManager _events;
@@ -51,6 +55,36 @@ class EventPipelineRunner {
   final FrameCompositor _compositor;
   final Future<EventPipelineDb?> Function() _openDb;
   final EventPrintFn? _printFn;
+
+  /// How the pipeline actually prints, when nothing else is supplied.
+  ///
+  /// Defaulted rather than required, because a null one silently costs the
+  /// whole print step: [_wire] only builds [PrintJobWorker] when there is a
+  /// function to call, so every job enqueues, sits `PENDING`, and nothing ever
+  /// claims it. Only the old Print station passed one, so the pipeline queued
+  /// prints that could never run.
+  ///
+  /// Deliberately the same call the Print station makes — one way to print,
+  /// not two free to disagree about paper size or copies.
+  static Future<void> defaultPrintFn(
+    XFile imageFile, {
+    required String printSize,
+    int quantity = 1,
+  }) async {
+    final settings = AppSettingsManager();
+    try {
+      await settings.fetchSettings();
+    } catch (_) {
+      // A venue with no link still prints: the cached settings carry the
+      // printer's transport and host.
+    }
+    await PrintService().printImageSilent(
+      imageFile,
+      printSize: printSize,
+      quantity: quantity,
+      settings: settings.settings,
+    );
+  }
   final EventPipelineServiceChannel _service;
 
   static EventPipelineRunner? _instance;
@@ -71,6 +105,11 @@ class EventPipelineRunner {
   AiJobWorker? _ai;
   FrameJobWorker? _frame;
   PrintJobWorker? _print;
+
+  /// The print worker, once wired. Null means print jobs have nothing to claim
+  /// them — the failure this defaulting exists to prevent.
+  @visibleForTesting
+  PrintJobWorker? get printWorker => _print;
   EventMirrorWorker? _mirror;
 
   /// Latest resolved settings. Workers read through this getter rather than

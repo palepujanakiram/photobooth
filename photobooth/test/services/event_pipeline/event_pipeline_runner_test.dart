@@ -268,4 +268,47 @@ void main() {
       expect(await runner.queueItems(['nope']), 0);
     });
   });
+
+  group('print worker wiring', () {
+    test('a runner built with no print function still gets a print worker',
+        () async {
+      // The worker is only built when there is something to print with, so a
+      // null one costs the whole step silently: jobs enqueue, sit PENDING, and
+      // nothing claims them. Only the old Print station ever passed one.
+      final plain = EventPipelineRunner(
+        config: config,
+        mediaStore: EventMediaStore(resolveDirectory: () async => mediaDir),
+        compositor: StubCompositor(),
+        openDb: () async => db,
+      );
+      addTearDown(plain.stop);
+      await config.cacheFlags(
+        const EventPipelineFlags(pipelineEnabled: true, autoPrint: true),
+      );
+
+      expect(await plain.ensureStarted(), isTrue);
+      expect(plain.printWorker, isNotNull);
+    });
+
+    test('an injected print function still wins', () async {
+      var called = 0;
+      final injected = EventPipelineRunner(
+        config: config,
+        mediaStore: EventMediaStore(resolveDirectory: () async => mediaDir),
+        compositor: StubCompositor(),
+        openDb: () async => db,
+        printFn: (file, {required printSize, int quantity = 1}) async {
+          called++;
+        },
+      );
+      addTearDown(injected.stop);
+      await config.cacheFlags(
+        const EventPipelineFlags(pipelineEnabled: true, autoPrint: true),
+      );
+
+      await injected.ensureStarted();
+      expect(injected.printWorker, isNotNull);
+      expect(called, 0, reason: 'wired, not yet used');
+    });
+  });
 }
