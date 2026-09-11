@@ -577,6 +577,12 @@ void main() {
       classicChromeSinglePhotoHole(frameId: 'filmstrip').left,
       kClassicFilmstripRailRatio,
     );
+    // hasOverlay=true with no overlayHole falls back to occasionSinglePhotoHole
+    final fallbackHole = resolveClassicSinglePhotoHole(
+      hasOverlay: true,
+      landscape: false,
+    );
+    expect(fallbackHole, isNotNull);
     expect(
       const StripTemplateSlot(
         left: 0.1,

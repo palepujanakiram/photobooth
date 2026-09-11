@@ -103,6 +103,14 @@ void main() {
     );
   });
 
+  test('AppSettingsModel.fromJson parses autoApproveCashPrint', () {
+    expect(
+      AppSettingsModel.fromJson({'autoApproveCashPrint': true})
+          .autoApproveCashPrint,
+      isTrue,
+    );
+  });
+
   test('AppSettingsModel.fromJson parses offlineCashPins', () {
     final m = AppSettingsModel.fromJson({
       'offlineCashPins': ['1357', '9999', 'nope', 2468],

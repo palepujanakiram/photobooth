@@ -129,7 +129,7 @@ class FotoFlashbackStripPreview extends StatelessWidget {
               child: CachedNetworkImage(
                 imageUrl: composeUrl,
                 fit: BoxFit.contain,
-                filterQuality: FilterQuality.high,
+                filterQuality: kFlashbackLookPreviewFilterQuality,
               ),
             ),
             if (isRefreshingComposePreview) _lookPreviewBusyOverlay(),
@@ -428,41 +428,47 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
         ? BoxFit.contain
         : BoxFit.cover;
     final letterbox = stripPhotoCellLetterboxColor(frameId);
-    final cacheW = flashbackLookPreviewCacheWidth(
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final overlayDecode = flashbackLookOverlayDecodeSize(
       layoutWidth: width,
-      devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+      layoutHeight: height,
+      devicePixelRatio: dpr,
     );
-    final photoStack = Stack(
-      clipBehavior: Clip.hardEdge,
-      children: [
-        for (var i = 0; i < cells.length; i++)
-          Positioned.fromRect(
-            rect: cells[i].rect,
-            child: _lookPreviewSlot(
-              jpegBytes: i < imageJpegBytes.length ? imageJpegBytes[i] : null,
-              dataUrl: i < imageDataUrls.length ? imageDataUrls[i] : '',
-              fit: photoFit,
-              alignment: photoFit == BoxFit.cover
-                  ? _coverSlotAlignment(
-                      width: cells[i].width,
-                      height: cells[i].height,
-                      jpegBytes: i < imageJpegBytes.length
-                          ? imageJpegBytes[i]
-                          : null,
-                      dataUrl: i < imageDataUrls.length
-                          ? imageDataUrls[i]
-                          : '',
-                    )
-                  : Alignment.center,
-              cacheWidth: cacheW,
-              letterbox: letterbox,
+    final photoStack = RepaintBoundary(
+      child: Stack(
+        clipBehavior: Clip.hardEdge,
+        children: [
+          for (var i = 0; i < cells.length; i++)
+            Positioned.fromRect(
+              rect: cells[i].rect,
+              child: _lookPreviewSlot(
+                jpegBytes: i < imageJpegBytes.length ? imageJpegBytes[i] : null,
+                dataUrl: i < imageDataUrls.length ? imageDataUrls[i] : '',
+                fit: photoFit,
+                alignment: photoFit == BoxFit.cover
+                    ? _coverSlotAlignment(
+                        width: cells[i].width,
+                        height: cells[i].height,
+                        jpegBytes: i < imageJpegBytes.length
+                            ? imageJpegBytes[i]
+                            : null,
+                        dataUrl: i < imageDataUrls.length
+                            ? imageDataUrls[i]
+                            : '',
+                      )
+                    : Alignment.center,
+                cacheWidth: flashbackLookPreviewCacheWidth(
+                  layoutWidth: cells[i].width,
+                  devicePixelRatio: dpr,
+                ),
+                letterbox: letterbox,
+              ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
 
     return Container(
-      key: ValueKey<String>('strip_chrome_$frameId'),
       width: width,
       height: height,
       color: hasOverlay ? Colors.white : chrome.fill,
@@ -477,6 +483,7 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
                 ),
           if (!hasOverlay)
             StripChromeOverlay(
+              key: ValueKey<String>('strip_chrome_$frameId'),
               look: chrome,
               width: width,
               height: height,
@@ -484,12 +491,15 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
             ),
           if (hasOverlay)
             Positioned.fill(
+              key: ValueKey<String>('strip_chrome_$frameId'),
               child: IgnorePointer(
                 child: CachedNetworkImage(
                   imageUrl: frameOverlayUrl!.trim(),
                   cacheKey: classicFrameOverlayCacheKey(frameId),
                   fit: BoxFit.fill,
-                  filterQuality: FilterQuality.high,
+                  filterQuality: kFlashbackLookPreviewFilterQuality,
+                  cacheWidth: overlayDecode.cacheWidth,
+                  cacheHeight: overlayDecode.cacheHeight,
                 ),
               ),
             ),
@@ -1009,7 +1019,7 @@ class _LookPreviewPhotoState extends State<_LookPreviewPhoto> {
       width: double.infinity,
       height: double.infinity,
       gaplessPlayback: true,
-      filterQuality: FilterQuality.high,
+      filterQuality: kFlashbackLookPreviewFilterQuality,
       cacheWidth: widget.cacheWidth,
       errorBuilder: (_, __, ___) => const ColoredBox(
         color: Color(0xFF1A1A1A),
@@ -1111,9 +1121,11 @@ class _Single6x4Preview extends StatelessWidget {
   }) {
     final landscapeSheet = boxWidth > boxHeight;
     final hasOverlay = overlay.isNotEmpty;
-    final cacheW = flashbackLookPreviewCacheWidth(
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final overlayDecode = flashbackLookOverlayDecodeSize(
       layoutWidth: boxWidth,
-      devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+      layoutHeight: boxHeight,
+      devicePixelRatio: dpr,
     );
     final hasPhoto = jpegBytes != null || imageDataUrl.trim().isNotEmpty;
     final hole = resolveClassicSinglePhotoHole(
@@ -1124,6 +1136,10 @@ class _Single6x4Preview extends StatelessWidget {
     );
     final wellW = hole.width * boxWidth;
     final wellH = hole.height * boxHeight;
+    final cacheW = flashbackLookPreviewCacheWidth(
+      layoutWidth: wellW,
+      devicePixelRatio: dpr,
+    );
     final containPhoto = stripPhotoCellUsesContainFit(frameId, shotCount: 1);
     final photo = !hasPhoto
         ? _lookPreviewMissingPhoto()
@@ -1164,6 +1180,7 @@ class _Single6x4Preview extends StatelessWidget {
           ),
         if (hasOverlay)
           Positioned.fill(
+            key: ValueKey<String>('strip_chrome_$frameId'),
             child: IgnorePointer(
               child: CachedNetworkImage(
                 imageUrl: overlay,
@@ -1172,7 +1189,9 @@ class _Single6x4Preview extends StatelessWidget {
                   landscape: overlayCacheLandscape,
                 ),
                 fit: BoxFit.fill,
-                filterQuality: FilterQuality.high,
+                filterQuality: kFlashbackLookPreviewFilterQuality,
+                cacheWidth: overlayDecode.cacheWidth,
+                cacheHeight: overlayDecode.cacheHeight,
               ),
             ),
           ),

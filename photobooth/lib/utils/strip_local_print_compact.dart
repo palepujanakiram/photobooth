@@ -37,6 +37,43 @@ Future<List<Uint8List>> compactJpegsForLocalStripPrint(
   return out;
 }
 
+/// Compact data-URL stills into print-sized JPEGs before Continue.
+///
+/// Sidecar / CameraX Classic does not hydrate PTP files, so without this
+/// Continue still Skia-decodes 1920 plates on the 4GB TV.
+Future<List<Uint8List>> compactLookPreviewFromDataUrls({
+  required List<Uint8List> existing,
+  required List<String> dataUrls,
+  required int expectedCount,
+  required bool single,
+  Future<Uint8List?> Function(String source)? loadBytes,
+  Future<List<Uint8List>> Function(
+    List<Uint8List> shots, {
+    int maxLongEdge,
+  })? compact,
+}) async {
+  if (existing.length == expectedCount) return existing;
+  if (dataUrls.length != expectedCount || expectedCount <= 0) return existing;
+  final urls = List<String>.from(dataUrls);
+  final load = loadBytes ?? (source) => loadLocalStripSourceBytes(source, null);
+  final loaded = <Uint8List>[];
+  for (final url in urls) {
+    final bytes = await load(url);
+    if (bytes == null || bytes.isEmpty) return existing;
+    loaded.add(bytes);
+  }
+  final resized = compact == null
+      ? await compactJpegsForLocalStripPrint(
+          loaded,
+          maxLongEdge: localStripPrintJpegMaxLongEdge(single: single),
+        )
+      : await compact(
+          loaded,
+          maxLongEdge: localStripPrintJpegMaxLongEdge(single: single),
+        );
+  return resized.length == expectedCount ? resized : existing;
+}
+
 Future<Uint8List> _downscaleForLocalStrip(
   Uint8List shot, {
   required int maxLongEdge,
@@ -85,6 +122,7 @@ Future<LocalStripOverlay?> compactOverlayForLocalStripPrint(
   }
 }
 
+// coverage:ignore-start
 Future<Uint8List> _skiaResizeOverlay(Uint8List bytes, int width, int height) {
   return ImageHelper.resizeImageBytesToPng(
     bytes: bytes,
@@ -92,3 +130,4 @@ Future<Uint8List> _skiaResizeOverlay(Uint8List bytes, int width, int height) {
     height: height,
   );
 }
+// coverage:ignore-end

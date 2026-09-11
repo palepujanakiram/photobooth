@@ -33,6 +33,27 @@ void main() {
       expect(decoded.height, kLocalStripSheetHeight);
     });
 
+    test('noir dual-strip sheet uses the dark chrome fill', () {
+      final jpeg = composeLocalStripSheetJpegForTest(
+        sourceBytes: [
+          _solidJpeg(220, 20, 20, width: 40, height: 20),
+          _solidJpeg(20, 220, 20),
+          _solidJpeg(20, 20, 220),
+          _solidJpeg(220, 180, 20),
+        ],
+        filterId: 'clean',
+        frameId: 'noir',
+        single: false,
+      );
+      expect(jpeg, isNotEmpty);
+      final decoded = img.decodeJpg(jpeg);
+      expect(decoded, isNotNull);
+      final corner = decoded!.getPixel(0, 0);
+      expect(corner.r, lessThan(40));
+      expect(corner.g, lessThan(40));
+      expect(corner.b, lessThan(40));
+    });
+
     test('three plates fill the same sheet with taller cells', () {
       final sources = <Uint8List>[
         _solidJpeg(220, 20, 20, width: 40, height: 20),
@@ -752,6 +773,25 @@ void main() {
     );
     expect(body.b, greaterThan(150));
     expect(body.g, lessThan(100));
+  });
+
+  group('composeLocalStripSheetFaultTolerantForTest', () {
+    test('returns empty bytes when source bytes are invalid JPEG', () {
+      final result = composeLocalStripSheetFaultTolerantForTest(
+        [Uint8List.fromList([0, 1, 2, 3])],
+        single: true,
+      );
+      expect(result, isEmpty);
+    });
+
+    test('returns composed bytes when source bytes are valid', () {
+      final jpeg = _solidJpeg(20, 220, 20, width: 60, height: 80);
+      final result = composeLocalStripSheetFaultTolerantForTest(
+        [jpeg],
+        single: true,
+      );
+      expect(result, isNotEmpty);
+    });
   });
 }
 

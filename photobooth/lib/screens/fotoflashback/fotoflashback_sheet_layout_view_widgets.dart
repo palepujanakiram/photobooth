@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/strip_models.dart';
+import 'fotoflashback_look_picker_layout.dart';
 
 /// On-screen 4×6 preview for Classic sheet layouts (polaroid / grid / romantic).
 ///
@@ -95,7 +96,6 @@ class _FotoFlashbackSheetLayoutPreviewState
     };
 
     return SizedBox(
-      key: ValueKey<String>('sheet_layout_${widget.layoutId}'),
       width: widget.width,
       height: widget.height,
       child: Stack(
@@ -103,6 +103,7 @@ class _FotoFlashbackSheetLayoutPreviewState
         children: [
           body,
           Positioned(
+            key: ValueKey<String>('sheet_layout_${widget.layoutId}'),
             left: 0,
             right: 0,
             bottom: 0,
@@ -155,6 +156,7 @@ class _SheetCredentialBar extends StatelessWidget {
 Widget _gradedPhoto({
   required Uint8List? bytes,
   required ColorFilter? colorFilter,
+  required int cacheWidth,
   BoxFit fit = BoxFit.cover,
 }) {
   if (bytes == null) return const ColoredBox(color: Colors.black12);
@@ -164,10 +166,18 @@ Widget _gradedPhoto({
     width: double.infinity,
     height: double.infinity,
     gaplessPlayback: true,
-    filterQuality: FilterQuality.high,
+    filterQuality: kFlashbackLookPreviewFilterQuality,
+    cacheWidth: cacheWidth,
   );
   if (colorFilter == null) return image;
   return ColorFiltered(colorFilter: colorFilter, child: image);
+}
+
+int _sheetPhotoCacheWidth(BuildContext context, double layoutWidth) {
+  return flashbackLookPreviewCacheWidth(
+    layoutWidth: layoutWidth,
+    devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+  );
 }
 
 class _PolaroidSheetPreview extends StatelessWidget {
@@ -238,7 +248,11 @@ class _PolaroidCell extends StatelessWidget {
       height: height,
       padding: EdgeInsets.fromLTRB(pad, pad, pad, caption),
       color: const Color(0xFFFFFCF8),
-      child: _gradedPhoto(bytes: bytes, colorFilter: colorFilter),
+      child: _gradedPhoto(
+        bytes: bytes,
+        colorFilter: colorFilter,
+        cacheWidth: _sheetPhotoCacheWidth(context, width),
+      ),
     );
   }
 }
@@ -275,6 +289,7 @@ class _Grid2x2SheetPreview extends StatelessWidget {
             child: _gradedPhoto(
               bytes: images.length > i ? images[i] : null,
               colorFilter: colorFilter,
+              cacheWidth: _sheetPhotoCacheWidth(context, cellW),
               fit: BoxFit.contain,
             ),
           );
@@ -380,6 +395,7 @@ class _RomanticSheetPreview extends StatelessWidget {
             child: _gradedPhoto(
               bytes: images.length > i ? images[i] : null,
               colorFilter: colorFilter,
+              cacheWidth: _sheetPhotoCacheWidth(context, w * slot.width),
               fit: BoxFit.contain,
             ),
           );

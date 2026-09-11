@@ -216,6 +216,59 @@ void main() {
       same(empty),
     );
   });
+
+  test('compactLookPreviewFromDataUrls keeps existing print-sized plates',
+      () async {
+    final existing = [kTinyJpegBytes];
+    final out = await compactLookPreviewFromDataUrls(
+      existing: existing,
+      dataUrls: const ['ignored'],
+      expectedCount: 1,
+      single: true,
+      loadBytes: (_) async => Uint8List(0),
+    );
+    expect(out, existing);
+  });
+
+  test('compactLookPreviewFromDataUrls loads and compacts data URLs', () async {
+    final plate = kTinyJpegBytes;
+    final out = await compactLookPreviewFromDataUrls(
+      existing: const [],
+      dataUrls: const ['a', 'b', 'c'],
+      expectedCount: 3,
+      single: false,
+      loadBytes: (_) async => plate,
+      compact: (shots, {int maxLongEdge = 720}) async {
+        expect(shots, hasLength(3));
+        expect(maxLongEdge, kLocalStripCellJpegMaxLongEdge);
+        return shots;
+      },
+    );
+    expect(out, hasLength(3));
+  });
+
+  test('compactLookPreviewFromDataUrls fails open when a source is empty',
+      () async {
+    final existing = <Uint8List>[];
+    final out = await compactLookPreviewFromDataUrls(
+      existing: existing,
+      dataUrls: const ['a'],
+      expectedCount: 1,
+      single: true,
+      loadBytes: (_) async => Uint8List(0),
+    );
+    expect(out, existing);
+  });
+
+  test('compactLookPreviewFromDataUrls fails open on count mismatch', () async {
+    final out = await compactLookPreviewFromDataUrls(
+      existing: const [],
+      dataUrls: const ['a'],
+      expectedCount: 2,
+      single: true,
+    );
+    expect(out, isEmpty);
+  });
 }
 
 Uint8List _solidPng(int width, int height) {

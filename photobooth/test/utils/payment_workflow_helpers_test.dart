@@ -288,6 +288,18 @@ void main() {
         ),
         isFalse,
       );
+      expect(
+        payScreenShowsStaffPinConfirm(
+          sessionOffline: true,
+          isWeb: false,
+          autoApproveCashPrint: true,
+        ),
+        isFalse,
+      );
+      expect(
+        skipCashStaffApproval(autoApproveCashPrint: true),
+        isTrue,
+      );
     });
   });
 

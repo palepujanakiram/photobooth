@@ -33,6 +33,8 @@ void main() {
     expect(AppStrings.captureStillDisplayFailed, isNotEmpty);
     expect(AppStrings.kioskDeviceDslrSidecar, isNotEmpty);
     expect(AppStrings.kioskDeviceTransportLan, isNotEmpty);
+    expect(AppStrings.androidProcessExitUnhandled, isNotEmpty);
+    expect(AppStrings.kioskHeartbeatFailed, isNotEmpty);
   });
 
   test('interpolated string methods return expected values', () {

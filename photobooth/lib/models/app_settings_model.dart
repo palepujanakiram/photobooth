@@ -75,6 +75,9 @@ class AppSettingsModel {
   /// When true, offline cash checkout records the session paid and prints
   /// without a staff booth PIN (`/api/settings` → `skipOfflineCashPin`).
   final bool? skipOfflineCashPin;
+  /// When true, cash checkout records CASH and prints without waiting for
+  /// staff approval (`/api/settings` → `autoApproveCashPrint`).
+  final bool? autoApproveCashPrint;
   /// Test-only: burn AF brackets into Classic captures (`injectAfMarkers`).
   final bool? injectAfMarkers;
   /// Classic Surprise Me AI teaser (`settings.photoStripConfig.enableSurpriseMeAi`).
@@ -141,6 +144,7 @@ class AppSettingsModel {
     this.enableOsdScrub,
     this.classicPoseCountdownSeconds,
     this.skipOfflineCashPin,
+    this.autoApproveCashPrint,
     this.injectAfMarkers,
     this.enableSurpriseMeAi,
     this.offlineCashPins,
@@ -233,6 +237,9 @@ class AppSettingsModel {
       ),
       skipOfflineCashPin: JsonParseHelpers.boolOrNull(
             json['skipOfflineCashPin'] ?? json['skip_offline_cash_pin'],
+          ),
+      autoApproveCashPrint: JsonParseHelpers.boolOrNull(
+            json['autoApproveCashPrint'] ?? json['auto_approve_cash_print'],
           ),
       injectAfMarkers: JsonParseHelpers.boolOrNull(
             stripMap?['injectAfMarkers'],

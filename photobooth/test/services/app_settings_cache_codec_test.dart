@@ -59,6 +59,7 @@ void main() {
       enableOsdScrub: true,
       classicPoseCountdownSeconds: 7,
       skipOfflineCashPin: true,
+      autoApproveCashPrint: true,
       injectAfMarkers: false,
       enableSurpriseMeAi: true,
       createdAt: DateTime.utc(2026, 8, 23),
@@ -73,6 +74,7 @@ void main() {
     expect(back.enableOsdScrub, isTrue);
     expect(back.classicPoseCountdownSeconds, 7);
     expect(back.skipOfflineCashPin, isTrue);
+    expect(back.autoApproveCashPrint, isTrue);
     expect(back.enableSurpriseMeAi, isTrue);
     expect(back.showApiLogs, isFalse);
     expect(back.id, 's1');

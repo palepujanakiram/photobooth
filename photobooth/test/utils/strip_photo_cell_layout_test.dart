@@ -328,4 +328,24 @@ void main() {
       );
     });
   });
+
+  test('containFitDestination letterboxes a landscape still in a tall window', () {
+    final dest = containFitDestination(
+      sourceWidth: 200,
+      sourceHeight: 100,
+      window: const Rect.fromLTWH(10, 20, 100, 200),
+    );
+    expect(dest.width, 100);
+    expect(dest.height, 50);
+    expect(dest.left, 10);
+    expect(dest.top, 20 + 75);
+  });
+
+  test('containFitDestination returns the window when the source is empty', () {
+    const window = Rect.fromLTWH(0, 0, 40, 40);
+    expect(
+      containFitDestination(sourceWidth: 0, sourceHeight: 10, window: window),
+      window,
+    );
+  });
 }

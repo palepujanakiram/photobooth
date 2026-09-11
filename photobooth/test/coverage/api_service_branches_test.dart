@@ -887,6 +887,25 @@ void main() {
     );
   });
 
+  test('post kiosk heartbeat', () async {
+    expect(
+      () => api.postKioskHeartbeat(kioskCode: ' ', appVersion: '1'),
+      throwsA(isA<ApiException>()),
+    );
+    adapter.onPost(
+      '/api/kiosk/heartbeat',
+      (server) => server.reply(200, {'ok': true}),
+      data: Matchers.any,
+    );
+    await api.postKioskHeartbeat(
+      kioskCode: 'k1',
+      appVersion: '2026.9.9',
+      processExits: [
+        {'timestampMs': 1, 'reason': 'LOW_MEMORY'},
+      ],
+    );
+  });
+
   test('ingest wraps DioException', () async {
     final bad = Dio(BaseOptions(baseUrl: dio.options.baseUrl));
     bad.interceptors.add(
@@ -908,6 +927,10 @@ void main() {
         filename: 'a.jpg',
         bytes: const [1],
       ),
+      throwsA(isA<ApiException>()),
+    );
+    await expectLater(
+      badApi.postKioskHeartbeat(kioskCode: 'K1', appVersion: '1'),
       throwsA(isA<ApiException>()),
     );
   });

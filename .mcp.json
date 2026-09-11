@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "bugsnag": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["/Users/janakiram/.claude/bugsnag-mcp/server.js"],
+      "env": {
+        "BUGSNAG_AUTH_TOKEN": "${BUGSNAG_AUTH_TOKEN}"
+      }
+    }
+  }
+}

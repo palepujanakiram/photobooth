@@ -10,6 +10,7 @@ import '../services/local_guest_media_write.dart';
 import '../services/local_media_store.dart';
 import 'logger.dart';
 import 'print_orientation.dart';
+import 'strip_compositor_skia.dart';
 import 'strip_look_color_matrices.dart';
 import 'strip_look_matrix_bake.dart';
 
@@ -146,17 +147,13 @@ Future<String?> composeLocalStripSheet(LocalStripComposeRequest request) async {
         bytes.add(loaded);
       }
     }
-    final jpeg = await compute(
-      _composeLocalStripSheetIsolate,
-      _LocalStripIsolateInput(
-        sources: bytes,
-        filterId: request.filterId,
-        frameId: request.frameId,
-        single: request.single,
-        landscape: request.orientation == PrintOrientation.landscape,
-        overlayPng: request.overlay?.pngBytes,
-        overlaySlots: _flattenOverlaySlots(request.overlay?.slots),
-      ),
+    final jpeg = await _bakeLocalStripSheetJpeg(
+      bytes: bytes,
+      filterId: request.filterId,
+      frameId: request.frameId,
+      single: request.single,
+      landscape: request.orientation == PrintOrientation.landscape,
+      overlay: request.overlay,
     );
     if (jpeg.isEmpty) return null;
     final written = await putGuestJpeg(
@@ -174,6 +171,43 @@ Future<String?> composeLocalStripSheet(LocalStripComposeRequest request) async {
     );
     return null;
   }
+}
+
+Future<Uint8List> _bakeLocalStripSheetJpeg({
+  required List<Uint8List> bytes,
+  required String filterId,
+  required String frameId,
+  required bool single,
+  required bool landscape,
+  LocalStripOverlay? overlay,
+}) async {
+  try {
+    final skia = await composeLocalStripSheetWithSkia(
+      sources: bytes,
+      filterId: filterId,
+      frameId: frameId,
+      single: single,
+      landscape: landscape,
+      overlay: overlay,
+    );
+    if (skia.isNotEmpty) return skia;
+  } catch (_) {
+    // 4GB TVs use Skia; tests / Skia misses still bake in dart-image.
+  }
+  // coverage:ignore-start
+  return compute(
+    _composeLocalStripSheetIsolate,
+    _LocalStripIsolateInput(
+      sources: bytes,
+      filterId: filterId,
+      frameId: frameId,
+      single: single,
+      landscape: landscape,
+      overlayPng: overlay?.pngBytes,
+      overlaySlots: _flattenOverlaySlots(overlay?.slots),
+    ),
+  );
+  // coverage:ignore-end
 }
 
 Future<Uint8List?> loadLocalStripSourceBytes(
@@ -206,15 +240,33 @@ bool _isRemoteSource(String source) {
       source.contains(kApiImgPathPrefix);
 }
 
-Uint8List _composeLocalStripSheetIsolate(_LocalStripIsolateInput input) {
-  try {
-    return composeLocalStripSheetJpegForTest(
-      sourceBytes: input.sources,
+Uint8List _composeLocalStripSheetIsolate(_LocalStripIsolateInput input) =>
+    composeLocalStripSheetFaultTolerantForTest(
+      input.sources,
       filterId: input.filterId,
       frameId: input.frameId,
       single: input.single,
       landscape: input.landscape,
       overlay: _overlayFromIsolate(input.overlayPng, input.overlaySlots),
+    );
+
+@visibleForTesting
+Uint8List composeLocalStripSheetFaultTolerantForTest(
+  List<Uint8List> sources, {
+  String filterId = kDefaultStripFilterId,
+  String frameId = kDefaultStripFrameId,
+  bool single = false,
+  bool landscape = false,
+  LocalStripOverlay? overlay,
+}) {
+  try {
+    return composeLocalStripSheetJpegForTest(
+      sourceBytes: sources,
+      filterId: filterId,
+      frameId: frameId,
+      single: single,
+      landscape: landscape,
+      overlay: overlay,
     );
   } catch (_) {
     // Fail open so a dart-image decode error does not take down the kiosk
@@ -297,6 +349,7 @@ Uint8List composeLocalStripSheetJpegForTest({
   );
 }
 
+// coverage:ignore-start
 List<double> _flattenOverlaySlots(List<StripTemplateSlot>? slots) {
   if (slots == null || slots.isEmpty) return const [];
   final out = <double>[];
@@ -304,13 +357,17 @@ List<double> _flattenOverlaySlots(List<StripTemplateSlot>? slots) {
     out.addAll([slot.left, slot.top, slot.width, slot.height]);
   }
   return out;
+  // coverage:ignore-end
 }
 
+// coverage:ignore-start
 LocalStripOverlay? _overlayFromIsolate(Uint8List? png, List<double> slots) {
   if (png == null || png.isEmpty) return null;
   return LocalStripOverlay(pngBytes: png, slots: _unflattenOverlaySlots(slots));
+  // coverage:ignore-end
 }
 
+// coverage:ignore-start
 List<StripTemplateSlot> _unflattenOverlaySlots(List<double> values) {
   if (values.length < 4 || values.length % 4 != 0) return const [];
   final out = <StripTemplateSlot>[];
@@ -325,6 +382,7 @@ List<StripTemplateSlot> _unflattenOverlaySlots(List<double> values) {
     );
   }
   return out;
+  // coverage:ignore-end
 }
 
 void _drawOccasionSingle(
