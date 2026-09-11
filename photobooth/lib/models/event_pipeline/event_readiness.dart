@@ -280,6 +280,18 @@ abstract final class EventReadiness {
             'still import and frame, and their prints queue up for when it is.',
       );
     }
+    if (printer.readiness == PrinterReadiness.needsPermission) {
+      return const ReadinessRow(
+        kind: ReadinessKind.printer,
+        label: 'Printer',
+        tone: ReadinessTone.blocked,
+        detail: 'Needs USB permission',
+        explanation: 'The printer is plugged in, but this device has not been '
+            'given permission to use it. Tap Allow below, then Allow again on '
+            "Android's dialog. A reinstall clears that permission, so this is "
+            'expected on a fresh install.',
+      );
+    }
     if (printer.shouldPause) {
       return ReadinessRow(
         kind: ReadinessKind.printer,

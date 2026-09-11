@@ -210,6 +210,21 @@ void main() {
       expect(row.explanation, contains('queue up'));
     });
 
+    test('a printer present but unopened is its own state, not "not connected"',
+        () {
+      // The two need opposite responses: one means find a cable, the other
+      // means tap Allow. Reporting both as absent sends an operator hunting a
+      // hardware fault that is not there.
+      final report = EventReadiness.evaluate(
+        healthy(printer: PrinterConsumables.needsPermission),
+      );
+      final row = rowOf(report, ReadinessKind.printer);
+      expect(row.tone, ReadinessTone.blocked);
+      expect(row.detail, 'Needs USB permission');
+      expect(row.explanation, contains('reinstall'));
+      expect(report.canImport, isTrue, reason: 'cards do not need a printer');
+    });
+
     test('an unread printer is treated as absent rather than assumed ready',
         () {
       final report = EventReadiness.evaluate(healthy(printer: null));

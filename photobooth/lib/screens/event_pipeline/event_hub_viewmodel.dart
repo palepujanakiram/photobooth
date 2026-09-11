@@ -249,6 +249,25 @@ class EventHubViewModel extends ChangeNotifier {
     _freeBytesCache = await _freeBytes();
   }
 
+  /// Asks Android for permission to use the printer, then re-checks.
+  ///
+  /// The only way out of [PrinterReadiness.needsPermission]: the native side
+  /// opens the printer as part of granting, and a status read cannot succeed
+  /// until something has.
+  Future<void> allowPrinter() async {
+    if (_rechecking) return;
+    _rechecking = true;
+    _notify();
+    try {
+      await _printer.requestPermission();
+      _windowOpenedAtMs = _nowMs();
+      await refresh(probeHardware: true);
+    } finally {
+      _rechecking = false;
+      _notify();
+    }
+  }
+
   /// Looks for the camera and printer again, for another window.
   ///
   /// The operator's control for "I have just plugged it in", and the only way

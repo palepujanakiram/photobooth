@@ -103,6 +103,11 @@ class PrintJobWorker extends EventPipelineWorker {
         // No printer yet is a waiting state, not a failure — the reader may be
         // plugged in later, and an offline event should not lose its queue.
         return JobResult.defer(consumables.reason);
+      case PrinterReadiness.needsPermission:
+        // The printer is there but unopened. Waiting rather than failing for
+        // the same reason: an operator tapping Allow on the hub should find
+        // the queue intact and draining, not a wall of failed prints.
+        return JobResult.defer(consumables.reason);
     }
   }
 

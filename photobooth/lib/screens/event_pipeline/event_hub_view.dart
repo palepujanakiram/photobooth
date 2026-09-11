@@ -157,6 +157,11 @@ class _HubBody extends StatelessWidget {
   /// event goes offline, and then every single item defers.
   void _explain(BuildContext context, ReadinessRow row) {
     final isSyncRow = row.kind == ReadinessKind.sync;
+    final vm = context.read<EventHubViewModel>();
+    // A row that can be fixed from here offers the fix, rather than describing
+    // it and leaving the operator to find the control.
+    final needsPrinterPermission = row.kind == ReadinessKind.printer &&
+        row.detail == 'Needs USB permission';
     showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -170,6 +175,14 @@ class _HubBody extends StatelessWidget {
                 vm.resync();
               },
               child: const Text('Sync now'),
+            ),
+          if (needsPrinterPermission)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                vm.allowPrinter();
+              },
+              child: const Text('Allow'),
             ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),

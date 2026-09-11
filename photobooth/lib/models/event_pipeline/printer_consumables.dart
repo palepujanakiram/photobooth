@@ -18,6 +18,15 @@ enum PrinterReadiness {
 
   /// No printer reachable at all.
   offline,
+
+  /// A printer **is** on the USB bus, but the app has not opened it.
+  ///
+  /// Distinct from [offline] because the two need opposite responses: offline
+  /// means go and find a cable, this means tap Allow on a dialog. Reporting it
+  /// as "not connected" sends an operator hunting for a hardware fault that is
+  /// not there — which is exactly what happened after a reinstall, since
+  /// uninstalling revokes the USB permission grant.
+  needsPermission,
 }
 
 /// A decoded DNP status reading.
@@ -48,6 +57,13 @@ class PrinterConsumables {
     code: -2,
     readiness: PrinterReadiness.offline,
     label: 'No printer connected',
+  );
+
+  /// Present on USB, not yet opened by this install.
+  static const PrinterConsumables needsPermission = PrinterConsumables(
+    code: -3,
+    readiness: PrinterReadiness.needsPermission,
+    label: 'Printer found — needs USB permission',
   );
 
   bool get canPrint => readiness == PrinterReadiness.ready;
