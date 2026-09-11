@@ -49,12 +49,14 @@ void main() {
         .setMockMethodCallHandler(channel, null);
   });
 
-  test('a printer on the bus but unopened reports needing permission', () {
+  test('a printer on the bus is opened rather than reported absent', () async {
+    // handleWith keeps the status failing even after opening, which stands in
+    // for a printer that is present but cannot be talked to.
     handleWith(present: true);
-    return reader().read().then((result) {
-      expect(result.readiness, PrinterReadiness.needsPermission);
-      expect(calls.map((c) => c.method), ['getPrinterStatus', 'probeDevice']);
-    });
+    final result = await reader().read();
+    expect(result.readiness, PrinterReadiness.needsPermission);
+    expect(calls.map((c) => c.method),
+        ['getPrinterStatus', 'probeDevice', 'requestPermission', 'getPrinterStatus']);
   });
 
   test('nothing on the bus is genuinely offline', () async {
