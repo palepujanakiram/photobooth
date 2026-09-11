@@ -209,6 +209,12 @@ class CanonCaptureActivity : ComponentActivity() {
         request.cancelText?.let { cancelButton.text = it }
         applyEventChrome()
         if (request.continuous) {
+            // The booth layout hides the cancel button and leaves only a bare
+            // chevron, which is right in front of a guest but not for an
+            // operator who has to find the way out of a screen they will sit in
+            // all evening. Give the exit a label in an operator session.
+            cancelButton.visibility = View.VISIBLE
+
             CaptureShotBus.onMessage = { text ->
                 runOnUiThread { if (isCaptureUiAlive()) setStatus(text) }
             }

@@ -68,6 +68,18 @@ void main() {
     });
   });
 
+  group('the operator can always find the way out', () {
+    test('the operator session labels its exit', () {
+      // The booth layout hides the cancel button and leaves a bare chevron,
+      // which is fine in front of a guest and not fine on a screen an operator
+      // sits in all evening. The label is revealed only for `continuous`.
+      final args =
+          DirectPtpCaptureSource.requestFor(continuous: true).toArguments();
+      expect(args['continuous'], isTrue);
+      expect(args['cancelText'], 'Done');
+    });
+  });
+
   group('event chrome never leaks into a kiosk session', () {
     test('the colours are absent unless the event supplies them', () {
       // A kiosk request never sets these, so applyEventChrome leaves every
