@@ -18,6 +18,8 @@ import '../../services/client_identification.dart';
 import '../../services/customer_session_lifecycle.dart';
 import '../../services/kiosk_manager.dart';
 import '../../services/event_manager.dart';
+import '../../services/event_pipeline/event_pipeline_config.dart';
+import '../../services/event_pipeline/event_pipeline_sync.dart';
 import '../../services/kiosk_device_status_service.dart';
 import '../../services/kiosk_outbox_worker.dart';
 import '../../services/local_kiosk_models.dart';
@@ -446,10 +448,26 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     final eventCode = await _event.getEventCode();
     final role = await _event.getStationRole();
     if (!mounted) return;
+    // Only event devices need this. A guest kiosk has no event code, routes to
+    // Terms regardless, and must not pay for a pipeline lookup on every boot.
+    //
+    // Resolved rather than read from the sync snapshot: at first boot nothing
+    // has called resolve() yet, and defaulting to "off" would send an offline
+    // event's station to needsInternet.
+    //
+    // Checked for any event-bound device, not only one with a role: the hub is
+    // the entry point now and an operator never picks a role, so gating on one
+    // would send a pipeline device to the picker the hub replaces.
+    var pipelineEnabled = false;
+    if (eventCode?.trim().isNotEmpty ?? false) {
+      pipelineEnabled = await _resolvePipelineEnabled(eventCode!);
+      if (!mounted) return;
+    }
     final dest = resolveEventPostSplashRoute(
       eventCode: eventCode,
       stationRole: role,
       wanAvailable: wanAvailable,
+      pipelineEnabled: pipelineEnabled,
     );
     if (dest == EventPostSplashRoute.needsInternet) {
       setState(() {
@@ -464,6 +482,23 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       return;
     }
     Navigator.pushReplacementNamed(context, eventPostSplashRouteName(dest));
+  }
+
+  /// Whether this device runs the local pipeline for the bound event.
+  ///
+  /// Resolved from the cache when there is one — that path is instant and works
+  /// with no link, which is the normal case at a venue. A device that has
+  /// **never** synced this event syncs once here first, because otherwise it can
+  /// never learn what it is: the hub is the only other screen that syncs, and it
+  /// cannot be reached until this returns true. An event that was just bound has
+  /// signal by definition, since the bind itself needed it.
+  Future<bool> _resolvePipelineEnabled(String eventCode) async {
+    final config = EventPipelineConfig();
+    if (!await config.hasSyncedOnce(eventCode)) {
+      await EventPipelineSync(config: config).sync();
+      if (!mounted) return false;
+    }
+    return (await config.resolve()).pipelineEnabled;
   }
 
   /// Bundled slideshow assets load instantly; theme API samples are not used here.

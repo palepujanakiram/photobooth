@@ -859,6 +859,15 @@ abstract final class AppStrings {
       'Guest: pick a look for the photo that is waiting.';
   static const eventStationPrintHint =
       'Printer: claim transformed photos and print.';
+  static const eventQueueTitle = 'Photo queue';
+  static const eventHubTitle = 'Event';
+  static const eventHubImport = 'Import from card';
+  static const eventHubCapture = 'Capture';
+  static const eventHubOpenQueue = 'Open queue';
+  static const eventHubSyncing = 'Syncing…';
+  static const eventStationSdImport = 'SD import';
+  static const eventStationSdImportHint =
+      'Operator: import photos from the photographer\'s card.';
   static const eventStationChangeRole = 'Change station';
   static const eventStationNextGuest = 'Capture next guest';
   static const eventStationWaitingTheme = 'Waiting for a photo to style…';
