@@ -57,6 +57,18 @@ void main() {
       );
     });
 
+    test('web ignores a forced-on pipeline flag', () {
+      expect(
+        resolveEventPostSplashRoute(
+          eventCode: 'GALA',
+          stationRole: null,
+          pipelineEnabled: true,
+          pipelineSupported: eventPipelineSupportedOnPlatform(isWeb: true),
+        ),
+        EventPostSplashRoute.stationPicker,
+      );
+    });
+
     test('the pipeline-off default reproduces the previous behaviour exactly',
         () {
       // Every combination that existed before the flag was added.

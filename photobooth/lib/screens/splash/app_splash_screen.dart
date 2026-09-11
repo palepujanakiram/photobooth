@@ -448,18 +448,21 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     final eventCode = await _event.getEventCode();
     final role = await _event.getStationRole();
     if (!mounted) return;
-    // Only event devices need this. A guest kiosk has no event code, routes to
-    // Terms regardless, and must not pay for a pipeline lookup on every boot.
+    // Only event devices on a pipeline-capable platform need this. A guest
+    // kiosk has no event code, routes to Terms regardless, and must not pay
+    // for a pipeline lookup on every boot. Web has no local pipeline, so a
+    // bound event keeps the station picker rather than opening the hub.
     //
     // Resolved rather than read from the sync snapshot: at first boot nothing
     // has called resolve() yet, and defaulting to "off" would send an offline
     // event's station to needsInternet.
     //
-    // Checked for any event-bound device, not only one with a role: the hub is
-    // the entry point now and an operator never picks a role, so gating on one
-    // would send a pipeline device to the picker the hub replaces.
+    // Checked for any event-bound device, not only one with a role: on Android
+    // the hub is the entry point and an operator never picks a role, so gating
+    // on one would send a pipeline device to the picker the hub replaces.
     var pipelineEnabled = false;
-    if (eventCode?.trim().isNotEmpty ?? false) {
+    final pipelineSupported = eventPipelineSupportedOnPlatform(isWeb: kIsWeb);
+    if (pipelineSupported && (eventCode?.trim().isNotEmpty ?? false)) {
       pipelineEnabled = await _resolvePipelineEnabled(eventCode!);
       if (!mounted) return;
     }
@@ -468,6 +471,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       stationRole: role,
       wanAvailable: wanAvailable,
       pipelineEnabled: pipelineEnabled,
+      pipelineSupported: pipelineSupported,
     );
     if (dest == EventPostSplashRoute.needsInternet) {
       setState(() {

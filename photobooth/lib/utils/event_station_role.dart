@@ -44,24 +44,34 @@ bool stationRequiresWan({
   return !pipelineEnabled;
 }
 
+/// Whether this runtime can run the local event pipeline.
+///
+/// The hub needs SQLite, USB PTP, a printer, and card ingest. Web has none of
+/// those, so a bound event must keep the pre-pipeline splash destinations.
+bool eventPipelineSupportedOnPlatform({bool isWeb = false}) => !isWeb;
+
 /// After splash bind: event stations vs guest terms.
 ///
 /// [pipelineEnabled] defaults to false so the behaviour with the pipeline off is
 /// byte-identical to before it existed — that is the regression guard.
+/// [pipelineSupported] is the platform gate: web must not open the hub even
+/// when a scaffold still forces the flag on.
 EventPostSplashRoute resolveEventPostSplashRoute({
   required String? eventCode,
   required String? stationRole,
   bool wanAvailable = true,
   bool pipelineEnabled = false,
+  bool pipelineSupported = true,
 }) {
   if (eventCode == null || eventCode.trim().isEmpty) {
     return EventPostSplashRoute.terms;
   }
+  final usePipeline = pipelineEnabled && pipelineSupported;
   final role = EventStationRole.tryParse(stationRole);
   if (!wanAvailable &&
       stationRequiresWan(
         stationRole: stationRole,
-        pipelineEnabled: pipelineEnabled,
+        pipelineEnabled: usePipeline,
       )) {
     return EventPostSplashRoute.needsInternet;
   }
@@ -69,7 +79,7 @@ EventPostSplashRoute resolveEventPostSplashRoute({
   // queue on one device, so the question "which role is this" is not the one
   // the operator is asking. The hub answers what they do ask — is everything
   // ready, what is in the queue, what is stuck (spec §1).
-  if (pipelineEnabled) return EventPostSplashRoute.hub;
+  if (usePipeline) return EventPostSplashRoute.hub;
   switch (role) {
     case EventStationRole.capture:
       return EventPostSplashRoute.capture;

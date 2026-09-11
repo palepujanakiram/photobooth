@@ -88,6 +88,30 @@ void main() {
       );
     });
 
+    test('web cannot open the hub even when the pipeline flag is on', () {
+      expect(eventPipelineSupportedOnPlatform(isWeb: true), isFalse);
+      expect(eventPipelineSupportedOnPlatform(), isTrue);
+      expect(
+        resolveEventPostSplashRoute(
+          eventCode: 'GALA',
+          stationRole: null,
+          pipelineEnabled: true,
+          pipelineSupported: false,
+        ),
+        EventPostSplashRoute.stationPicker,
+      );
+      expect(
+        resolveEventPostSplashRoute(
+          eventCode: 'GALA',
+          stationRole: 'capture',
+          wanAvailable: false,
+          pipelineEnabled: true,
+          pipelineSupported: false,
+        ),
+        EventPostSplashRoute.needsInternet,
+      );
+    });
+
     test('the pipeline replaces the picker with the hub', () {
       expect(
         resolveEventPostSplashRoute(
