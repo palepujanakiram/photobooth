@@ -19,6 +19,7 @@ import '../../services/event_pipeline/ingest/ingest_worker.dart';
 import '../../services/event_pipeline/ingest/media_store_ingest_source.dart';
 import '../../services/event_pipeline/ingest/platform_image_downscaler.dart';
 import '../../utils/logger.dart';
+import '../../utils/media_images_permission.dart';
 
 /// Where the station is in the import cycle.
 enum IngestPhase {
@@ -80,10 +81,12 @@ class EventIngestViewModel extends ChangeNotifier {
         _settleWatcher = settleWatcher ?? MediaStoreSettleWatcher(),
         _runner = runner ?? EventPipelineRunner.instance ?? EventPipelineRunner(),
         _openDb = openDb ?? EventPipelineDb.openDefault,
+        // Resolved per OS version rather than hardcoded: READ_MEDIA_IMAGES
+        // does not exist below Android 13, and asking for it there resolves
+        // without showing anything — a Grant access button that ignores taps.
         _requestPermission =
-            requestMediaPermission ?? (() => Permission.photos.request()),
-        _readPermission =
-            readMediaPermission ?? (() => Permission.photos.status);
+            requestMediaPermission ?? requestMediaImagesPermission,
+        _readPermission = readMediaPermission ?? readMediaImagesPermission;
 
   final EventStorageChannel _storage;
   final CardDetectChannel _cardDetect;
