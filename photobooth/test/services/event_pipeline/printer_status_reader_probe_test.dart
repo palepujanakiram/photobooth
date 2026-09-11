@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/models/event_pipeline/printer_consumables.dart';
+import 'package:photobooth/services/dnp/dnp_usb_client.dart';
 import 'package:photobooth/services/event_pipeline/printer_status_reader.dart';
 
 void main() {
@@ -36,6 +37,13 @@ void main() {
     channel = const MethodChannel('com.srisarani.fotozenai/dnp_usb');
   });
 
+  /// Presence and connect go through the kiosk's own [DnpUsbClient], which
+  /// short-circuits off Android — so the test has to say it is on one.
+  PrinterStatusReader reader() => PrinterStatusReader(
+        channel: channel,
+        usbClient: DnpUsbClient(channel: channel, isAndroid: () => true),
+      );
+
   tearDown(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
@@ -43,7 +51,7 @@ void main() {
 
   test('a printer on the bus but unopened reports needing permission', () {
     handleWith(present: true);
-    return PrinterStatusReader(channel: channel).read().then((result) {
+    return reader().read().then((result) {
       expect(result.readiness, PrinterReadiness.needsPermission);
       expect(calls.map((c) => c.method), ['getPrinterStatus', 'probeDevice']);
     });
@@ -51,13 +59,13 @@ void main() {
 
   test('nothing on the bus is genuinely offline', () async {
     handleWith(present: false);
-    final result = await PrinterStatusReader(channel: channel).read();
+    final result = await reader().read();
     expect(result.readiness, PrinterReadiness.offline);
   });
 
   test('an open printer is read normally, with no probe needed', () async {
     handleWith(present: true, statusWorks: true);
-    final result = await PrinterStatusReader(channel: channel).read();
+    final result = await reader().read();
     expect(result.readiness, PrinterReadiness.ready);
     expect(calls.map((c) => c.method), ['getPrinterStatus'],
         reason: 'the probe is only the tie-breaker for NO_PRINTER');
@@ -71,13 +79,13 @@ void main() {
       }
       throw PlatformException(code: 'BOOM');
     });
-    final result = await PrinterStatusReader(channel: channel).read();
+    final result = await reader().read();
     expect(result.readiness, PrinterReadiness.offline);
   });
 
   test('requesting permission is what opens the printer', () async {
     handleWith(present: true);
-    expect(await PrinterStatusReader(channel: channel).requestPermission(),
+    expect(await reader().requestPermission(),
         isTrue);
     expect(calls.single.method, 'requestPermission');
   });
@@ -87,7 +95,22 @@ void main() {
         .setMockMethodCallHandler(channel, (call) async {
       throw PlatformException(code: 'DENIED', message: 'user said no');
     });
-    expect(await PrinterStatusReader(channel: channel).requestPermission(),
+    expect(await reader().requestPermission(),
         isFalse);
+  });
+
+  test('off Android nothing is probed and the printer reads offline', () async {
+    // The kiosk client short-circuits on web and desktop, which is why
+    // presence belongs to it rather than to a second implementation here.
+    handleWith(present: true);
+    final result = await PrinterStatusReader(
+      channel: channel,
+      usbClient: DnpUsbClient(channel: channel, isAndroid: () => false),
+    ).read();
+
+    expect(result.readiness, PrinterReadiness.offline);
+    // The status read still happens — it is the presence probe that is
+    // pointless off Android, and skipping it is what makes this offline.
+    expect(calls.map((c) => c.method), ['getPrinterStatus']);
   });
 }

@@ -39,6 +39,18 @@ class DnpUsbClient {
     await _channel.invokeMethod<void>('requestPermission');
   }
 
+  /// Raw DNP status map, or null when the platform cannot answer.
+  ///
+  /// Needs an **open** connection — the native side reports `NO_PRINTER` until
+  /// [ensureConnected] has run, even with the printer sitting on the bus. The
+  /// caller decides what that means; see `PrinterStatusReader`.
+  /// Deliberately unguarded, unlike [probeDevicePresent]. Off Android the
+  /// channel throws `MissingPluginException`, and the caller distinguishes
+  /// that from a real `NO_PRINTER` — swallowing it here would turn "cannot
+  /// ask" into "no printer", which are not the same answer.
+  Future<Map<Object?, Object?>?> getPrinterStatus() =>
+      _channel.invokeMapMethod<Object?, Object?>('getPrinterStatus');
+
   /// Releases the native USB claim (no-op when not connected / non-Android).
   Future<void> disconnect() async {
     if (kIsWeb || !_isAndroid()) return;
