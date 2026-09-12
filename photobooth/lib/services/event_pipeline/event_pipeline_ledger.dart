@@ -132,6 +132,34 @@ class EventPipelineLedger {
     return MediaItem.fromRow(rows.first);
   }
 
+  /// Rows changed after [sinceMs], for a sync push. Capped so a first align
+  /// after a long offline stretch cannot POST an entire weekend in one body.
+  Future<List<MediaItem>> listUpdatedSince(int sinceMs, {String? eventId}) async {
+    final scope = _eventScope(eventId);
+    final rows = await _db.query(
+      'evp_media_items',
+      where: 'updated_at_ms > ?${scope.clause}',
+      whereArgs: <Object?>[sinceMs, ...scope.args],
+      orderBy: 'updated_at_ms ASC',
+      limit: 500,
+    );
+    return [for (final r in rows) MediaItem.fromRow(r)];
+  }
+
+  /// Applies a row from ZenAI when it is newer than what this device holds.
+  Future<void> upsertFromRemote(MediaItem incoming) async {
+    if (incoming.id.trim().isEmpty) return;
+    final existing = await findById(incoming.id);
+    if (existing != null && existing.updatedAtMs > incoming.updatedAtMs) {
+      return;
+    }
+    await _db.insert(
+      'evp_media_items',
+      incoming.toRow(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
   Future<List<MediaItem>> listByStage(
     String stage, {
     int? limit,

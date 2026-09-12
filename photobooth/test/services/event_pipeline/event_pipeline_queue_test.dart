@@ -253,4 +253,40 @@ void main() {
     expect(counts.open, 1);
     expect(counts.total, 3);
   });
+
+  test('upsertFromRemote keeps the newer job', () async {
+    final job = await queue.enqueue(kind: 'print', mediaId: 'm1');
+    await queue.upsertFromRemote(PipelineJob(
+      id: job.id,
+      kind: job.kind,
+      mediaId: job.mediaId,
+      status: PipelineJobStatus.done,
+      createdAtMs: job.createdAtMs,
+      updatedAtMs: 0,
+    ));
+    expect((await queue.findById(job.id))!.status, isNot(PipelineJobStatus.done));
+
+    await queue.upsertFromRemote(PipelineJob(
+      id: job.id,
+      kind: job.kind,
+      mediaId: job.mediaId,
+      status: PipelineJobStatus.done,
+      createdAtMs: job.createdAtMs,
+      updatedAtMs: 99999,
+    ));
+    expect((await queue.findById(job.id))!.status, PipelineJobStatus.done);
+    expect(await queue.listUpdatedSince(0), isNotEmpty);
+  });
+
+  test('upsertFromRemote ignores a blank id', () async {
+    await queue.upsertFromRemote(const PipelineJob(
+      id: '',
+      kind: 'print',
+      mediaId: 'm1',
+      status: PipelineJobStatus.pending,
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    ));
+    expect(await queue.findById(''), isNull);
+  });
 }

@@ -335,4 +335,55 @@ void main() {
       expect(await ledger.findById('nope'), isNull);
     });
   });
+
+  group('shared ledger align', () {
+    test('listUpdatedSince returns only newer rows', () async {
+      final first = await insert();
+      clock = 50;
+      await ledger.markSelected(first.item.id, const ['print']);
+      final changed = await ledger.listUpdatedSince(0);
+      expect(changed, isNotEmpty);
+      expect(await ledger.listUpdatedSince(1000), isEmpty);
+    });
+
+    test('upsertFromRemote keeps the newer copy', () async {
+      final local = await insert();
+      final older = MediaItem(
+        id: local.item.id,
+        source: local.item.source,
+        sourceRef: local.item.sourceRef,
+        contentKey: local.item.contentKey,
+        stage: MediaStage.done,
+        createdAtMs: local.item.createdAtMs,
+        updatedAtMs: 0,
+      );
+      await ledger.upsertFromRemote(older);
+      expect((await ledger.findById(local.item.id))!.stage, isNot(MediaStage.done));
+
+      final newer = MediaItem(
+        id: local.item.id,
+        source: local.item.source,
+        sourceRef: local.item.sourceRef,
+        contentKey: local.item.contentKey,
+        stage: MediaStage.done,
+        createdAtMs: local.item.createdAtMs,
+        updatedAtMs: 9999,
+      );
+      await ledger.upsertFromRemote(newer);
+      expect((await ledger.findById(local.item.id))!.stage, MediaStage.done);
+    });
+
+    test('upsertFromRemote ignores a blank id', () async {
+      await ledger.upsertFromRemote(const MediaItem(
+        id: '  ',
+        source: MediaSource.ptp,
+        sourceRef: 'x',
+        contentKey: 'y',
+        stage: MediaStage.ingested,
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      ));
+      expect(await ledger.findById('  '), isNull);
+    });
+  });
 }

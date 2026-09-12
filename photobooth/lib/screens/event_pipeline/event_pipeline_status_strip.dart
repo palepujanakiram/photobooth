@@ -6,10 +6,10 @@ import '../../services/event_pipeline/event_pipeline_config.dart';
 import '../../services/event_pipeline/event_pipeline_stats.dart';
 import '../../views/widgets/app_colors.dart';
 
-/// Local pipeline counts, shown on every station.
+/// Pipeline counts, shown on every station.
 ///
-/// Reads only `evp_*`, so it renders identically online and offline — the number
-/// an operator trusts mid-event must not depend on a link that may be down.
+/// The event box reads the local replica so the strip still moves offline.
+/// Runtimes without SQLite (web) fall back to the shared ZenAI ledger.
 ///
 /// Renders nothing when the pipeline holds no items, so a station running the
 /// server-brokered flow is visually unchanged.

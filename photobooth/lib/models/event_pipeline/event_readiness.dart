@@ -65,6 +65,8 @@ class EventReadinessInput {
     this.online = true,
     this.queuePaused = false,
     this.inFlight = 0,
+    this.importCapable = true,
+    this.captureCapable = true,
   });
 
   final EventPipelineSettings settings;
@@ -96,6 +98,12 @@ class EventReadinessInput {
 
   /// How many photos are mid-chain right now.
   final int inFlight;
+
+  /// Card/gallery ingest exists on this runtime (Android box).
+  final bool importCapable;
+
+  /// PTP/live capture exists on this runtime (Android box).
+  final bool captureCapable;
 }
 
 /// The whole readiness block plus the gates it drives.
@@ -147,6 +155,10 @@ abstract final class EventReadiness {
   static const int blockedStorageBytes = 1024 * 1024 * 1024;
 
   static const String waitingForSettings = 'Waiting for event settings';
+  static const String importNotOnThisDevice =
+      'Import runs on the event box';
+  static const String captureNotOnThisDevice =
+      'Capture runs on the event box';
 
   static EventReadinessReport evaluate(EventReadinessInput input) {
     final rows = <ReadinessRow>[
@@ -175,13 +187,37 @@ abstract final class EventReadiness {
       blocked = 'Not enough free space';
     }
 
+    final importBlocked = _importBlocked(input, blocked);
+    final captureBlocked = _captureBlocked(
+      input,
+      blocked,
+      cameraReady: cameraReady,
+    );
+
     return EventReadinessReport(
       rows: rows,
-      canImport: blocked == null,
-      canCapture: blocked == null && cameraReady,
-      importBlockedReason: blocked,
-      captureBlockedReason: blocked ?? (cameraReady ? null : 'No camera connected'),
+      canImport: importBlocked == null,
+      canCapture: captureBlocked == null,
+      importBlockedReason: importBlocked,
+      captureBlockedReason: captureBlocked,
     );
+  }
+
+  static String? _importBlocked(EventReadinessInput input, String? blocked) {
+    if (blocked != null) return blocked;
+    if (!input.importCapable) return importNotOnThisDevice;
+    return null;
+  }
+
+  static String? _captureBlocked(
+    EventReadinessInput input,
+    String? blocked, {
+    required bool cameraReady,
+  }) {
+    if (blocked != null) return blocked;
+    if (!input.captureCapable) return captureNotOnThisDevice;
+    if (!cameraReady) return 'No camera connected';
+    return null;
   }
 
   static bool _isStorageBlocked(int? freeBytes) =>

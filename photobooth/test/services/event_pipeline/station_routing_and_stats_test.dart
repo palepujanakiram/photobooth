@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/models/event_pipeline/media_item.dart';
+import 'package:photobooth/services/event_manager.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_db.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_ledger.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_queue.dart';
@@ -88,17 +89,16 @@ void main() {
       );
     });
 
-    test('web cannot open the hub even when the pipeline flag is on', () {
-      expect(eventPipelineSupportedOnPlatform(isWeb: true), isFalse);
+    test('web opens the hub when the pipeline flag is on', () {
+      expect(eventPipelineSupportedOnPlatform(isWeb: true), isTrue);
       expect(eventPipelineSupportedOnPlatform(), isTrue);
       expect(
         resolveEventPostSplashRoute(
           eventCode: 'GALA',
           stationRole: null,
           pipelineEnabled: true,
-          pipelineSupported: false,
         ),
-        EventPostSplashRoute.stationPicker,
+        EventPostSplashRoute.hub,
       );
       expect(
         resolveEventPostSplashRoute(
@@ -257,6 +257,7 @@ void main() {
 
     setUp(() async {
       SharedPreferences.setMockInitialValues({});
+      EventManager.resetCacheForTests();
       // The reader shares one handle process-wide, so it must be reset between
       // tests or a previous test's database leaks into this one.
       EventPipelineStatsReader.resetSharedForTests();
@@ -305,6 +306,16 @@ void main() {
     test('no database renders an empty strip rather than throwing', () async {
       final stats = await EventPipelineStatsReader(openDb: () async => null).read();
       expect(stats.isEmpty, isTrue);
+    });
+
+    test('no database uses the remote fallback when one is provided', () async {
+      const remote = EventPipelineStats(imported: 7, done: 2);
+      final stats = await EventPipelineStatsReader(
+        openDb: () async => null,
+        fallbackRead: () async => remote,
+      ).read();
+      expect(stats.imported, 7);
+      expect(stats.done, 2);
     });
   });
 }

@@ -18,16 +18,17 @@ import '../../services/event_pipeline/event_pipeline_stats.dart';
 import '../../services/event_pipeline/event_pipeline_sync.dart';
 import '../../services/event_pipeline/ingest/event_storage_channel.dart';
 import '../../services/event_pipeline/printer_status_reader.dart';
+import '../../utils/event_pipeline_capabilities.dart';
 import '../../utils/logger.dart';
 
 /// The hub: readiness, counts, and three ways out.
 ///
-/// The screen an operator can leave open all night, so everything it shows is
-/// read from the local ledger and platform channels rather than the network.
-/// The one network call — the event sync — is deliberately **not** awaited
-/// before the screen paints: a slow venue link would otherwise leave the
-/// operator on a spinner with nothing to look at, and a failed fetch needs a
-/// screen to report itself on anyway (spec §3A).
+/// The screen an operator can leave open all night.
+///
+/// On the event box the numbers come from the local replica, so they still
+/// move when the venue link is down. On web they come from the shared ZenAI
+/// ledger. The one network call that is not the ledger — the event settings
+/// sync — is deliberately **not** awaited before the screen paints.
 class EventHubViewModel extends ChangeNotifier {
   EventHubViewModel({
     EventPipelineRunner? runner,
@@ -205,6 +206,7 @@ class EventHubViewModel extends ChangeNotifier {
     );
     final counters = await _stats.read();
     await _refreshHardware(settings, force: probeHardware);
+    final caps = EventPipelineCapabilities.ofPlatform();
     final readiness = EventReadiness.evaluate(EventReadinessInput(
       settings: settings,
       hasSyncedOnce: _syncStatus.hasSyncedOnce,
@@ -217,6 +219,8 @@ class EventHubViewModel extends ChangeNotifier {
       freeBytes: _freeBytesCache,
       queuePaused: counters.queuePaused,
       inFlight: counters.inFlight,
+      importCapable: caps.canImport,
+      captureCapable: caps.canCapture,
       // The last sync reaching ZenAI is the honest signal for whether AI jobs
       // will run: a link that carried the config is a link that carries a
       // generation, and there is no separate reachability check to pay for.

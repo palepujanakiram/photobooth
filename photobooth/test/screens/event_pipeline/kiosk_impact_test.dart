@@ -57,7 +57,7 @@ void main() {
       );
     });
 
-    test('web ignores a forced-on pipeline flag', () {
+    test('web uses the hub when the pipeline flag is on', () {
       expect(
         resolveEventPostSplashRoute(
           eventCode: 'GALA',
@@ -65,7 +65,7 @@ void main() {
           pipelineEnabled: true,
           pipelineSupported: eventPipelineSupportedOnPlatform(isWeb: true),
         ),
-        EventPostSplashRoute.stationPicker,
+        EventPostSplashRoute.hub,
       );
     });
 

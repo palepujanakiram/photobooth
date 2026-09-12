@@ -345,6 +345,35 @@ class EventPipelineQueue {
     return PipelineJob.fromRow(rows.first);
   }
 
+  Future<List<PipelineJob>> listUpdatedSince(int sinceMs, {String? eventId}) async {
+    final id = eventId?.trim() ?? '';
+    final where = id.isEmpty
+        ? 'updated_at_ms > ?'
+        : 'updated_at_ms > ? AND event_id = ?';
+    final args = id.isEmpty ? <Object?>[sinceMs] : <Object?>[sinceMs, id];
+    final rows = await _db.query(
+      'evp_pipeline_jobs',
+      where: where,
+      whereArgs: args,
+      orderBy: 'updated_at_ms ASC',
+      limit: 500,
+    );
+    return [for (final r in rows) PipelineJob.fromRow(r)];
+  }
+
+  Future<void> upsertFromRemote(PipelineJob incoming) async {
+    if (incoming.id.trim().isEmpty) return;
+    final existing = await findById(incoming.id);
+    if (existing != null && existing.updatedAtMs > incoming.updatedAtMs) {
+      return;
+    }
+    await _db.insert(
+      'evp_pipeline_jobs',
+      incoming.toRow(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
   Future<PipelineJob?> findFor({
     required String kind,
     required String mediaId,

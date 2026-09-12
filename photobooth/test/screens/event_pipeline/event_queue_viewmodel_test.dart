@@ -890,4 +890,69 @@ void main() {
       expect(MediaSource.labelFor('telepathy'), 'telepathy');
     });
   });
+
+  group('QueueFilter.apply', () {
+    const queued = MediaItem(
+      id: 'a',
+      source: MediaSource.ptp,
+      sourceRef: 'r1',
+      contentKey: 'k1',
+      stage: MediaStage.queued,
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    );
+    const ai = MediaItem(
+      id: 'b',
+      source: MediaSource.sdCard,
+      sourceRef: 'r2',
+      contentKey: 'k2',
+      stage: MediaStage.ai,
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    );
+
+    test('working keeps in-flight stages', () {
+      expect(
+        QueueFilter.apply(const [queued, ai], filter: QueueFilter.working)
+            .map((i) => i.id),
+        ['b'],
+      );
+    });
+
+    test('all keeps every item', () {
+      expect(
+        QueueFilter.apply(const [queued, ai], filter: QueueFilter.all),
+        hasLength(2),
+      );
+    });
+
+    test('a missing source match is empty', () {
+      expect(
+        QueueFilter.apply(
+          const [queued],
+          filter: QueueFilter.all,
+          source: MediaSource.sdCard,
+        ),
+        isEmpty,
+      );
+    });
+
+    test('a stage filter and a source filter compose', () {
+      expect(
+        QueueFilter.apply(
+          const [queued, ai],
+          filter: MediaStage.queued,
+          source: MediaSource.ptp,
+        ).single.id,
+        'a',
+      );
+    });
+
+    test('source counts group origins', () {
+      expect(
+        QueueFilter.sourceCounts(const [queued, ai]),
+        {MediaSource.ptp: 1, MediaSource.sdCard: 1},
+      );
+    });
+  });
 }

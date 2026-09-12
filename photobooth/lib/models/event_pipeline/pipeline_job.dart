@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../../utils/json_parse_helpers.dart';
+
 /// Job lifecycle. `PAUSED` and `CANCELLED` both stop work without consuming
 /// attempts, but mean different things: paused is a temporary hold the queue
 /// itself applies, cancelled is an operator decision that will not be resumed.
@@ -85,6 +87,58 @@ class PipelineJob {
         'started_at_ms': startedAtMs,
         'updated_at_ms': updatedAtMs,
       };
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'id': id,
+        'kind': kind,
+        'mediaId': mediaId,
+        'eventId': eventId,
+        'payload': payload,
+        'status': status,
+        'attempts': attempts,
+        'nextAttemptAtMs': nextAttemptAtMs,
+        'lastError': lastError,
+        'createdAtMs': createdAtMs,
+        'startedAtMs': startedAtMs,
+        'updatedAtMs': updatedAtMs,
+      };
+
+  factory PipelineJob.fromJson(Map<String, dynamic> json) {
+    return PipelineJob(
+      id: JsonParseHelpers.stringValue(json['id']),
+      kind: JsonParseHelpers.stringValue(json['kind']),
+      mediaId: JsonParseHelpers.stringValue(json['mediaId'] ?? json['media_id']),
+      eventId: JsonParseHelpers.stringOrNull(json['eventId'] ?? json['event_id']),
+      payload: _decodePayloadMap(json['payload'] ?? json['payload_json']),
+      status: JsonParseHelpers.stringValue(
+        json['status'],
+        fallback: PipelineJobStatus.pending,
+      ),
+      attempts: JsonParseHelpers.intOrNull(json['attempts']) ?? 0,
+      nextAttemptAtMs: JsonParseHelpers.intOrNull(
+            json['nextAttemptAtMs'] ?? json['next_attempt_at_ms'],
+          ) ??
+          0,
+      lastError: JsonParseHelpers.stringOrNull(json['lastError'] ?? json['last_error']),
+      createdAtMs: JsonParseHelpers.intOrNull(
+            json['createdAtMs'] ?? json['created_at_ms'],
+          ) ??
+          0,
+      startedAtMs: JsonParseHelpers.intOrNull(
+        json['startedAtMs'] ?? json['started_at_ms'],
+      ),
+      updatedAtMs: JsonParseHelpers.intOrNull(
+            json['updatedAtMs'] ?? json['updated_at_ms'],
+          ) ??
+          0,
+    );
+  }
+
+  static Map<String, dynamic> _decodePayloadMap(Object? raw) {
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    if (raw is String) return _decodePayload(raw);
+    return const <String, dynamic>{};
+  }
 
   factory PipelineJob.fromRow(Map<String, Object?> row) {
     return PipelineJob(

@@ -15,6 +15,7 @@ import 'ai_job_worker.dart';
 import 'event_frame_cache.dart';
 import 'event_media_store.dart';
 import 'event_mirror_worker.dart';
+import 'event_pipeline_aligner.dart';
 import 'event_pipeline_config.dart';
 import 'event_pipeline_db.dart';
 import 'event_pipeline_ledger.dart';
@@ -111,6 +112,8 @@ class EventPipelineRunner {
   @visibleForTesting
   PrintJobWorker? get printWorker => _print;
   EventMirrorWorker? _mirror;
+  EventPipelineAligner? _aligner;
+  Timer? _alignTimer;
 
   /// Latest resolved settings. Workers read through this getter rather than
   /// capturing a snapshot, so a settings change reaches the *next* job without
@@ -241,6 +244,7 @@ class EventPipelineRunner {
       mediaStore: _media,
       enabled: () => _settings.mirrorEnabled,
     );
+    _aligner ??= EventPipelineAligner(ledger: ledger, queue: queue);
   }
 
   /// Raises or drops the foreground service to match what is outstanding.
@@ -269,6 +273,10 @@ class EventPipelineRunner {
     _print?.start(interval: const Duration(seconds: 3));
     _ai?.start(interval: const Duration(seconds: 15));
     _mirror?.start(interval: const Duration(seconds: 20));
+    _alignTimer ??= Timer.periodic(const Duration(minutes: 1), (_) {
+      unawaited(_aligner?.align());
+    });
+    unawaited(_aligner?.align());
   }
 
   void stop() {
@@ -277,6 +285,8 @@ class EventPipelineRunner {
     _frame?.stop();
     _print?.stop();
     _mirror?.stop();
+    _alignTimer?.cancel();
+    _alignTimer = null;
     _running = false;
     if (identical(_instance, this)) _instance = null;
   }

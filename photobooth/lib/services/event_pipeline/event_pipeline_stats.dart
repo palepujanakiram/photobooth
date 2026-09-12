@@ -1,17 +1,17 @@
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../models/event_pipeline/media_item.dart';
+import '../../utils/json_parse_helpers.dart';
 import '../event_manager.dart';
+import 'event_pipeline_align_api.dart';
 import 'event_pipeline_db.dart';
 import 'event_pipeline_ledger.dart';
 import 'event_pipeline_queue.dart';
 
-/// Counts across the whole local pipeline, for the status strip every station
-/// carries.
+/// Counts across the event processor, for the status strip every station carries.
 ///
-/// Read from `evp_*` only — no network, so it renders identically online and
-/// offline. That is deliberate: the number an operator trusts mid-event must not
-/// depend on a link that may be down.
+/// Local replica first. When this runtime has no SQLite (web), [fallbackRead]
+/// is the shared ZenAI ledger. Offline boxes never wait on that path.
 class EventPipelineStats {
   const EventPipelineStats({
     this.imported = 0,
@@ -46,6 +46,34 @@ class EventPipelineStats {
   int get inFlight => queued + ai + framing + printing;
   int get total => imported + inFlight + done + failed;
   bool get isEmpty => total == 0;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'imported': imported,
+        'queued': queued,
+        'ai': ai,
+        'framing': framing,
+        'printing': printing,
+        'done': done,
+        'failed': failed,
+        'printPaused': printPaused,
+        'queuePaused': queuePaused,
+      };
+
+  factory EventPipelineStats.fromJson(Map<String, dynamic> json) {
+    int n(String camel, String snake) =>
+        JsonParseHelpers.intOrNull(json[camel] ?? json[snake]) ?? 0;
+    return EventPipelineStats(
+      imported: n('imported', 'imported'),
+      queued: n('queued', 'queued'),
+      ai: n('ai', 'ai'),
+      framing: n('framing', 'framing'),
+      printing: n('printing', 'printing'),
+      done: n('done', 'done'),
+      failed: n('failed', 'failed'),
+      printPaused: json['printPaused'] == true || json['print_paused'] == true,
+      queuePaused: json['queuePaused'] == true || json['queue_paused'] == true,
+    );
+  }
 
   /// One line, e.g. `Imported 1,511 · Queued 412 · AI 38 · Done 1,045`.
   ///
@@ -103,11 +131,17 @@ class EventPipelineStatsReader {
   EventPipelineStatsReader({
     Future<EventPipelineDb?> Function()? openDb,
     EventManager? events,
+    Future<EventPipelineStats> Function()? fallbackRead,
+    EventPipelineAlignApi? alignApi,
   })  : _openDb = openDb ?? EventPipelineDb.openDefault,
-        _events = events ?? EventManager();
+        _events = events ?? EventManager(),
+        _fallbackRead = fallbackRead,
+        _alignApi = alignApi;
 
   final Future<EventPipelineDb?> Function() _openDb;
   final EventManager _events;
+  final Future<EventPipelineStats> Function()? _fallbackRead;
+  EventPipelineAlignApi? _alignApi;
 
   static EventPipelineDb? _shared;
   static Future<EventPipelineDb?>? _opening;
@@ -136,9 +170,10 @@ class EventPipelineStatsReader {
   /// total at a wedding silently includes last weekend's party (spec §9B).
   Future<EventPipelineStats> read({String? eventId}) async {
     final db = await _database();
-    // No database means no pipeline data, which is an empty strip rather than an
-    // error — a station must still render when storage is unavailable.
-    if (db == null) return const EventPipelineStats();
+    // No database means no local replica — web uses the shared ledger instead.
+    if (db == null) {
+      return _readFallback();
+    }
     final scope = eventId ?? await _events.getEventId();
     final queue = EventPipelineQueue(db: db);
     final stages = await EventPipelineLedger(db: db).stageCounts(
@@ -149,5 +184,12 @@ class EventPipelineStatsReader {
       printPaused: await queue.isKindPaused('print'),
       queuePaused: await queue.isPaused(),
     );
+  }
+
+  Future<EventPipelineStats> _readFallback() async {
+    final custom = _fallbackRead;
+    if (custom != null) return custom();
+    final api = _alignApi ??= EventPipelineAlignApi();
+    return await api.readStats() ?? const EventPipelineStats();
   }
 }

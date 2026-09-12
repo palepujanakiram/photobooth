@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../../utils/json_parse_helpers.dart';
 import 'event_pipeline_settings.dart';
 
 /// Where an image entered the pipeline. Persisted in `evp_media_items.source`
@@ -221,6 +222,78 @@ class MediaItem {
         'created_at_ms': createdAtMs,
         'updated_at_ms': updatedAtMs,
       };
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'id': id,
+        'eventId': eventId,
+        'source': source,
+        'sourceRef': sourceRef,
+        'contentKey': contentKey,
+        'originalFilename': originalFilename,
+        'capturedAtMs': capturedAtMs,
+        'originalBytes': originalBytes,
+        'stage': stage,
+        'remoteSessionId': remoteSessionId,
+        'remotePhotoId': remotePhotoId,
+        'steps': steps,
+        'stepIndex': stepIndex,
+        'selectedAtMs': selectedAtMs,
+        'aiSkipped': aiSkipped,
+        'lastError': lastError,
+        'createdAtMs': createdAtMs,
+        'updatedAtMs': updatedAtMs,
+      };
+
+  factory MediaItem.fromJson(Map<String, dynamic> json) {
+    final stepsRaw = json['steps'] ?? json['steps_json'];
+    return MediaItem(
+      id: JsonParseHelpers.stringValue(json['id']),
+      eventId: JsonParseHelpers.stringOrNull(json['eventId'] ?? json['event_id']),
+      source: JsonParseHelpers.stringValue(json['source']),
+      sourceRef: JsonParseHelpers.stringValue(
+        json['sourceRef'] ?? json['source_ref'],
+      ),
+      contentKey: JsonParseHelpers.stringValue(
+        json['contentKey'] ?? json['content_key'],
+      ),
+      originalFilename: JsonParseHelpers.stringOrNull(
+        json['originalFilename'] ?? json['original_filename'],
+      ),
+      capturedAtMs: JsonParseHelpers.intOrNull(
+        json['capturedAtMs'] ?? json['captured_at_ms'],
+      ),
+      originalBytes: JsonParseHelpers.intOrNull(
+        json['originalBytes'] ?? json['original_bytes'],
+      ),
+      stage: JsonParseHelpers.stringValue(
+        json['stage'],
+        fallback: MediaStage.ingested,
+      ),
+      remoteSessionId: JsonParseHelpers.stringOrNull(
+        json['remoteSessionId'] ?? json['remote_session_id'],
+      ),
+      remotePhotoId: JsonParseHelpers.stringOrNull(
+        json['remotePhotoId'] ?? json['remote_photo_id'],
+      ),
+      steps: stepsRaw is List
+          ? EventPipelineStep.normalize(stepsRaw.map((e) => e.toString()))
+          : const <String>[],
+      stepIndex: JsonParseHelpers.intOrNull(json['stepIndex'] ?? json['step_index']) ?? 0,
+      selectedAtMs: JsonParseHelpers.intOrNull(
+        json['selectedAtMs'] ?? json['selected_at_ms'],
+      ),
+      aiSkipped: json['aiSkipped'] == true || json['ai_skipped'] == true,
+      lastError: JsonParseHelpers.stringOrNull(json['lastError'] ?? json['last_error']),
+      createdAtMs: JsonParseHelpers.intOrNull(
+            json['createdAtMs'] ?? json['created_at_ms'],
+          ) ??
+          0,
+      updatedAtMs: JsonParseHelpers.intOrNull(
+            json['updatedAtMs'] ?? json['updated_at_ms'],
+          ) ??
+          0,
+    );
+  }
 
   factory MediaItem.fromRow(Map<String, Object?> row) {
     return MediaItem(

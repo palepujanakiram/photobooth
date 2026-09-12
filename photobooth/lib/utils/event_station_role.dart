@@ -44,18 +44,20 @@ bool stationRequiresWan({
   return !pipelineEnabled;
 }
 
-/// Whether this runtime can run the local event pipeline.
+/// Whether this runtime shows the event hub when the pipeline flag is on.
 ///
-/// The hub needs SQLite, USB PTP, a printer, and card ingest. Web has none of
-/// those, so a bound event must keep the pre-pipeline splash destinations.
-bool eventPipelineSupportedOnPlatform({bool isWeb = false}) => !isWeb;
+/// The hub is the shared operator console on every platform. USB ingest/print
+/// are gated by capabilities on each client, not by this flag.
+bool eventPipelineSupportedOnPlatform({bool isWeb = false}) {
+  return true;
+}
 
 /// After splash bind: event stations vs guest terms.
 ///
 /// [pipelineEnabled] defaults to false so the behaviour with the pipeline off is
 /// byte-identical to before it existed — that is the regression guard.
-/// [pipelineSupported] is the platform gate: web must not open the hub even
-/// when a scaffold still forces the flag on.
+/// [pipelineSupported] remains for tests that still model an unsupported
+/// runtime; production always passes true.
 EventPostSplashRoute resolveEventPostSplashRoute({
   required String? eventCode,
   required String? stationRole,

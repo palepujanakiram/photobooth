@@ -47,6 +47,8 @@ EventReadinessInput healthy({
   bool online = true,
   bool queuePaused = false,
   int inFlight = 0,
+  bool importCapable = true,
+  bool captureCapable = true,
 }) {
   return EventReadinessInput(
     settings: config ?? settings(),
@@ -61,6 +63,8 @@ EventReadinessInput healthy({
     online: online,
     queuePaused: queuePaused,
     inFlight: inFlight,
+    importCapable: importCapable,
+    captureCapable: captureCapable,
   );
 }
 
@@ -90,6 +94,18 @@ void main() {
     test('green rows are not tappable', () {
       final report = EventReadiness.evaluate(healthy());
       expect(report.rows.every((r) => !r.isActionable), isTrue);
+    });
+  });
+
+  group('operator console without hardware', () {
+    test('blocks import and capture without failing settings sync', () {
+      final report = EventReadiness.evaluate(
+        healthy(importCapable: false, captureCapable: false, cameraName: null),
+      );
+      expect(report.canImport, isFalse);
+      expect(report.canCapture, isFalse);
+      expect(report.importBlockedReason, EventReadiness.importNotOnThisDevice);
+      expect(report.captureBlockedReason, EventReadiness.captureNotOnThisDevice);
     });
   });
 

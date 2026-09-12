@@ -1,5 +1,4 @@
 // Named-route table for MaterialApp (extracted from main for Sonar complexity).
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'screens/event_pipeline/event_ingest_view.dart';
@@ -97,9 +96,7 @@ Map<String, WidgetBuilder> buildAppRoutes() {
         const EventPrintStationScreen(),
     AppConstants.kRouteEventIngestStation: (context) =>
         const EventIngestScreen(),
-    AppConstants.kRouteEventHub: (context) => kIsWeb
-        ? const EventStationPickerScreen()
-        : const EventHubScreen(),
+    AppConstants.kRouteEventHub: (context) => const EventHubScreen(),
     AppConstants.kRouteEventSettings: (context) => const EventSettingsScreen(),
     AppConstants.kRouteEventItemDetail: (context) => EventItemDetailScreen(
           mediaId:

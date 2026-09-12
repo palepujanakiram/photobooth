@@ -9,6 +9,7 @@ import '../../models/event_pipeline/pipeline_job.dart';
 import '../../services/event_manager.dart';
 import '../../services/event_pipeline/ai_job_worker.dart';
 import '../../services/event_pipeline/event_media_store.dart';
+import '../../services/event_pipeline/event_pipeline_align_api.dart';
 import '../../services/event_pipeline/event_pipeline_ledger.dart';
 import '../../services/event_pipeline/event_pipeline_runner.dart';
 import '../../services/event_pipeline/event_pipeline_stats.dart';
@@ -86,11 +87,13 @@ class EventQueueViewModel extends ChangeNotifier {
     String? initialFilter,
     int pageSize = defaultPageSize,
     Duration refreshInterval = const Duration(seconds: 4),
+    EventPipelineAlignApi? alignApi,
   })  : _runner = runner ?? EventPipelineRunner.instance ?? EventPipelineRunner(),
         _media = mediaStore ?? EventMediaStore(),
         _events = events ?? EventManager(),
         _pageSize = pageSize,
         _refreshInterval = refreshInterval,
+        _alignApi = alignApi,
         _filter = QueueFilter.normalize(initialFilter);
 
   /// Roughly one screenful and a half. Pagination bounds how many entries are
@@ -103,6 +106,7 @@ class EventQueueViewModel extends ChangeNotifier {
   final EventManager _events;
   final int _pageSize;
   final Duration _refreshInterval;
+  EventPipelineAlignApi? _alignApi;
 
   Timer? _timer;
   bool _busy = false;
@@ -262,7 +266,7 @@ class EventQueueViewModel extends ChangeNotifier {
   }) async {
     final ledger = _runner.ledger;
     if (ledger == null) {
-      _entries = const [];
+      await _loadShared(limit: limit, offset: offset, append: append);
       notifyListeners();
       return;
     }
@@ -295,6 +299,35 @@ class EventQueueViewModel extends ChangeNotifier {
       _error = 'Could not read the queue.';
     }
     notifyListeners();
+  }
+
+  Future<void> _loadShared({
+    required int limit,
+    required int offset,
+    required bool append,
+  }) async {
+    final api = _alignApi ??= EventPipelineAlignApi();
+    final snap = await api.readSnapshot();
+    if (snap == null) {
+      _entries = const [];
+      _loaded = 0;
+      _totalInFilter = 0;
+      return;
+    }
+    final filtered = QueueFilter.apply(
+      snap.items,
+      filter: _filter,
+      source: _sourceFilter,
+    );
+    final page = [
+      for (final item in filtered.skip(offset).take(limit)) QueueEntry(item: item),
+    ];
+    _entries = append ? <QueueEntry>[..._entries, ...page] : page;
+    _loaded = _entries.length;
+    _totalInFilter = filtered.length;
+    _sourceCounts = QueueFilter.sourceCounts(snap.items);
+    _stats = snap.stats;
+    _error = null;
   }
 
   Future<EventPipelineStats> _readStats(EventPipelineLedger ledger) async {
@@ -627,6 +660,39 @@ abstract final class QueueFilter {
     if (trimmed.isEmpty || trimmed == all) return all;
     if (trimmed == working) return working;
     return stageOrder.contains(trimmed) ? trimmed : all;
+  }
+
+  static List<MediaItem> apply(
+    List<MediaItem> items, {
+    required String filter,
+    String? source,
+  }) {
+    final stage = filter == all || filter == working ? null : filter;
+    final stages = filter == working ? workingStages : null;
+    return [
+      for (final item in items)
+        if (_matches(item, stage: stage, stages: stages, source: source)) item,
+    ];
+  }
+
+  static bool _matches(
+    MediaItem item, {
+    required String? stage,
+    required List<String>? stages,
+    required String? source,
+  }) {
+    if (stage != null && item.stage != stage) return false;
+    if (stages != null && !stages.contains(item.stage)) return false;
+    if (source != null && item.source != source) return false;
+    return true;
+  }
+
+  static Map<String, int> sourceCounts(List<MediaItem> items) {
+    final counts = <String, int>{};
+    for (final item in items) {
+      counts[item.source] = (counts[item.source] ?? 0) + 1;
+    }
+    return counts;
   }
 
   /// Stage order matches the chain, so the chips read left to right the way a
