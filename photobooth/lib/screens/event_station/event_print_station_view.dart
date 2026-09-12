@@ -40,6 +40,8 @@ class EventPrintStationScreen extends StatelessWidget {
             file,
             printSize: printSize,
             settings: settings.settings,
+            trySelphy: false,
+            prepareForDnp: false,
           );
         },
       )..startPolling(),

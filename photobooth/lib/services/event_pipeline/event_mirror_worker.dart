@@ -276,7 +276,7 @@ class EventMirrorWorker {
 
     await _api.ingestKioskAsset(
       kioskCode: kioskCode,
-      prefix: 'event-originals/${item.eventId ?? 'unscoped'}',
+      prefix: 'event-originals',
       filename: '${item.id}.jpg',
       bytes: bytes,
     );

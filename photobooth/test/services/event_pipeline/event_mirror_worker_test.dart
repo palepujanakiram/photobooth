@@ -161,7 +161,7 @@ void main() {
 
       expect(api.assetCalls, 1);
       expect(api.updateCalls, 1);
-      expect(api.lastAssetPrefix, 'event-originals/EVT1');
+      expect(api.lastAssetPrefix, 'event-originals');
 
       // Both ids present is exactly the AI worker's precondition.
       final item = await ledger.findById(mediaId);

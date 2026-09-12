@@ -8,6 +8,7 @@ import io.flutter.plugin.common.MethodChannel
 import jp.co.canon.android.print.selphy.usbsdk.CanonPermissionRequestCallback
 import jp.co.canon.android.print.selphy.usbsdk.CanonPreparationCallback
 import jp.co.canon.android.print.selphy.usbsdk.CanonUsbManager
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import jp.co.canon.android.print.selphy.usbsdk.CanonPrintDevice as UsbPrintDevice
 import jp.co.canon.android.print.selphy.usbsdk.CanonPrintJob as UsbPrintJob
@@ -19,6 +20,7 @@ internal class SelphyUsbSession(
     private val mainHandler: Handler,
 ) {
     private val logTag = "SelphyUsb"
+    private val ioExecutor = Executors.newSingleThreadExecutor()
     var cachedDevice: UsbPrintDevice? = null
         private set
 
@@ -55,7 +57,9 @@ internal class SelphyUsbSession(
                 mainHandler.post { result.success(false) }
             }
         }
-        check()
+        // Canon getPrinterList on the Flutter platform thread ANRs Amlogic
+        // boxes when DNP already owns the USB host.
+        ioExecutor.execute { check() }
     }
 
     fun requestPermission(result: MethodChannel.Result) {

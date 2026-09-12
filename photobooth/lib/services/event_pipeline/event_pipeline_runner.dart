@@ -84,6 +84,10 @@ class EventPipelineRunner {
       printSize: printSize,
       quantity: quantity,
       settings: settings.settings,
+      // DNP already holds USB. Selphy probe + dart-image prepare ANR the
+      // Mini PC (DPS 2026.9.12 died 16s after claiming the print).
+      trySelphy: false,
+      prepareForDnp: false,
     );
   }
   final EventPipelineServiceChannel _service;
