@@ -41,6 +41,19 @@ void main() {
     });
   });
 
+  group('shouldDeferLocalClassicComposeWarm', () {
+    test('skips idle print-twin warm so look taps stay on ColorFilter', () {
+      expect(shouldDeferLocalClassicComposeWarm(shotCount: 1), isTrue);
+      expect(shouldDeferLocalClassicComposeWarm(shotCount: 3), isTrue);
+      expect(shouldDeferLocalClassicComposeWarm(shotCount: 4), isTrue);
+      expect(shouldDeferLocalClassicComposeWarm(shotCount: 0), isTrue);
+    });
+  });
+
+  test('look option taps never start a print-twin bake', () {
+    expect(shouldSkipPrintTwinWarmOnLookOptionTap(), isTrue);
+  });
+
   group('shouldSkipClassicClientLookBake', () {
     test('skips bake for 4-shot strips', () {
       expect(

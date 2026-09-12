@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/screens/experience_choice/experience_choice_viewmodel.dart';
 import 'package:photobooth/screens/theme_selection/theme_model.dart';
+import 'package:photobooth/services/kiosk_manager.dart';
 import 'package:photobooth/services/session_manager.dart';
 import 'package:photobooth/services/event_manager.dart';
 import 'package:photobooth/services/theme_manager.dart';
@@ -168,6 +169,24 @@ void main() {
       themeManager: ThemeManager.forTesting(api),
       apiService: api,
       eventManager: eventManager,
+    );
+    await vm.load();
+    expect(vm.isOffline, isFalse);
+    expect(vm.aiAvailable, isFalse);
+    expect(vm.fotoFlashAvailable, isTrue);
+  });
+
+  test('kiosk AI photos off disables AI while online', () async {
+    SharedPreferences.setMockInitialValues({});
+    KioskManager.resetClassicPhotosCacheForTests();
+    final kioskManager = KioskManager();
+    await kioskManager.setAiPhotosEnabled(false);
+    SessionManager().setSessionFromResponse(sessionJson('ai-off-online'));
+    final api = _ThemesFakeApi(themes: [ai, strip]);
+    final vm = ExperienceChoiceViewModel(
+      themeManager: ThemeManager.forTesting(api),
+      apiService: api,
+      kioskManager: kioskManager,
     );
     await vm.load();
     expect(vm.isOffline, isFalse);

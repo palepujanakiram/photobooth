@@ -24,7 +24,33 @@ void main() {
       );
     });
 
-    test('uses portrait 4x6 for upright AI aspect when session token is ambiguous', () {
+    test('Classic 1-shot staff reprint never enables the 2-inch cutter', () {
+      expect(
+        resolveStaffDnpPrintSize(
+          imageUrl: 'https://cdn/single.jpg',
+          stripCompositeUrl: 'https://cdn/single.jpg',
+          sessionPrintSize: AppConstants.kPrintSizeStripDual2x6,
+          classicComposeShotCount: 1,
+          orientedDimensions: (width: 1200, height: 1800),
+        ),
+        AppConstants.kPrintSizePortrait4x6,
+      );
+    });
+
+    test('Classic 3-shot staff reprint keeps the 2-inch cutter', () {
+      expect(
+        resolveStaffDnpPrintSize(
+          imageUrl: 'https://cdn/strip.jpg',
+          stripCompositeUrl: 'https://cdn/strip.jpg',
+          sessionPrintSize: AppConstants.kPrintSizeStripDual2x6,
+          classicComposeShotCount: 3,
+          orientedDimensions: (width: 1200, height: 1800),
+        ),
+        AppConstants.kPrintSizeStripDual2x6,
+      );
+    });
+
+    test('tall AI JPEG uses portrait 4x6, not the cutter', () {
       expect(
         resolveStaffDnpPrintSize(
           imageUrl: 'https://cdn/ai.jpg',

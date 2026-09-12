@@ -76,6 +76,53 @@ void main() {
     expect(SessionManager().hasSession, isFalse);
   });
 
+  test('endCustomerSession skips when a newer session is active', () async {
+    final sm = SessionManager();
+    sm.setSessionFromResponse({
+      'id': 'sess-old',
+      'termsAccepted': true,
+      'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+      'attemptsUsed': 0,
+      'generatedImages': [],
+      'expiresAt': DateTime.utc(2026, 12, 1).toIso8601String(),
+    });
+    sm.setSessionFromResponse({
+      'id': 'sess-new',
+      'termsAccepted': true,
+      'termsAcceptedAt': DateTime.utc(2026, 1, 2).toIso8601String(),
+      'attemptsUsed': 0,
+      'generatedImages': [],
+      'expiresAt': DateTime.utc(2026, 12, 2).toIso8601String(),
+    });
+    final ended = await sm.endCustomerSession(onlyIfId: 'sess-old');
+    expect(ended, isFalse);
+    expect(sm.sessionId, 'sess-new');
+    expect(sm.hasAcceptedTermsSession, isTrue);
+  });
+
+  test('hasAcceptedTermsSession requires id and accepted terms', () {
+    final sm = SessionManager();
+    expect(sm.hasAcceptedTermsSession, isFalse);
+    sm.setSessionFromResponse({
+      'id': 'sess-terms',
+      'termsAccepted': true,
+      'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+      'attemptsUsed': 0,
+      'generatedImages': [],
+      'expiresAt': DateTime.utc(2026, 12, 1).toIso8601String(),
+    });
+    expect(sm.hasAcceptedTermsSession, isTrue);
+    sm.setSessionFromResponse({
+      'id': 'sess-no-terms',
+      'termsAccepted': false,
+      'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+      'attemptsUsed': 0,
+      'generatedImages': [],
+      'expiresAt': DateTime.utc(2026, 12, 1).toIso8601String(),
+    });
+    expect(sm.hasAcceptedTermsSession, isFalse);
+  });
+
   test('isOfflineSession follows session offline flag', () {
     final sm = SessionManager();
     sm.setSessionFromResponse({
@@ -97,6 +144,18 @@ void main() {
       'offline': true,
     });
     expect(sm.isOfflineSession, isTrue);
+  });
+
+  test('ensureSessionForClassicCompose mints offline session when missing', () {
+    final sm = SessionManager();
+    sm.clearSession();
+    expect(sm.sessionId, isNull);
+    final id = sm.ensureSessionForClassicCompose();
+    expect(id, isNotNull);
+    expect(id, isNotEmpty);
+    expect(sm.sessionId, id);
+    expect(sm.isOfflineSession, isTrue);
+    expect(sm.ensureSessionForClassicCompose(), id);
   });
 
   test('share token round-trips and is minted only once', () async {

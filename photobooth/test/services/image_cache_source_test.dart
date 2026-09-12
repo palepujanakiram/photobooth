@@ -46,6 +46,12 @@ void main() {
     expect(catalogCacheKeyForFrame('frame_9'), 'frame-frame_9');
     expect(catalogCacheKeyForFrame(null), isNull);
     expect(
+      eventStationThumbCacheKey('Sess-1'),
+      'ev-sess-1',
+    );
+    expect(eventStationThumbCacheKey(''), isNull);
+    expect(eventStationThumbCacheKey('bad id'), isNull);
+    expect(
       catalogImageCacheFileStem(
         cacheKey: catalogCacheKeyForTheme('t1'),
         imageUrl: 'https://a.example/old.png?v=1',

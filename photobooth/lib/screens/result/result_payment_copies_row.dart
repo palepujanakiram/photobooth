@@ -17,8 +17,8 @@ class ResultPaymentCopiesRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final copies = viewModel.printCopies;
     final enabled = viewModel.canChangePrintCopies &&
-        !viewModel.paymentInitInProgress &&
-        !viewModel.couponBusy;
+        !viewModel.couponBusy &&
+        (viewModel.collectsCounterCash || !viewModel.paymentInitInProgress);
     final sheets = viewModel.printSheetCount;
 
     return Column(

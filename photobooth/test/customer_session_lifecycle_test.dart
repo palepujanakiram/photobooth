@@ -46,6 +46,53 @@ void main() {
       expect(prefs.getString('photobooth.session.current'), isNull);
     });
 
+    test('skips ending a newer session created after Start again', () async {
+      SharedPreferences.setMockInitialValues({});
+      final sm = SessionManager();
+      sm.setSessionFromResponse({
+        'id': 'session-old',
+        'termsAccepted': true,
+        'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+        'attemptsUsed': 0,
+        'generatedImages': [],
+        'expiresAt': DateTime.utc(2027, 1, 1).toIso8601String(),
+      });
+      sm.setSessionFromResponse({
+        'id': 'session-new',
+        'termsAccepted': true,
+        'termsAcceptedAt': DateTime.utc(2026, 1, 2).toIso8601String(),
+        'attemptsUsed': 0,
+        'generatedImages': [],
+        'expiresAt': DateTime.utc(2027, 1, 2).toIso8601String(),
+      });
+
+      await endPhotoboothCustomerSession(onlyIfId: 'session-old');
+      expect(sm.sessionId, 'session-new');
+      expect(sm.hasAcceptedTermsSession, isTrue);
+    });
+
+    test('cleanupGuestTempImagesIfIdle keeps an active session', () async {
+      SharedPreferences.setMockInitialValues({});
+      final sm = SessionManager();
+      sm.setSessionFromResponse({
+        'id': 'session-live',
+        'termsAccepted': true,
+        'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+        'attemptsUsed': 0,
+        'generatedImages': [],
+        'expiresAt': DateTime.utc(2027, 1, 1).toIso8601String(),
+      });
+      await cleanupGuestTempImagesIfIdle();
+      expect(sm.hasAcceptedTermsSession, isTrue);
+    });
+
+    test('cleanupGuestTempImagesIfIdle runs when there is no session', () async {
+      SharedPreferences.setMockInitialValues({});
+      await SessionManager().endCustomerSession();
+      await cleanupGuestTempImagesIfIdle();
+      expect(SessionManager().hasSession, isFalse);
+    });
+
     test(
         'endCustomerSession removes stale prefs when memory was never restored',
         () async {

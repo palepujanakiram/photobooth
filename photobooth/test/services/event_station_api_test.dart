@@ -69,9 +69,25 @@ void main() {
       }),
       data: Matchers.any,
     );
+    adapter.onPost(
+      '/api/event/station/theme-jobs/j1/skip',
+      (s) => s.reply(200, {
+        'job': {'id': 'j1', 'status': 'SKIPPED'},
+      }),
+      data: Matchers.any,
+    );
+    adapter.onPost(
+      '/api/event/station/theme-jobs/j1/retry',
+      (s) => s.reply(200, {
+        'job': {'id': 'j1', 'status': 'PENDING'},
+      }),
+      data: Matchers.any,
+    );
     final claimed = await api.claimThemeJob('j1');
     expect(claimed.status, 'CLAIMED');
     await api.completeThemeJob(jobId: 'j1', themeId: 't1');
+    await api.skipThemeJob('j1');
+    await api.retryThemeJob('j1');
   });
 
   test('print job list claim complete and errors', () async {
@@ -161,6 +177,62 @@ void main() {
     expect(board.captures.single.previewUrls.single, contains('kioskCode=K1'));
     expect(board.captures.single.previewUrls.single, contains('eventCode=GALA'));
     expect((await api.reissuePrintJob('p1')).id, 'p2');
+  });
+
+  test('fetchBoard reuses cache on 304', () async {
+    var hits = 0;
+    dio.interceptors.insert(
+      0,
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          hits += 1;
+          if (hits == 1) {
+            handler.resolve(
+              Response<dynamic>(
+                requestOptions: options,
+                statusCode: 200,
+                data: {
+                  'stats': {'captures': 4},
+                },
+                headers: Headers.fromMap({
+                  'etag': ['"board-1"'],
+                }),
+              ),
+            );
+            return;
+          }
+          handler.resolve(
+            Response<dynamic>(
+              requestOptions: options,
+              statusCode: 304,
+              data: null,
+            ),
+          );
+        },
+      ),
+    );
+    final first = await api.fetchBoard();
+    expect(first.stats.captures, 4);
+    final second = await api.fetchBoard();
+    expect(identical(first, second), isTrue);
+  });
+
+  test('fetchBoard 304 without cache maps to ApiException', () async {
+    dio.interceptors.insert(
+      0,
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          handler.resolve(
+            Response<dynamic>(
+              requestOptions: options,
+              statusCode: 304,
+              data: null,
+            ),
+          );
+        },
+      ),
+    );
+    expect(api.fetchBoard(), throwsA(isA<ApiException>()));
   });
 
   test('throws mapped API error and missing codes', () async {

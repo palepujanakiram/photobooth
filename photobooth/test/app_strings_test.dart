@@ -21,6 +21,7 @@ void main() {
     expect(AppStrings.receiptPrintEmptyPayload, isNotEmpty);
     expect(AppStrings.receiptPrintUnsupportedOnWeb, isNotEmpty);
     expect(AppStrings.printReceiptButton, isNotEmpty);
+    expect(AppStrings.flashbackFiltersLoadFailed, isNotEmpty);
     expect(AppStrings.printingReceiptButton, isNotEmpty);
     expect(AppStrings.staffNoKioskForRegister, isNotEmpty);
     expect(AppStrings.themeSelectionContinue, isNotEmpty);
@@ -32,6 +33,8 @@ void main() {
     expect(AppStrings.captureStillDisplayFailed, isNotEmpty);
     expect(AppStrings.kioskDeviceDslrSidecar, isNotEmpty);
     expect(AppStrings.kioskDeviceTransportLan, isNotEmpty);
+    expect(AppStrings.androidProcessExitUnhandled, isNotEmpty);
+    expect(AppStrings.kioskHeartbeatFailed, isNotEmpty);
   });
 
   test('interpolated string methods return expected values', () {
@@ -90,6 +93,22 @@ void main() {
     expect(
       AppStrings.flashbackCaptureSubtitle,
       contains('8s'),
+    );
+    expect(
+      AppStrings.flashbackCaptureSubtitleFor(7),
+      contains('7s'),
+    );
+    expect(
+      AppStrings.flashbackCaptureSubtitleThreeFor(7),
+      contains('3 shots'),
+    );
+    expect(
+      AppStrings.flashbackCaptureSubtitleSingleFor(7),
+      'One shot · 7s pose countdown',
+    );
+    expect(
+      AppStrings.flashbackPoseProgressSingleFor(7),
+      'Pose now — 7 second countdown',
     );
     expect(AppStrings.captureMaskStallRetry, contains('Tap Capture'));
     expect(AppStrings.printSelectionTotal(250), 'Total ₹250');

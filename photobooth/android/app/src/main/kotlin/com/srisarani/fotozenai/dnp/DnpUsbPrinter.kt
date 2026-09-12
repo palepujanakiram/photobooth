@@ -250,9 +250,11 @@ class DnpUsbPrinter(
         val overcoat = if (matte) "00000001" else "00000000"
         cmd.sendCommand("CNTRL", "OVERCOAT", overcoat.toByteArray())
 
-        if (size.usesStripCutter) {
-            cmd.sendCommand("CNTRL", "CUTTER", "00000120".toByteArray())
-        }
+        // Always program cutter: 120 = 2-inch dual strip, 0 = uncut 4×6.
+        // Omitting CUTTER left the printer in the previous job's 2-inch mode,
+        // which split Classic 1-shot portraits across two 6×2 strips.
+        val cutter = if (size.usesStripCutter) "00000120" else "00000000"
+        cmd.sendCommand("CNTRL", "CUTTER", cutter.toByteArray())
 
         val multicut = String.format("%08d", size.multicut)
         cmd.sendCommand("IMAGE", "MULTICUT", multicut.toByteArray())

@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/models/kiosk_info_model.dart';
 import 'package:photobooth/services/api_service.dart';
 import 'package:photobooth/services/kiosk_manager.dart';
+import 'package:photobooth/utils/app_runtime_config.dart';
 import 'package:photobooth/utils/classic_photos_enabled_sync.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -14,10 +15,12 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     await KioskManager().clearClassicPhotosEnabled();
+    await KioskManager().clearAiPhotosEnabled();
     await KioskManager().clearOperatingModeOffline();
     await KioskManager().clearKioskCode();
     KioskManager.resetClassicPhotosCacheForTests();
     KioskManager.resetOperatingModeCacheForTests();
+    AppRuntimeConfig.instance.applyFromSettings(null);
   });
 
   test('syncClassicPhotosEnabled updates stale false from API true', () async {
@@ -79,12 +82,33 @@ void main() {
         'id': 'k1',
         'code': 'FOTO',
         'classicPhotosEnabled': true,
+        'aiPhotosEnabled': false,
         'operatingMode': 'offline',
       }),
     );
 
     await syncClassicPhotosEnabled(api: api, kiosk: km);
     expect(await km.isOperatingModeOffline(), isTrue);
+    expect(await km.isAiPhotosEnabled(), isFalse);
+  });
+
+  test('syncClassicPhotosEnabled applies Classic pose countdown', () async {
+    final km = KioskManager();
+    await km.setKioskCode('FOTO');
+
+    final mock = createMockApiDio();
+    final api = ApiService(dio: mock.dio);
+    mock.adapter.onGet(
+      '/api/kiosk/by-code/FOTO',
+      (server) => server.reply(200, {
+        'id': 'k1',
+        'code': 'FOTO',
+        'classicPoseCountdownSeconds': 7,
+      }),
+    );
+
+    await syncClassicPhotosEnabled(api: api, kiosk: km);
+    expect(AppRuntimeConfig.instance.classicPoseCountdownSeconds, 7);
   });
 
   test('syncClassicPhotosEnabled falls back to cache when API throws', () async {

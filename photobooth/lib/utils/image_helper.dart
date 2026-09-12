@@ -12,6 +12,7 @@ import 'image_helper_channel_fix.dart';
 import 'image_helper_encode.dart';
 import 'session_user_image_validation.dart';
 import 'app_strings.dart';
+import 'encode_rgba_jpeg.dart';
 import 'jpeg_sof_peek.dart';
 import 'web_flow_trace.dart';
 
@@ -319,23 +320,18 @@ class ImageHelper {
 
   /// Decode with [ui.instantiateImageCodec] target size so 20MP Canon stills
   /// never allocate a full-resolution RGBA buffer on 4GB kiosks.
-  static Future<XFile> downscaleJpegToMaxLongEdge(
-    XFile sourceFile, {
+  static Future<Uint8List> downscaleJpegBytesToMaxLongEdge(
+    Uint8List bytes, {
     int maxLongEdge = kCapturedPhotoMaxDimension,
     int jpegQuality = 95,
   }) async {
-    if (kIsWeb) return sourceFile;
-    final path = sourceFile.path;
-    final bytes = path.isNotEmpty
-        ? await File(path).readAsBytes()
-        : await sourceFile.readAsBytes();
     if (bytes.isEmpty) {
       throw Exception('Captured image is empty');
     }
     final size = peekJpegSofDimensions(bytes);
     if (size == null ||
         (size.width <= maxLongEdge && size.height <= maxLongEdge)) {
-      return sourceFile;
+      return bytes;
     }
     final quality = jpegQuality.clamp(1, 100);
     final landscape = size.width >= size.height;
@@ -352,21 +348,69 @@ class ImageHelper {
         throw Exception('Skia downscale produced empty pixels');
       }
       final rgba = bd.buffer.asUint8List(bd.offsetInBytes, bd.lengthInBytes);
-      final bakedBytes = await compute(
-        _encodeRgbaToJpegIsolate,
-        (
-          rgba: rgba,
-          width: image.width,
-          height: image.height,
-          jpegQuality: quality,
-          quarterTurns: 0,
-        ),
+      return encodeRgbaToJpeg(
+        rgba: rgba,
+        width: image.width,
+        height: image.height,
+        quality: quality,
       );
-      return _writeBakedJpegBytes(bakedBytes);
     } finally {
       image.dispose();
       codec.dispose();
     }
+  }
+
+  /// Skia-decode [bytes] into a PNG at [width]×[height] (occasion overlays).
+  ///
+  /// [ui.instantiateImageCodec] samples during decode so a print-resolution
+  /// overlay never becomes a full-size RGBA buffer on 4GB Android TV.
+  static Future<Uint8List> resizeImageBytesToPng({
+    required Uint8List bytes,
+    required int width,
+    required int height,
+  }) async {
+    if (bytes.isEmpty || width <= 0 || height <= 0) {
+      throw Exception('Overlay resize input is empty');
+    }
+    final codec = await ui.instantiateImageCodec(
+      bytes,
+      targetWidth: width,
+      targetHeight: height,
+    );
+    final frame = await codec.getNextFrame();
+    final image = frame.image;
+    try {
+      final bd = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (bd == null) {
+        throw Exception('Skia overlay resize produced empty pixels');
+      }
+      return bd.buffer.asUint8List();
+    } finally {
+      image.dispose();
+      codec.dispose();
+    }
+  }
+
+  static Future<XFile> downscaleJpegToMaxLongEdge(
+    XFile sourceFile, {
+    int maxLongEdge = kCapturedPhotoMaxDimension,
+    int jpegQuality = 95,
+  }) async {
+    if (kIsWeb) return sourceFile;
+    final path = sourceFile.path;
+    final bytes = path.isNotEmpty
+        ? await File(path).readAsBytes()
+        : await sourceFile.readAsBytes();
+    if (bytes.isEmpty) {
+      throw Exception('Captured image is empty');
+    }
+    final sized = await downscaleJpegBytesToMaxLongEdge(
+      bytes,
+      maxLongEdge: maxLongEdge,
+      jpegQuality: jpegQuality,
+    );
+    if (identical(sized, bytes)) return sourceFile;
+    return _writeBakedJpegBytes(sized);
   }
 
   /// Skia decode → signed quarter-turns (negative = CCW / left) → JPEG.

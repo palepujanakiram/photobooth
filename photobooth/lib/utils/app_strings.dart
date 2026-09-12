@@ -540,11 +540,19 @@ abstract final class AppStrings {
   static const flashbackCaptureSubtitleThree =
       '3 shots · 10s to pose · 8s between shots to rearrange';
   static const flashbackCaptureSubtitleSingle = 'One shot · 10s pose countdown';
+  static String flashbackCaptureSubtitleFor(int poseSeconds) =>
+      '4 shots · ${poseSeconds}s to pose · 8s between shots to rearrange';
+  static String flashbackCaptureSubtitleThreeFor(int poseSeconds) =>
+      '3 shots · ${poseSeconds}s to pose · 8s between shots to rearrange';
+  static String flashbackCaptureSubtitleSingleFor(int poseSeconds) =>
+      'One shot · ${poseSeconds}s pose countdown';
   static String flashbackShotProgress(int current, int total) =>
       'Shot $current of $total';
   static String flashbackPoseProgress(int current, int total) =>
       'Pose now — Shot $current of $total';
   static const flashbackPoseProgressSingle = 'Pose now — 10 second countdown';
+  static String flashbackPoseProgressSingleFor(int poseSeconds) =>
+      'Pose now — $poseSeconds second countdown';
   static const flashbackSingle6x4Title = 'Classic print';
   static String flashbackSinglePrintTitle(bool portrait) =>
       portrait ? 'Classic 4×6' : 'Classic 6×4';
@@ -623,6 +631,9 @@ abstract final class AppStrings {
   static const flashbackPreparingPreview = 'Polishing photos…';
   static const flashbackFiltersLoadTimeout =
       'Looks took too long to load. You can still continue with the default look.';
+
+  /// Catalog GET failed (404/5xx). Guest UI should usually silence this.
+  static const flashbackFiltersLoadFailed = 'Failed to load strip filters';
   static const flashbackMissingArgs =
       'Photo session data was lost. Go back and retake, or restart the booth.';
   static const flashbackGradingPreview = 'Refreshing preview…';
@@ -687,13 +698,19 @@ abstract final class AppStrings {
   static const offlineFrameOnlyMessage =
       'AI needs internet. You can still print this photo — '
       'try Classic while waiting to reconnect.';
-  static const offlineCashOnlyMessage =
-      'UPI needs internet. Pay cash at the counter.';
   static const offlineCashOnlyWaiting =
-      'Pay cash at the counter. Staff confirm here to start printing.';
+      'Staff confirm here after collecting cash.';
+  static const counterCashOnlyWaiting =
+      'Staff confirm in Payments to start printing.';
+  static const counterCashAppBarSubtitle = 'Cash at the counter';
+  static const wanDownCashAppBarSubtitle = 'No internet for UPI';
+  static const payScanToComplete = 'Scan to complete your purchase';
+  static const payUpiIntro =
+      'Scan the QR code to pay with UPI.\n'
+      'Printing starts automatically after payment is approved.';
   static const offlineGiftCardUnavailable =
       'Gift cards and coupons need internet.';
-  static const offlinePayAtCounterTitle = 'Pay at counter';
+  static const offlinePayAtCounterTitle = 'Offline payment';
   static const offlineCashConfirmStaffCta = 'Staff: cash received';
   static const offlineCashConfirmSheetTitle = 'Confirm cash received';
   static const offlineCashConfirmSheetBody =
@@ -733,8 +750,13 @@ abstract final class AppStrings {
       'Sync paused with $remaining still pending. Check internet and try again.';
   static const splashSyncFailedToast =
       'Could not sync. Check internet and try again.';
+  static const splashSyncUnavailableInBrowser =
+      'Offline sync runs on the booth app, not in the browser. '
+      'This web kiosk is already talking to the server.';
   static const termsDiskFull =
       'This kiosk is out of photo storage. Ask staff to connect internet and wait for sync.';
+  static const termsSessionCreateFailed =
+      'Could not start a new session. Please accept terms again.';
   static const staffModeUpi = 'UPI';
   static const staffModeCash = 'Cash';
   static const staffModeComplimentary = 'Complimentary';
@@ -837,6 +859,15 @@ abstract final class AppStrings {
       'Guest: pick a look for the photo that is waiting.';
   static const eventStationPrintHint =
       'Printer: claim transformed photos and print.';
+  static const eventQueueTitle = 'Photo queue';
+  static const eventHubTitle = 'Event';
+  static const eventHubImport = 'Import from card';
+  static const eventHubCapture = 'Capture';
+  static const eventHubOpenQueue = 'Open queue';
+  static const eventHubSyncing = 'Syncing…';
+  static const eventStationSdImport = 'SD import';
+  static const eventStationSdImportHint =
+      'Operator: import photos from the photographer\'s card.';
   static const eventStationChangeRole = 'Change station';
   static const eventStationNextGuest = 'Capture next guest';
   static const eventStationWaitingTheme = 'Waiting for a photo to style…';
@@ -844,12 +875,21 @@ abstract final class AppStrings {
   static const eventStationAssignTheme = 'Use this look';
   static const eventStationNoThemes = 'No themes available for this event.';
   static const eventStationPrintNow = 'Print';
+  static const eventStationPrintPreview = 'Print preview';
+  static const eventStationPrintPreviewHint = 'As it will print';
   static const eventStationReprint = 'Print another copy';
   static const eventStationJobClaimed =
       'This job was taken by another station.';
   static const eventStationStatusPending = 'PENDING';
   static const eventStationStatusClaimed = 'CLAIMED';
   static const eventStationStatusDone = 'DONE';
+  static const eventStationStatusAll = 'ALL';
+  static const eventStationDropOff = 'Drop';
+  static const eventStationReprocess = 'Retry';
+  static const eventStationDropConfirmTitle = 'Drop this photo?';
+  static const eventStationDropConfirmBody =
+      'It will leave the Theme queue and will not use an AI run.';
+  static const eventStationStyleThis = 'Style';
   static const eventStationStyleNext = 'Style next guest';
   static const eventStationEmptyCaptures = 'No captured photos yet.';
   static const eventStationEmptyTheme = 'No photos in this status.';
@@ -882,4 +922,11 @@ abstract final class AppStrings {
   static const eventStationPickLook = 'Pick your look';
   static const eventStationPoweredBy = 'Photobooth powered by';
   static const eventStationPoweredByBrand = 'FotoZen AI';
+
+  /// Historical Android process death (LMK / SIGKILL / ANR) with no Dart exception.
+  static const androidProcessExitUnhandled =
+      'Android process died without a Dart exception';
+
+  /// Heartbeat POST to `/api/kiosk/heartbeat` failed; will retry on the next ping.
+  static const kioskHeartbeatFailed = 'Kiosk heartbeat failed';
 }

@@ -3,12 +3,15 @@ import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../models/kiosk_frame_model.dart';
 import '../../models/strip_models.dart';
 import '../../services/api_service.dart';
+import '../../services/classic_deliverable_upload.dart';
 import '../../services/session_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/capture_flow_log.dart';
 import '../../utils/classic_look_memory_helpers.dart';
+import '../../utils/classic_offline_frames.dart';
 import '../../utils/classic_strip_scrub_coordinator.dart';
 import '../../utils/classic_strip_scrub_helpers.dart';
 import '../../utils/constants.dart';
@@ -19,18 +22,26 @@ import '../../utils/logger.dart';
 import '../../utils/print_orientation.dart';
 import '../../utils/print_size_helpers.dart';
 import '../../utils/strip_compositor_local.dart';
+import '../../utils/strip_local_print_compact.dart';
 import '../../utils/strip_filters_catalog_fallback.dart';
 import '../../utils/strip_preview_grade_compress.dart';
-import '../../services/local_guest_media_write.dart';
-import '../../services/local_media_store.dart';
 import '../photo_generate/photo_generate_viewmodel.dart';
 import '../theme_selection/theme_model.dart';
 
 /// Loads strip looks and composes the dual strip (Gemini AF polish on shots).
 class FotoFlashbackFilterViewModel extends ChangeNotifier {
+  /// Join in-flight Gemini polish on Continue. Keep this short so
+  /// "Building your strip" is not blocked for [composeWarmJoinTimeoutForTest].
+  @visibleForTesting
+  static Duration composePrepareJoinTimeoutForTest = const Duration(seconds: 2);
+
   /// Shorten warm-join wait in unit tests (production: 45s).
   @visibleForTesting
   static Duration composeWarmJoinTimeoutForTest = const Duration(seconds: 45);
+
+  /// Override [composeLocalStripSheet] in unit tests to simulate failures.
+  @visibleForTesting
+  Future<String?> Function(LocalStripComposeRequest)? composeLocalStripSheetForTest;
 
   FotoFlashbackFilterViewModel({
     required this.theme,
@@ -46,6 +57,8 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     /// From [AppSettingsModel.enableOsdScrub] (kiosk / GSM). When set, wins
     /// over the strip catalog so Pick a look honors admin OFF.
     bool? enableOsdScrub,
+    ClassicOverlayBytesLookup? overlayBytesLookup,
+    bool? eventPrintIsLocal,
   })  : _expectedCaptureCount = pendingImageFilePaths?.isNotEmpty == true
             ? pendingImageFilePaths!.length
             : imageDataUrls.length,
@@ -61,6 +74,8 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         _printOrientation = printOrientation ?? PrintOrientation.portrait,
         _overlayCleanupBuildGate = overlayCleanupBuildGate,
         _enableOsdScrubFromSettings = enableOsdScrub,
+        _overlayBytesLookup = overlayBytesLookup ?? readClassicOverlayBytes,
+        _eventPrintIsLocalOverride = eventPrintIsLocal,
         _shotCleaned = List<bool>.generate(
           pendingImageFilePaths?.isNotEmpty == true
               ? pendingImageFilePaths!.length
@@ -75,6 +90,8 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
             ) {
     if (_pendingImageFilePaths != null) {
       unawaited(_hydratePendingCaptureFiles());
+    } else if (_imageDataUrls.isNotEmpty) {
+      unawaited(_ensureLookPreviewJpegBytes());
     }
   }
 
@@ -84,6 +101,12 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   int _hydrateGeneration = 0;
   final bool _captureUploadsAlreadyCompact;
   List<Uint8List> _lookPreviewJpegBytes = [];
+  Future<void>? _lookPreviewCompactInFlight;
+  bool _disposed = false;
+
+  void _notifyIfMounted() {
+    if (!_disposed) notifyListeners();
+  }
 
   final ThemeModel theme;
   final List<String> _imageDataUrls;
@@ -92,6 +115,9 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   PrintOrientation _printOrientation;
   final bool? _overlayCleanupBuildGate;
   final bool? _enableOsdScrubFromSettings;
+  final ClassicOverlayBytesLookup _overlayBytesLookup;
+  final bool? _eventPrintIsLocalOverride;
+  List<KioskFrameModel> _kioskFramesCache = const [];
 
   StripFiltersCatalog? _catalog;
   String _selectedFilterId = kDefaultStripFilterId;
@@ -134,6 +160,10 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   /// picker does not decode huge data-URLs (SDK already arrives with data-URLs).
   List<Uint8List> get lookPreviewJpegBytes =>
       List<Uint8List>.unmodifiable(_lookPreviewJpegBytes);
+
+  @visibleForTesting
+  set lookPreviewJpegBytesForTest(List<Uint8List> v) =>
+      _lookPreviewJpegBytes = v;
 
   bool get hasLookPreviewJpegBytes => _lookPreviewJpegBytes.isNotEmpty;
 
@@ -202,8 +232,12 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
 
   StripFiltersCatalog? get catalog => _catalog;
 
+  bool get _eventPrintIsLocal =>
+      _eventPrintIsLocalOverride ?? KioskOfflineUx.classicEventPrintIsLocal;
+
   /// Admin master switch from kiosk/GSM settings (preferred) or strip catalog.
   bool get classicOverlayCleanupEnabled {
+    if (_eventPrintIsLocal) return false;
     final gate =
         _overlayCleanupBuildGate ?? AppConstants.kEnableStripOverlayCleanup;
     if (!gate) return false;
@@ -220,13 +254,12 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
 
   List<StripFilter> get filters => _catalog?.filters ?? const [];
 
-  /// Sheet layouts have exactly four hardcoded slots — hide them whenever this
-  /// session did not shoot four (Classic 1-shot 6×4 and the 3-shot strip).
+  /// Sheet layouts need four cells. Occasion 6×2 templates are filtered to
+  /// the matching shot count (`fr:` / `st:` = 4, `f3:` = 3, `ai:` = 1).
   List<StripFrame> get frames {
     final all = _catalog?.frames ?? const <StripFrame>[];
-    if (supportsSheetLayouts) return all;
     return all
-        .where((f) => !isStripSheetLayout(f.id))
+        .where((f) => classicFrameVisibleForShotCount(f, shotCount))
         .toList(growable: false);
   }
   List<StripSticker> get stickers => _catalog?.stickers ?? const [];
@@ -240,7 +273,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     if (_printOrientation == orientation) return;
     _printOrientation = orientation;
     _sessionManager.setPrintOrientation(orientation);
-    notifyListeners();
+    _notifyIfMounted();
     _scheduleComposePreview(allowLargePayloadWarm: true);
   }
 
@@ -338,20 +371,21 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _lookPreviewJpegBytes = [];
     _hydratingCaptures = true;
     _errorMessage = null;
-    notifyListeners();
+    _notifyIfMounted();
     try {
       final jpegBytes = <Uint8List>[];
+      final maxLongEdge = localStripPrintJpegMaxLongEdge(
+        single: isSingleClassic,
+      );
       for (final path in paths) {
         if (gen != _hydrateGeneration) return;
-        final bytes = await XFile(path).readAsBytes();
-        if (bytes.isEmpty) {
-          throw Exception(AppStrings.imageFileEmpty);
-        }
-        jpegBytes.add(bytes);
+        jpegBytes.add(
+          await _readCompactLookJpeg(path, maxLongEdge: maxLongEdge),
+        );
       }
       if (gen != _hydrateGeneration) return;
       _lookPreviewJpegBytes = jpegBytes;
-      notifyListeners();
+      _notifyIfMounted();
 
       final encoded = await Future.wait(
         jpegBytes.map(ImageHelper.encodeBytesToBase64DataUrl),
@@ -379,7 +413,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     } finally {
       if (gen == _hydrateGeneration) {
         _hydratingCaptures = false;
-        notifyListeners();
+        _notifyIfMounted();
       }
     }
   }
@@ -392,20 +426,21 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _hydratingCaptures = false;
     _imageDataUrls.clear();
     _lookPreviewJpegBytes = [];
+    _lookPreviewCompactInFlight = null;
     _pendingImageFilePaths = null;
     _composePreview = null;
     _composePreviewFingerprint = null;
     _composeResult = null;
     _gradedByFilter.clear();
     _warmingPrintPreview = false;
-    notifyListeners();
+    _notifyIfMounted();
   }
 
   Future<void> loadFilters() async {
     final gen = ++_catalogLoadGen;
     _loading = true;
     _errorMessage = null;
-    notifyListeners();
+    _notifyIfMounted();
     try {
       await _loadCatalog(gen).timeout(
         const Duration(seconds: 15),
@@ -428,7 +463,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
           _applyFallbackCatalog(soft);
         }
         _loading = false;
-        notifyListeners();
+        _notifyIfMounted();
       }
     }
     if (gen != _catalogLoadGen) return;
@@ -445,38 +480,64 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   }
 
   void _applyFallbackCatalog([String? message]) {
-    _catalog = stripFiltersCatalogFallback();
-    _selectedFilterId = kDefaultStripFilterId;
-    _selectedFrameId = kDefaultStripFrameId;
-    _selectedStickerId = kDefaultStripStickerId;
+    _catalog = mergeOccasionFramesIntoCatalog(
+      stripFiltersCatalogFallback(),
+      _kioskFramesCache,
+    );
     _errorMessage = message;
+    _applyCatalogSelections();
+  }
+
+  void _adoptCatalog(StripFiltersCatalog catalog) {
+    _catalog = mergeOccasionFramesIntoCatalog(catalog, _kioskFramesCache);
+    _errorMessage = null;
+    _applyCatalogSelections();
+  }
+
+  void _applyCatalogSelections() {
+    if (filters.isNotEmpty &&
+        !filters.any((f) => f.id == _selectedFilterId)) {
+      _selectedFilterId = filters.first.id;
+    }
+    if (frames.isNotEmpty) {
+      _selectedFrameId = preferredClassicFrameId(
+        frames: frames,
+        shotCount: shotCount,
+        selectedId: _selectedFrameId,
+      );
+    }
+    if (stickers.isNotEmpty &&
+        !stickers.any((s) => s.id == _selectedStickerId) &&
+        _placements.isEmpty) {
+      _selectedStickerId = kDefaultStripStickerId;
+    }
+  }
+
+  Future<List<KioskFrameModel>> _cachedKioskFrames() async {
+    try {
+      return await _api.getCachedKioskFrames();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Live kiosk frames precache overlay PNGs. Classic skips Frame Select, so
+  /// Pick-a-look has to load them or Continue has no chrome to stamp.
+  Future<List<KioskFrameModel>> _kioskFramesForClassicCatalog() async {
+    try {
+      final live = await _api.getKioskFrames();
+      if (live.isNotEmpty) return live;
+    } catch (_) {}
+    return _cachedKioskFrames();
   }
 
   Future<void> _loadCatalog(int gen) async {
-    if (_sessionManager.isOfflineSession) {
-      AppLogger.debug('Strip filters: local catalog (offline session)');
-      _applyFallbackCatalog();
-      return;
-    }
+    _kioskFramesCache = await _kioskFramesForClassicCatalog();
+    if (gen != _catalogLoadGen) return;
     try {
       final catalog = await _api.fetchStripFilters();
       if (gen != _catalogLoadGen) return;
-      _catalog = catalog;
-      if (filters.isNotEmpty &&
-          !filters.any((f) => f.id == _selectedFilterId)) {
-        _selectedFilterId = filters.first.id;
-      }
-      if (frames.isNotEmpty &&
-          (!frames.any((f) => f.id == _selectedFrameId) ||
-              (!supportsSheetLayouts && isStripSheetLayout(_selectedFrameId)))) {
-        _selectedFrameId = frames.first.id;
-      }
-      if (stickers.isNotEmpty &&
-          !stickers.any((s) => s.id == _selectedStickerId) &&
-          _placements.isEmpty) {
-        _selectedStickerId = kDefaultStripStickerId;
-      }
-      _errorMessage = null;
+      _adoptCatalog(catalog);
     } on ApiException catch (e) {
       if (gen != _catalogLoadGen) return;
       if (filters.isNotEmpty) return;
@@ -536,13 +597,13 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _gradedByFilter.clear();
     // Drop failed capture results so Refresh re-POSTs instead of re-adopting.
     ClassicStripScrubCoordinator.instance.releaseFailedShots();
-    notifyListeners();
+    _notifyIfMounted();
     await preparePreview();
   }
 
   Future<void> _runPreparePreview(String sessionId) async {
     _preparingPreview = true;
-    notifyListeners();
+    _notifyIfMounted();
     CaptureFlowLog.event(
       'classic.scrub_start',
       fields: {
@@ -558,7 +619,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
           continue;
         }
         _scrubbingIndex = i;
-        notifyListeners();
+        _notifyIfMounted();
         final applied = await _polishUnfinishedShot(sessionId, i);
         if (!applied) allClean = false;
       }
@@ -585,7 +646,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     } finally {
       _scrubPassCompleted = true;
       _preparingPreview = false;
-      notifyListeners();
+      _notifyIfMounted();
     }
   }
 
@@ -643,7 +704,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _imageDataUrls[i] = result.dataUrl;
     if (i < _shotCleaned.length) _shotCleaned[i] = result.scrubbed;
     _gradedByFilter.clear();
-    notifyListeners();
+    _notifyIfMounted();
     return result.scrubbed;
   }
 
@@ -661,7 +722,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
 
     final seq = ++_gradeSeq;
     _gradingPreview = true;
-    notifyListeners();
+    _notifyIfMounted();
     try {
       // Cap uploads below full Canon plates, but high enough for sharp tablet
       // look-picker cells (see [kStripPreviewGradeUploadMaxEdge]).
@@ -683,7 +744,7 @@ if (graded.length == _expectedCaptureCount) {
     } finally {
       if (seq == _gradeSeq) {
         _gradingPreview = false;
-        notifyListeners();
+        _notifyIfMounted();
       }
     }
   }
@@ -691,13 +752,14 @@ if (graded.length == _expectedCaptureCount) {
   void selectFilter(String filterId) {
     if (filterId == _selectedFilterId) return;
     _selectedFilterId = filterId;
-    notifyListeners();
-    // Instant Flutter ColorFilter browse; compose warms for Continue / print.
-    _scheduleComposePreview(allowLargePayloadWarm: true);
+    _notifyIfMounted();
+    _scheduleComposePreviewAfterLookOptionTap();
   }
 
   void selectFrame(String frameId) {
-    if (!supportsSheetLayouts && isStripSheetLayout(frameId)) return;
+    if (!classicFrameIdVisibleForShotCount(frameId, shotCount)) {
+      return;
+    }
     if (frameId == _selectedFrameId) return;
     final wasSheet = isStripSheetLayout(_selectedFrameId);
     final nowSheet = isStripSheetLayout(frameId);
@@ -710,11 +772,9 @@ if (graded.length == _expectedCaptureCount) {
       _selectedStickerId = kDefaultStripStickerId;
       _drawMode = false;
     }
-    notifyListeners();
-    _scheduleComposePreview(allowLargePayloadWarm: true);
+    _notifyIfMounted();
+    _scheduleComposePreviewAfterLookOptionTap();
   }
-
-  /// Tap a sticker chip: `none` clears; placeable types add one per photo cell.
   void selectSticker(String stickerId) {
     if (stickerId == kDefaultStripStickerId || stickerId == 'none') {
       clearStickers();
@@ -750,8 +810,8 @@ if (graded.length == _expectedCaptureCount) {
       );
     }
     _selectedStickerId = type;
-    notifyListeners();
-    _scheduleComposePreview(allowLargePayloadWarm: true);
+    _notifyIfMounted();
+    _scheduleComposePreviewAfterLookOptionTap();
   }
 
   void moveSticker(String id, double x, double y) {
@@ -762,8 +822,8 @@ if (graded.length == _expectedCaptureCount) {
     final cur = _placements[i];
     if (cur.x == nx && cur.y == ny) return;
     _placements[i] = cur.copyWith(x: nx, y: ny);
-    notifyListeners();
-    _scheduleComposePreview(allowLargePayloadWarm: true);
+    _notifyIfMounted();
+    _scheduleComposePreviewAfterLookOptionTap();
   }
 
   void removeSticker(String id) {
@@ -772,8 +832,8 @@ if (graded.length == _expectedCaptureCount) {
     if (_placements.length == before) return;
     _selectedStickerId =
         _placements.isEmpty ? kDefaultStripStickerId : _placements.last.type;
-    notifyListeners();
-    _scheduleComposePreview(allowLargePayloadWarm: true);
+    _notifyIfMounted();
+    _scheduleComposePreviewAfterLookOptionTap();
   }
 
   void clearStickers() {
@@ -782,18 +842,18 @@ if (graded.length == _expectedCaptureCount) {
     }
     _placements.clear();
     _selectedStickerId = kDefaultStripStickerId;
-    notifyListeners();
-    _scheduleComposePreview(allowLargePayloadWarm: true);
+    _notifyIfMounted();
+    _scheduleComposePreviewAfterLookOptionTap();
   }
 
   void setDrawMode(bool enabled) {
     if (_drawMode == enabled) return;
     if (!enabled) {
       _commitActiveScribble();
-      _scheduleComposePreview(allowLargePayloadWarm: true);
+      _scheduleComposePreviewAfterLookOptionTap();
     }
     _drawMode = enabled;
-    notifyListeners();
+    _notifyIfMounted();
   }
 
   void setPenColor(String color) {
@@ -801,7 +861,7 @@ if (graded.length == _expectedCaptureCount) {
     if (!kStripScribblePenColors.contains(normalized)) return;
     if (_penColor == normalized) return;
     _penColor = normalized;
-    notifyListeners();
+    _notifyIfMounted();
   }
 
   void beginScribble(double x, double y) {
@@ -809,7 +869,7 @@ if (graded.length == _expectedCaptureCount) {
     _activeScribblePoints = [
       StripScribblePoint(x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)),
     ];
-    notifyListeners();
+    _notifyIfMounted();
   }
 
   void extendScribble(double x, double y) {
@@ -820,33 +880,33 @@ if (graded.length == _expectedCaptureCount) {
     final last = active.last;
     if ((last.x - nx).abs() < 0.004 && (last.y - ny).abs() < 0.004) return;
     active.add(StripScribblePoint(nx, ny));
-    notifyListeners();
+    _notifyIfMounted();
   }
 
   void endScribble() {
     _commitActiveScribble();
-    notifyListeners();
-    _scheduleComposePreview(allowLargePayloadWarm: true);
+    _notifyIfMounted();
+    _scheduleComposePreviewAfterLookOptionTap();
   }
 
   void undoScribble() {
     if (_activeScribblePoints != null) {
       _activeScribblePoints = null;
-      notifyListeners();
+      _notifyIfMounted();
       return;
     }
     if (_scribbles.isEmpty) return;
     _scribbles.removeLast();
-    notifyListeners();
-    _scheduleComposePreview(allowLargePayloadWarm: true);
+    _notifyIfMounted();
+    _scheduleComposePreviewAfterLookOptionTap();
   }
 
   void clearScribbles() {
     if (_scribbles.isEmpty && _activeScribblePoints == null) return;
     _scribbles.clear();
     _activeScribblePoints = null;
-    notifyListeners();
-    _scheduleComposePreview(allowLargePayloadWarm: true);
+    _notifyIfMounted();
+    _scheduleComposePreviewAfterLookOptionTap();
   }
 
   @visibleForTesting
@@ -866,37 +926,118 @@ if (graded.length == _expectedCaptureCount) {
     );
   }
 
-  Future<String> _persistStripPrintUrl(String url) {
-    return persistGuestImageUrl(
-      prefix: kGuestMediaPrefixFotoflashback,
-      source: url,
-      fetchBytes: guestMediaNetworkFetch(),
+  Future<String> _persistStripPrintUrl(String sessionId, String url) {
+    return persistClassicPrintDeliverable(
+      sessionId: sessionId,
+      imageUrl: url,
+      persistLocal: persistClassicPrintLocally,
+      upload: _api.registerStripDeliverable,
     );
   }
 
-  Future<GeneratedImage?> _completeLocalLook() async {
-    final persisted = await composeLocalStripSheet(
-      LocalStripComposeRequest(
-        sources: List<String>.from(_imageDataUrls),
-        filterId: _selectedFilterId,
-        frameId: _selectedFrameId,
-        single: isSingleClassic,
-        shotCount: stripShotCount,
-        orientation: _printOrientation,
-      ),
-    );
-    if (persisted == null || persisted.isEmpty) {
-      _errorMessage = AppStrings.flashbackComposeFailed;
+  Future<LocalStripOverlay?> _overlayForLocalCompose() async {
+    final frame = selectedFrame;
+    if (frame == null) return null;
+    if (!frame.isOccasion && !isStripTemplateFrame(frame.id)) return null;
+    try {
+      final landscape = _printOrientation == PrintOrientation.landscape;
+      final overlayUrl = classicOccasionOverlayUrl(
+        overlayUrl: frame.overlayUrl,
+        landscapeOverlayUrl: frame.landscapeOverlayUrl,
+        landscape: landscape,
+      );
+      final slots = classicOccasionOverlaySlots(
+        slots: frame.slots,
+        landscapeSlots: frame.landscapeSlots,
+        landscape: landscape,
+        hasLandscapeOverlay:
+            (frame.landscapeOverlayUrl ?? '').trim().isNotEmpty,
+      );
+      final resolved = StripFrame(
+        id: frame.id,
+        name: frame.name,
+        description: frame.description,
+        kind: frame.kind,
+        overlayUrl: overlayUrl,
+        landscapeOverlayUrl: frame.landscapeOverlayUrl,
+        caption: frame.caption,
+        logoUrl: frame.logoUrl,
+        shotCount: frame.shotCount,
+        slots: slots,
+        landscapeSlots: frame.landscapeSlots,
+      );
+      final bytes = await _overlayBytesLookup(resolved);
+      if (bytes == null || bytes.isEmpty) return null;
+      return LocalStripOverlay(pngBytes: bytes, slots: slots);
+    } catch (_) {
       return null;
     }
-    await _sessionManager.attachDeliverableImageUrls(
-      imageUrls: [persisted],
-      stripCompositeUrl: persisted,
+  }
+
+  Future<List<Uint8List>> _rawJpegBytesForLocalCompose() async {
+    if (_lookPreviewJpegBytes.length == _expectedCaptureCount) {
+      return List<Uint8List>.from(_lookPreviewJpegBytes);
+    }
+    final out = <Uint8List>[];
+    for (final source in _imageDataUrls) {
+      final loaded = await loadLocalStripSourceBytes(source, null);
+      if (loaded == null || loaded.isEmpty) return const [];
+      out.add(loaded);
+    }
+    return out;
+  }
+
+  Future<void> _ensureLookPreviewJpegBytes() async {
+    if (_lookPreviewJpegBytes.length == _expectedCaptureCount) return;
+    if (_pendingImageFilePaths != null) return;
+    final gen = _hydrateGeneration;
+    _lookPreviewCompactInFlight ??= () async {
+      final compacted = await compactLookPreviewFromDataUrls(
+        existing: _lookPreviewJpegBytes,
+        dataUrls: List<String>.from(_imageDataUrls),
+        expectedCount: _expectedCaptureCount,
+        single: isSingleClassic,
+      );
+      if (_disposed || gen != _hydrateGeneration) return;
+      _lookPreviewJpegBytes = compacted;
+      _notifyIfMounted();
+    }();
+    await _lookPreviewCompactInFlight;
+  }
+
+  Future<Uint8List> _readCompactLookJpeg(
+    String path, {
+    required int maxLongEdge,
+  }) async {
+    final bytes = await XFile(path).readAsBytes();
+    if (bytes.isEmpty) {
+      throw Exception(AppStrings.imageFileEmpty);
+    }
+    final compacted = await compactJpegsForLocalStripPrint(
+      [bytes],
+      maxLongEdge: maxLongEdge,
+    );
+    if (compacted.isEmpty) {
+      throw Exception(AppStrings.imageFileEmpty); // coverage:ignore-line
+    }
+    return compacted.single;
+  }
+
+  Future<GeneratedImage?> _generatedImageFromLocalPrint(String printUrl) async {
+    final persisted = await persistClassicPrintDeliverable(
+      sessionId: _sessionManager.sessionId ?? '',
+      imageUrl: printUrl,
+      persistLocal: persistClassicPrintLocally,
+      upload: _api.registerStripDeliverable,
     );
     final printSize = resolveClassicComposePrintSize(
       imageCount: _imageDataUrls.length,
       apiPrintSize: null,
       orientation: _printOrientation,
+    );
+    await _sessionManager.attachDeliverableImageUrls(
+      imageUrls: [persisted],
+      stripCompositeUrl: isSingleClassic ? null : persisted,
     );
     final result = localLookComposeResult(
       imageUrl: persisted,
@@ -905,6 +1046,7 @@ if (graded.length == _expectedCaptureCount) {
     );
     _composeResult = result;
     _composePreview = result;
+    _composePreviewFingerprint = _lookComposeFingerprint();
     return GeneratedImage(
       id: 'local_look_$_selectedFilterId',
       imageUrl: persisted,
@@ -914,33 +1056,116 @@ if (graded.length == _expectedCaptureCount) {
     );
   }
 
+  Future<GeneratedImage?> _completeLocalLook() async {
+    await _ensureLookPreviewJpegBytes();
+    final started = DateTime.now();
+    CaptureFlowLog.event(
+      'classic.local_compose_start',
+      fields: {
+        'shots': _imageDataUrls.length,
+        'filter': _selectedFilterId,
+      },
+    );
+    final overlay = await compactOverlayForLocalStripPrint(
+      await _overlayForLocalCompose(),
+      single: isSingleClassic,
+      landscape: _printOrientation == PrintOrientation.landscape,
+    );
+    final jpegBytes = await compactJpegsForLocalStripPrint(
+      await _rawJpegBytesForLocalCompose(),
+      maxLongEdge: localStripPrintJpegMaxLongEdge(single: isSingleClassic),
+    );
+    if (jpegBytes.length != _expectedCaptureCount) {
+      _errorMessage = AppStrings.flashbackComposeFailed;
+      return null;
+    }
+    final persisted = await (composeLocalStripSheetForTest ?? composeLocalStripSheet)(
+      LocalStripComposeRequest(
+        sources: List<String>.from(_imageDataUrls),
+        jpegBytes: jpegBytes,
+        filterId: _selectedFilterId,
+        frameId: _selectedFrameId,
+        single: isSingleClassic,
+        shotCount: stripShotCount,
+        orientation: _printOrientation,
+        overlay: overlay,
+      ),
+    );
+    CaptureFlowLog.event(
+      'classic.local_compose_done',
+      fields: {
+        'shots': _imageDataUrls.length,
+        'ms': DateTime.now().difference(started).inMilliseconds,
+      },
+    );
+    if (persisted == null || persisted.isEmpty) {
+      _errorMessage = AppStrings.flashbackComposeFailed;
+      return null;
+    }
+    return _generatedImageFromLocalPrint(persisted);
+  }
+
+  Future<GeneratedImage?> _composeLocalLookJoiningWarm() async {
+    _commitActiveScribble();
+    _sessionManager.setPrintOrientation(_printOrientation);
+    final fingerprint = _lookComposeFingerprint();
+    final alreadyReady = _composePreview != null &&
+        _composePreviewFingerprint == fingerprint &&
+        (_composePreview!.printImageUrl.trim().isNotEmpty);
+    final warm = _composeWarmInFlight;
+    _composing = true;
+    _notifyIfMounted();
+    if (!alreadyReady &&
+        warm != null &&
+        _composeWarmFingerprint == fingerprint) {
+      await warm.timeout(
+        composeWarmJoinTimeoutForTest,
+        onTimeout: () {
+          AppLogger.warning('Classic local compose warm join timed out');
+        },
+      );
+    }
+    final ready = _composePreview != null &&
+        _composePreviewFingerprint == fingerprint &&
+        (_composePreview!.printImageUrl.trim().isNotEmpty);
+    if (ready) {
+      CaptureFlowLog.event(
+        'classic.local_compose_reuse',
+        fields: {'shots': _imageDataUrls.length},
+      );
+      return _generatedImageFromLocalPrint(_composePreview!.printImageUrl);
+    }
+    return _completeLocalLook();
+  }
+
   /// Composes the strip and returns a selected [GeneratedImage] for Result.
   Future<GeneratedImage?> compose() async {
     if (!canCompose) {
       _errorMessage = isSingleClassic
           ? AppStrings.flashbackComposeFailed
           : AppStrings.flashbackNeedAllShots(_expectedCaptureCount);
-      notifyListeners();
+      _notifyIfMounted();
       return null;
     }
-    final sessionId = _sessionManager.sessionId?.trim() ?? '';
+    final sessionId = _sessionManager.ensureSessionForClassicCompose() ?? '';
     if (sessionId.isEmpty) {
-      _errorMessage = AppStrings.sessionPhotoSyncNoSession;
-      notifyListeners();
-      return null;
+      _errorMessage = AppStrings.sessionPhotoSyncNoSession; // coverage:ignore-line
+      _notifyIfMounted(); // coverage:ignore-line
+      return null; // coverage:ignore-line
     }
 
-    if (KioskOfflineUx.shouldUseLocalStripLook(
+    if (KioskOfflineUx.shouldComposeClassicOnDevice(
       sessionOffline: _sessionManager.isOfflineSession,
+      eventPrintIsLocal: _eventPrintIsLocal,
     )) {
-      _composing = true;
+      _composePreviewDebounce?.cancel();
       _errorMessage = null;
-      notifyListeners();
+      _notifyIfMounted();
       try {
-        return await _completeLocalLook();
+        return await _composeLocalLookJoiningWarm();
       } finally {
         _composing = false;
-        notifyListeners();
+        _notifyIfMounted();
       }
     }
 
@@ -951,9 +1176,9 @@ if (graded.length == _expectedCaptureCount) {
       // Join the first look-screen polish so print matches preview. Do not
       // start a second Gemini pass on Continue (felt like the CTA vanished).
       await preparePreview().timeout(
-        composeWarmJoinTimeoutForTest,
+        composePrepareJoinTimeoutForTest,
         onTimeout: () {
-          AppLogger.warning('Classic preparePreview timed out on compose');
+          AppLogger.warning('Classic preparePreview skipped on compose');
         },
       );
     }
@@ -987,7 +1212,7 @@ if (graded.length == _expectedCaptureCount) {
 
     _composing = true;
     _errorMessage = null;
-    notifyListeners();
+    _notifyIfMounted();
     try {
       final reuse = _composePreview != null &&
           _composePreviewFingerprint == fingerprint &&
@@ -1023,10 +1248,10 @@ if (graded.length == _expectedCaptureCount) {
         apiPrintSize: result.printSize,
         orientation: _printOrientation,
       );
-      final printUrl = await _persistStripPrintUrl(result.printImageUrl);
+      final printUrl = await _persistStripPrintUrl(sessionId, result.printImageUrl);
       await _sessionManager.attachDeliverableImageUrls(
         imageUrls: [printUrl],
-        stripCompositeUrl: printUrl,
+        stripCompositeUrl: isSingleClassic ? null : printUrl,
       );
       return GeneratedImage(
         id: 'strip_${_selectedFilterId}_${DateTime.now().millisecondsSinceEpoch}',
@@ -1041,6 +1266,10 @@ if (graded.length == _expectedCaptureCount) {
         error: e,
         stackTrace: st,
       );
+      // Timeouts are not WAN-down, but Continue should still print if the
+      // on-device sheet can bake from the stills already on disk.
+      final local = await _completeLocalLook();
+      if (local != null) return local;
       _errorMessage = AppStrings.flashbackComposeFailed;
       return null;
     } on ApiException catch (e) {
@@ -1048,7 +1277,12 @@ if (graded.length == _expectedCaptureCount) {
         sessionOffline: false,
         error: e,
       )) {
-        _sessionManager.markSessionOffline();
+        if (KioskOfflineUx.shouldSkipAiGeneration(
+          sessionOffline: false,
+          error: e,
+        )) {
+          _sessionManager.markSessionOffline();
+        }
         return await _completeLocalLook();
       }
       _errorMessage = e.message;
@@ -1063,7 +1297,7 @@ if (graded.length == _expectedCaptureCount) {
       return null;
     } finally {
       _composing = false;
-      notifyListeners();
+      _notifyIfMounted();
     }
   }
 
@@ -1089,17 +1323,29 @@ if (graded.length == _expectedCaptureCount) {
     ].join('::');
   }
 
+  /// Look chips stay on ColorFilter / overlay swap. Never bake a print twin
+  /// on the UI isolate — that froze 4GB Android TV when guests tapped frames
+  /// or stickers. Cancel a pending idle warm so it cannot start mid-browse.
+  void _scheduleComposePreviewAfterLookOptionTap() {
+    _composePreviewDebounce?.cancel();
+  }
+
   void _scheduleComposePreview({
     bool allowLargePayloadWarm = false,
     Duration? delay,
   }) {
     if (!_hasComposableShotCount) return;
-    // 4-shot / huge payloads: never background-warm. Sequential bake + compose
-    // of strip-quality JPEGs freezes / LMKs Mini PC Pick-a-look (felt "stuck").
-    if (shouldDeferClassicComposePreviewWarm(
+    // Event-local Pick-a-look stays on ColorFilter. Baking a 1200×1800 print
+    // twin on every look/frame tap froze 4GB Android TV kiosks.
+    if (_eventPrintIsLocal &&
+        shouldDeferLocalClassicComposeWarm(shotCount: stripShotCount)) {
+      _composePreviewDebounce?.cancel();
+      return;
+    } else if (shouldDeferClassicComposePreviewWarm(
       imageDataUrls: _imageDataUrls,
       captureUploadsAlreadyCompact: _captureUploadsAlreadyCompact,
     )) {
+      // Fly 4-shot / huge payloads: idle bake freezes Pick-a-look.
       _composePreviewDebounce?.cancel();
       return;
     }
@@ -1113,9 +1359,47 @@ if (graded.length == _expectedCaptureCount) {
     });
   }
 
+  Future<void> _refreshLocalComposePreview() async {
+    if (_disposed || !_hasComposableShotCount || _composing) return;
+    await _ensureLookPreviewJpegBytes();
+    final fingerprint = _lookComposeFingerprint();
+    if (_composePreviewFingerprint == fingerprint &&
+        (_composePreview?.printImageUrl.trim().isNotEmpty ?? false)) {
+      return;
+    }
+    final seq = ++_composePreviewSeq;
+    _warmingPrintPreview = true;
+    _notifyIfMounted();
+    final done = Completer<void>();
+    _composeWarmInFlight = done.future;
+    _composeWarmFingerprint = fingerprint;
+    try {
+      _commitActiveScribble();
+      _sessionManager.setPrintOrientation(_printOrientation);
+      await _completeLocalLook();
+      if (seq != _composePreviewSeq) return;
+      _composePreviewFingerprint = fingerprint;
+    } catch (_) {
+      // Continue still bakes on demand.
+    } finally {
+      if (!done.isCompleted) done.complete();
+      if (identical(_composeWarmInFlight, done.future)) {
+        _composeWarmInFlight = null;
+      }
+      if (seq == _composePreviewSeq) {
+        _warmingPrintPreview = false;
+        _notifyIfMounted();
+      }
+    }
+  }
+
   /// Background: bake print-sized Flutter look + compose so Continue / Your
   /// prints / DNP reuse the same JPEG. Does not block the look browser.
   Future<void> refreshComposePreview() async {
+    if (_eventPrintIsLocal) {
+      await _refreshLocalComposePreview();
+      return;
+    }
     if (!_hasComposableShotCount || _composing) return;
     final sessionId = _sessionManager.sessionId?.trim() ?? '';
     if (sessionId.isEmpty) return;
@@ -1128,7 +1412,7 @@ if (graded.length == _expectedCaptureCount) {
 
     final seq = ++_composePreviewSeq;
     _warmingPrintPreview = true;
-    notifyListeners();
+    _notifyIfMounted();
     final done = Completer<void>();
     _composeWarmInFlight = done.future;
     _composeWarmFingerprint = fingerprint;
@@ -1149,7 +1433,7 @@ if (graded.length == _expectedCaptureCount) {
       }
       if (seq == _composePreviewSeq) {
         _warmingPrintPreview = false;
-        notifyListeners();
+        _notifyIfMounted();
       }
     }
   }
@@ -1187,6 +1471,7 @@ if (graded.length == _expectedCaptureCount) {
 
   @override
   void dispose() {
+    _disposed = true;
     clearCapturePreview();
     super.dispose();
   }

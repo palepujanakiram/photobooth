@@ -111,6 +111,11 @@ All route names are constants in `lib/utils/constants.dart`; the route table is 
 
 ## Quality gates (required before merging)
 
+Run these through the `flutter-test-gate` subagent rather than inline — it is pinned to a
+smaller model and keeps the full test output out of the main conversation. Delegate to it
+after finishing a change to `lib/` or `test/`, and act on the failures it reports back.
+Run the commands directly only when debugging a single test you are actively editing.
+
 ```bash
 flutter analyze lib/     # zero errors
 flutter test --coverage

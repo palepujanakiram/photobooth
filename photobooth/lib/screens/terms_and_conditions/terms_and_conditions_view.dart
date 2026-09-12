@@ -310,7 +310,9 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
       final frameOnlyEvent =
           await EventManager().getPhotoModeOverride() == 'FRAME_ONLY';
       if (!mounted) return;
-      if (runtime.classicPhotosEnabled || frameOnlyEvent) {
+      if (runtime.classicPhotosEnabled ||
+          frameOnlyEvent ||
+          !runtime.aiPhotosEnabled) {
         await pushReplacementKioskFade<void, void>(
           context,
           ExperienceChoiceScreen(capturePrefillPhoto: _capturePrefillPhoto),

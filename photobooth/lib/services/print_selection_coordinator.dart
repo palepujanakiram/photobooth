@@ -12,6 +12,7 @@ class PrintSelectionCoordinator {
   List<GeneratedImage> images = [];
   String? stripPrintSize;
   String? transformationRunId;
+  int? classicComposeShotCount;
   bool fromClassicStrip = false;
   bool awaitingExploreMoreReturn = false;
 
@@ -19,11 +20,13 @@ class PrintSelectionCoordinator {
     required List<GeneratedImage> seedImages,
     String? stripPrintSize,
     String? transformationRunId,
+    int? classicComposeShotCount,
     bool fromClassicStrip = true,
   }) {
     images = List<GeneratedImage>.from(seedImages);
     this.stripPrintSize = stripPrintSize;
     this.transformationRunId = transformationRunId;
+    this.classicComposeShotCount = classicComposeShotCount;
     this.fromClassicStrip = fromClassicStrip;
     awaitingExploreMoreReturn = false;
   }
@@ -56,6 +59,7 @@ class PrintSelectionCoordinator {
     images = [];
     stripPrintSize = null;
     transformationRunId = null;
+    classicComposeShotCount = null;
     fromClassicStrip = false;
     awaitingExploreMoreReturn = false;
   }

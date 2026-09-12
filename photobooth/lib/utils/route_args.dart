@@ -367,6 +367,9 @@ class ResultArgs {
   /// FotoFlashback only — WCM cut size (e.g. `s6x2_2` for `6x2*2`). Null keeps AI size.
   final String? printSize;
 
+  /// Classic compose still count (1 = uncut 4×6 / 6×4; 3/4 = dual strip).
+  final int? classicComposeShotCount;
+
   /// Transformation run for View details (FotoFlashback compose / AI generate).
   final String? transformationRunId;
   final CustomerContactCapture contact;
@@ -382,6 +385,7 @@ class ResultArgs {
     this.originalPhoto,
     this.printOrientation = PrintOrientation.portrait,
     this.printSize,
+    this.classicComposeShotCount,
     this.transformationRunId,
     this.contact = CustomerContactCapture.empty,
   });
@@ -396,6 +400,15 @@ class ResultArgs {
       final rawPrintSize = args['printSize']?.toString().trim();
       final rawRunId = args['transformationRunId']?.toString().trim() ??
           args['runId']?.toString().trim();
+      final rawShotCount = args['classicComposeShotCount'] ??
+          args['classic_compose_shot_count'] ??
+          args['shotCount'];
+      int? shotCount;
+      if (rawShotCount is int) {
+        shotCount = rawShotCount;
+      } else if (rawShotCount is String) {
+        shotCount = int.tryParse(rawShotCount.trim());
+      }
       return ResultArgs(
         generatedImages: generatedImages,
         originalPhoto: originalPhoto,
@@ -406,6 +419,7 @@ class ResultArgs {
         printSize: (rawPrintSize != null && rawPrintSize.isNotEmpty)
             ? rawPrintSize
             : null,
+        classicComposeShotCount: shotCount,
         transformationRunId:
             (rawRunId != null && rawRunId.isNotEmpty) ? rawRunId : null,
         contact: CustomerContactCapture.tryParseRouteMap(args),

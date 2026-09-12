@@ -30,6 +30,27 @@ void main() {
       expect(AppConstants.kFlashbackCaptureCountdownSeconds, 10);
       expect(AppConstants.kFlashbackFollowOnCountdownSeconds, 10);
     });
+
+    test('Classic uses kiosk countdown when provided', () {
+      expect(
+        captureCountdownSecondsForMode(
+          isFlashbackMultiShot: true,
+          classicSeconds: 7,
+        ),
+        7,
+      );
+      expect(
+        captureCountdownSecondsForMode(
+          isFlashbackMultiShot: true,
+          classicSeconds: 3,
+        ),
+        5,
+      );
+      expect(
+        captureCountdownSecondsForMode(isFlashbackMultiShot: false),
+        AppConstants.kCaptureCountdownSeconds,
+      );
+    });
   });
 
   group('shouldPrepareSidecarStillDuringCountdown', () {

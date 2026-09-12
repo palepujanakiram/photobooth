@@ -60,6 +60,13 @@ String? catalogCacheKeyForFrame(String? frameId) {
   return '$kCatalogImageCacheKindFrame-$id';
 }
 
+/// Stable disk-cache key for event-station thumbs (ignores auth query params).
+String? eventStationThumbCacheKey(String? sessionOrJobId) {
+  final id = sanitizeCatalogCacheToken(sessionOrJobId?.toLowerCase());
+  if (id == null) return null;
+  return 'ev-$id';
+}
+
 /// Filename stem: `theme-{id}` / `frame-{id}` when known, else a URL hash.
 String catalogImageCacheFileStem({
   String? cacheKey,

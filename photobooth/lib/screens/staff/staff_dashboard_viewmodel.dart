@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../models/staff_dashboard_models.dart';
@@ -28,9 +30,11 @@ class StaffDashboardViewModel extends ChangeNotifier {
   StaffDashboardViewModel({
     required StaffDashboardGateway gateway,
     String? initialDate,
+    StaffOpsSession? seededSession,
   })  : _gateway = gateway,
         _selectedDate =
-            initialDate ?? StaffDashboardHelpers.todayLocalDate();
+            initialDate ?? StaffDashboardHelpers.todayLocalDate(),
+        _session = seededSession;
 
   final StaffDashboardGateway _gateway;
 
@@ -58,14 +62,8 @@ class StaffDashboardViewModel extends ChangeNotifier {
     _error = null;
     notifyListeners();
     try {
-      await Future.wait([
-        _refreshSession(),
-        _refreshDaySummary(),
-      ]);
-      final staffId = _session?.staff.id.trim() ?? '';
-      if (staffId.isNotEmpty) {
-        _stats = await _gateway.fetchStaffStats(staffId);
-      }
+      await _refreshSessionAndSummary();
+      _scheduleStatsRefresh();
     } on ApiException catch (e) {
       _error = e.message;
       rethrow;
@@ -80,15 +78,9 @@ class StaffDashboardViewModel extends ChangeNotifier {
 
   Future<void> refreshQuiet() async {
     try {
-      await Future.wait([
-        _refreshSession(),
-        _refreshDaySummary(),
-      ]);
-      final staffId = _session?.staff.id.trim() ?? '';
-      if (staffId.isNotEmpty) {
-        _stats = await _gateway.fetchStaffStats(staffId);
-      }
+      await _refreshSessionAndSummary();
       _error = null;
+      _scheduleStatsRefresh();
     } on ApiException catch (e) {
       _error = e.message;
     } catch (e) {
@@ -187,6 +179,28 @@ class StaffDashboardViewModel extends ChangeNotifier {
     } finally {
       _actionBusy = false;
       notifyListeners();
+    }
+  }
+
+  Future<void> _refreshSessionAndSummary() {
+    return Future.wait([
+      _refreshSession(),
+      _refreshDaySummary(),
+    ]);
+  }
+
+  void _scheduleStatsRefresh() {
+    unawaited(_refreshStatsBestEffort());
+  }
+
+  Future<void> _refreshStatsBestEffort() async {
+    final staffId = _session?.staff.id.trim() ?? '';
+    if (staffId.isEmpty) return;
+    try {
+      _stats = await _gateway.fetchStaffStats(staffId);
+      notifyListeners();
+    } catch (_) {
+      // Lifetime stats are optional chrome; keep Overview usable.
     }
   }
 

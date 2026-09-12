@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../services/api_service.dart';
 import '../../services/event_manager.dart';
+import '../../services/kiosk_manager.dart';
 import '../../services/session_manager.dart';
 import '../../services/theme_manager.dart';
 import '../../utils/app_strings.dart';
@@ -17,21 +18,25 @@ class ExperienceChoiceViewModel extends ChangeNotifier {
     ApiService? apiService,
     SessionManager? sessionManager,
     EventManager? eventManager,
+    KioskManager? kioskManager,
   })  : _themeManager = themeManager ?? ThemeManager(),
         _api = apiService ?? ApiService(),
         _sessionManager = sessionManager ?? SessionManager(),
-        _eventManager = eventManager ?? EventManager();
+        _eventManager = eventManager ?? EventManager(),
+        _kioskManager = kioskManager ?? KioskManager();
 
   final ThemeManager _themeManager;
   final ApiService _api;
   final SessionManager _sessionManager;
   final EventManager _eventManager;
+  final KioskManager _kioskManager;
 
   bool _loading = false;
   bool _startingFlashback = false;
   String? _errorMessage;
   List<ThemeModel> _themes = const [];
   bool _frameOnlyEvent = false;
+  bool _aiPhotosEnabled = true;
 
   bool get isLoading => _loading;
   bool get isStartingFlashback => _startingFlashback;
@@ -41,12 +46,13 @@ class ExperienceChoiceViewModel extends ChangeNotifier {
   /// Local / WAN-down sessions cannot run Fly Gemini AI.
   bool get isOffline => _sessionManager.isOfflineSession;
 
-  /// FotoZen AI path — disabled offline so guests are not sent into network errors.
+  /// FotoZen AI path — off when the kiosk/event disables it, or the session is offline.
   bool get aiAvailable =>
       !KioskOfflineUx.shouldDisableAiExperience(
         sessionOffline: isOffline,
       ) &&
-      !_frameOnlyEvent;
+      !_frameOnlyEvent &&
+      _aiPhotosEnabled;
 
   ThemeModel? get fotoFlashTheme {
     for (final t in _themes) {
@@ -62,6 +68,7 @@ class ExperienceChoiceViewModel extends ChangeNotifier {
     try {
       _frameOnlyEvent =
           await _eventManager.getPhotoModeOverride() == 'FRAME_ONLY';
+      _aiPhotosEnabled = await _kioskManager.isAiPhotosEnabled();
       _themes = await _themeManager.fetchThemes();
     } on ApiException catch (e) {
       _errorMessage = e.message;

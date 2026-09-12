@@ -1,10 +1,15 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:photobooth/utils/app_runtime_config.dart';
 import 'package:photobooth/utils/app_strings.dart';
 import 'package:photobooth/utils/capture_session_kind.dart';
 import 'package:photobooth/utils/classic_pose_mode_helpers.dart';
 import 'package:photobooth/utils/classic_shot_mode.dart';
 
 void main() {
+  setUp(() {
+    AppRuntimeConfig.instance.applyFromSettings(null);
+  });
+
   group('captureSessionKindForClassic', () {
     test('maps 1-shot and 4-shot', () {
       expect(
@@ -50,6 +55,17 @@ void main() {
       expect(AppStrings.flashbackCaptureSubtitleThree, contains('3 shots'));
       expect(AppStrings.flashbackCaptureSubtitleThree, contains('10s'));
       expect(AppStrings.flashbackCaptureSubtitleThree, contains('8s'));
+    });
+
+    test('uses the kiosk pose seconds when provided', () {
+      expect(
+        classicPoseSubtitle(ClassicShotMode.single6x4, poseSeconds: 7),
+        AppStrings.flashbackCaptureSubtitleSingleFor(7),
+      );
+      expect(
+        classicPoseSubtitle(ClassicShotMode.fourShot, poseSeconds: 7),
+        contains('7s'),
+      );
     });
   });
 

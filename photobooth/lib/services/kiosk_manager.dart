@@ -7,12 +7,14 @@ class KioskManager {
       'kiosk_payment_enabled_override';
   static const String _kPrefsClassicPhotosEnabled =
       'kiosk_classic_photos_enabled';
+  static const String _kPrefsAiPhotosEnabled = 'kiosk_ai_photos_enabled';
   static const String _kPrefsClassicShotModes = 'kiosk_classic_shot_modes';
   static const String _kPrefsOperatingModeOffline =
       'kiosk_operating_mode_offline';
 
   static bool? _cachedPaymentEnabledOverride;
   static bool? _cachedClassicPhotosEnabled;
+  static bool? _cachedAiPhotosEnabled;
   static List<int>? _cachedClassicShotModes;
   static bool? _cachedOperatingModeOffline;
 
@@ -27,6 +29,7 @@ class KioskManager {
   static void resetClassicPhotosCacheForTests() {
     _cachedClassicPhotosEnabled = null;
     _cachedClassicShotModes = null;
+    _cachedAiPhotosEnabled = null;
   }
 
   /// Clears in-memory operating-mode cache (tests only).
@@ -121,6 +124,33 @@ class KioskManager {
     _cachedClassicPhotosEnabled = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kPrefsClassicPhotosEnabled);
+  }
+
+  /// Whether FotoZen AI is offered after terms.
+  ///
+  /// Defaults to **true** when unset (older binds / missing API field).
+  Future<bool> isAiPhotosEnabled() async {
+    final cached = _cachedAiPhotosEnabled;
+    if (cached != null) return cached;
+    final prefs = await SharedPreferences.getInstance();
+    if (!prefs.containsKey(_kPrefsAiPhotosEnabled)) {
+      return true;
+    }
+    final v = prefs.getBool(_kPrefsAiPhotosEnabled) ?? true;
+    _cachedAiPhotosEnabled = v;
+    return v;
+  }
+
+  Future<void> setAiPhotosEnabled(bool enabled) async {
+    _cachedAiPhotosEnabled = enabled;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kPrefsAiPhotosEnabled, enabled);
+  }
+
+  Future<void> clearAiPhotosEnabled() async {
+    _cachedAiPhotosEnabled = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kPrefsAiPhotosEnabled);
   }
 
   /// Shot counts offered on the experience screen (subset of 1, 3, 4).

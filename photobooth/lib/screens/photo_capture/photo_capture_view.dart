@@ -10,6 +10,7 @@ import 'package:camera/camera.dart';
 import 'package:camera_native_details/camera_native_details.dart';
 import 'package:uvccamera/uvccamera.dart';
 import 'photo_capture_camera_picker_screen.dart';
+import 'photo_capture_countdown_overlay.dart';
 import 'photo_capture_pose_setup_helpers.dart';
 import 'photo_capture_preview_rotation.dart';
 import 'photo_capture_camera_error_helpers.dart';
@@ -1287,8 +1288,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       _multiShotTotal = 1;
       final counting = _captureViewModel.isCountingDown;
       _subtitleHint = counting
-          ? AppStrings.flashbackPoseProgressSingle
-          : AppStrings.flashbackCaptureSubtitleSingle;
+          ? AppStrings.flashbackPoseProgressSingleFor(
+              captureCountdownSecondsForMode(isFlashbackMultiShot: true),
+            )
+          : classicPoseSubtitle(ClassicShotMode.single6x4);
       return;
     }
     final total = _classicShotCap;
@@ -1310,8 +1313,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       _subtitleHint = AppStrings.flashbackGetReadyForShot(next, total);
     } else {
       _subtitleHint = total == 3
-          ? AppStrings.flashbackCaptureSubtitleThree
-          : AppStrings.flashbackCaptureSubtitle;
+          ? classicPoseSubtitle(ClassicShotMode.threeShot)
+          : classicPoseSubtitle(ClassicShotMode.fourShot);
     }
   }
 
@@ -5353,7 +5356,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                     ),
                   if (viewModel.isCountingDown)
                     Positioned.fill(
-                      child: _buildCountdownOverlay(context, viewModel.countdownValue!),
+                      child: _buildCountdownOverlay(viewModel.countdownValue!),
                     ),
                   if (!hasCapturedPhoto &&
                       shouldShowSidecarPrepHoldBanner(
@@ -5630,61 +5633,15 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     );
   }
 
-  /// Builds the on-screen capture countdown overlay (e.g. 10, 9, 8…).
-  Widget _buildCountdownOverlay(BuildContext context, int countdownValue) {
+  /// Pose timer at the top of the preview — not centred over faces.
+  Widget _buildCountdownOverlay(int countdownValue) {
     // Classic shot progress already appears in the app-bar subtitle — avoid
     // repeating "Pose now — Shot X of Y" inside the preview card.
     final showAiIntro = !_isClassicPose &&
         countdownValue == AppConstants.kCaptureCountdownSeconds;
-    final String? headline =
-        showAiIntro ? AppStrings.captureCountdownIntro : null;
-
-    return Container(
-      color: Colors.black.withValues(alpha: 0.5),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (headline != null) ...[
-              Text(
-                headline,
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white.withValues(alpha: 0.95),
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 20),
-            ],
-            Container(
-              width: 150,
-              height: 150,
-              decoration: BoxDecoration(
-                color: Colors.grey.withValues(alpha: 0.7),
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.3),
-                    blurRadius: 30,
-                    spreadRadius: 10,
-                  ),
-                ],
-              ),
-              child: Center(
-                child: Text(
-                  '$countdownValue',
-                  style: const TextStyle(
-                    fontSize: 80,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+    return CaptureCountdownOverlay(
+      countdownValue: countdownValue,
+      headline: showAiIntro ? AppStrings.captureCountdownIntro : null,
     );
   }
 

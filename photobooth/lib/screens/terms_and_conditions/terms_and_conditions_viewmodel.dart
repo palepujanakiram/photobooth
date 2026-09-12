@@ -215,6 +215,11 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
 
       final sessionManager = SessionManager();
       sessionManager.setSessionFromResponse(created.sessionJson);
+      if (!sessionManager.hasAcceptedTermsSession) {
+        await sessionManager.endCustomerSession();
+        _errorMessage = AppStrings.termsSessionCreateFailed;
+        return false;
+      }
 
       if (!created.usedLocalFallback && !kIsWeb) {
         final sid = sessionManager.sessionId;

@@ -106,28 +106,17 @@ class _PrintSelectionScreenState extends State<PrintSelectionScreen> {
         printOrientation: orientation,
         transformationRunId:
             (runId != null && runId.isNotEmpty) ? runId : null,
-        printSize: _classicSessionPrintSize(selected, vm.stripPrintSize),
+        printSize: resolveClassicCheckoutSessionPrintSize(
+          selected: selected,
+          stripPrintSize: vm.stripPrintSize,
+          classicComposeShotCount:
+              PrintSelectionCoordinator.instance.classicComposeShotCount,
+          orientation: orientation,
+        ),
+        classicComposeShotCount:
+            PrintSelectionCoordinator.instance.classicComposeShotCount,
       ),
     );
-  }
-
-  /// Session hint for Classic checkout — never dual-strip when only 6×4 sheets selected.
-  String? _classicSessionPrintSize(
-    List<GeneratedImage> selected,
-    String? stripPrintSize,
-  ) {
-    if (selected.isEmpty) return null;
-    final sizes = selected
-        .map((e) => e.printSize?.trim() ?? '')
-        .where((s) => s.isNotEmpty)
-        .toSet();
-    if (sizes.length == 1) return sizes.single;
-    if (sizes.contains(AppConstants.kPrintSizeLandscape6x4) &&
-        !sizes.contains(AppConstants.kPrintSizeStripDual2x6)) {
-      return AppConstants.kPrintSizeLandscape6x4;
-    }
-    final hint = stripPrintSize?.trim() ?? '';
-    return hint.isNotEmpty ? hint : null;
   }
 
   @override
@@ -196,32 +185,36 @@ class _PrintSelectionScreenState extends State<PrintSelectionScreen> {
                       child: Builder(
                         builder: (context) {
                           final count = vm.images.length;
-                          final crossAxisCount = count == 1 ? 1 : 2;
-                          // One Classic sheet: size the tile to the print aspect
-                          // so contain shows the full finalized frame.
-                          final soleAspect = count == 1
-                              ? printSelectionThumbAspectRatio(
-                                  vm.images.first.printSize ??
-                                      vm.stripPrintSize,
-                                )
-                              : null;
+                          if (count == 1) {
+                            return _PrintSelectionFittedSheet(
+                              image: vm.images.first,
+                              isStrip: vm.isStripImage(vm.images.first),
+                              isClassicSheet:
+                                  vm.isClassicSingleSheet(vm.images.first),
+                              printSize: vm.images.first.printSize ??
+                                  vm.stripPrintSize,
+                              onTap: () =>
+                                  vm.toggleSelected(vm.images.first.id),
+                            );
+                          }
                           return GridView.builder(
                             gridDelegate:
-                                SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: crossAxisCount,
+                                const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 2,
                               mainAxisSpacing: 12,
                               crossAxisSpacing: 12,
-                              childAspectRatio: soleAspect ?? 0.72,
+                              childAspectRatio: 0.72,
                             ),
                             itemCount: count,
                             itemBuilder: (context, index) {
                               final image = vm.images[index];
-                          return _PrintSelectionTile(
-                            image: image,
-                            isStrip: vm.isStripImage(image),
-                            isClassicSheet: vm.isClassicSingleSheet(image),
-                            onTap: () => vm.toggleSelected(image.id),
-                          );
+                              return _PrintSelectionTile(
+                                image: image,
+                                isStrip: vm.isStripImage(image),
+                                isClassicSheet:
+                                    vm.isClassicSingleSheet(image),
+                                onTap: () => vm.toggleSelected(image.id),
+                              );
                             },
                           );
                         },
@@ -250,6 +243,50 @@ class _PrintSelectionScreenState extends State<PrintSelectionScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _PrintSelectionFittedSheet extends StatelessWidget {
+  const _PrintSelectionFittedSheet({
+    required this.image,
+    required this.isStrip,
+    required this.isClassicSheet,
+    required this.printSize,
+    required this.onTap,
+  });
+
+  final GeneratedImage image;
+  final bool isStrip;
+  final bool isClassicSheet;
+  final String? printSize;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final size = fitPrintSelectionTile(
+          maxWidth: constraints.maxWidth,
+          maxHeight: constraints.maxHeight,
+          printAspectWidthOverHeight: printSelectionThumbAspectRatio(printSize),
+        );
+        if (size.width <= 0 || size.height <= 0) {
+          return const SizedBox.shrink();
+        }
+        return Center(
+          child: SizedBox(
+            width: size.width,
+            height: size.height,
+            child: _PrintSelectionTile(
+              image: image,
+              isStrip: isStrip,
+              isClassicSheet: isClassicSheet,
+              onTap: onTap,
+            ),
+          ),
+        );
+      },
     );
   }
 }

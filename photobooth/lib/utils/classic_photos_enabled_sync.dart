@@ -1,6 +1,7 @@
 import '../models/kiosk_info_model.dart';
 import '../services/api_service.dart';
 import '../services/kiosk_manager.dart';
+import 'app_runtime_config.dart';
 import 'logger.dart';
 
 /// Re-fetches kiosk metadata and updates the Classic photos flag.
@@ -20,10 +21,15 @@ Future<bool> syncClassicPhotosEnabled({
     final KioskInfoModel? info = await api.fetchKioskByCode(code);
     if (info != null) {
       await kiosk.setClassicPhotosEnabled(info.classicPhotosEnabled);
+      await kiosk.setAiPhotosEnabled(info.aiPhotosEnabled);
       await kiosk.setClassicShotModes(info.classicShotModes);
       await kiosk.setOperatingModeOffline(info.isOperatingModeOffline);
+      AppRuntimeConfig.instance.applyClassicPoseCountdown(
+        info.classicPoseCountdownSeconds,
+      );
       AppLogger.debug(
         'Classic photos enabled synced from API: ${info.classicPhotosEnabled} '
+        'aiPhotosEnabled=${info.aiPhotosEnabled} '
         'shotModes=${info.classicShotModes} '
         'operatingMode=${info.operatingMode} (kiosk=$code)',
       );

@@ -46,6 +46,30 @@ void main() {
     expect(sm.isSessionExpired, isTrue);
   });
 
+  testWidgets('ensureSessionForClassicCompose survives stale expiry clear', (
+    tester,
+  ) async {
+    final sm = SessionManager();
+    final past = DateTime.now().subtract(const Duration(minutes: 6));
+    sm.setSessionFromResponse({
+      'id': 'sess-expired',
+      'termsAccepted': true,
+      'termsAcceptedAt': past.toIso8601String(),
+      'attemptsUsed': 0,
+      'generatedImages': [],
+      'expiresAt': past.toIso8601String(),
+    });
+    expect(sm.currentSession, isNull);
+
+    final id = sm.ensureSessionForClassicCompose();
+    expect(id, isNotNull);
+    expect(sm.isOfflineSession, isTrue);
+
+    await tester.pump();
+    expect(sm.sessionId, id);
+    expect(sm.isOfflineSession, isTrue);
+  });
+
   test('session valid inside grace window after expiry', () {
     final sm = SessionManager();
     final expiredRecently = DateTime.now().subtract(const Duration(minutes: 2));
