@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cross_file/cross_file.dart';
@@ -376,6 +377,26 @@ void main() {
       expect(counts.failed, 1);
       expect(counts.paused, 0, reason: 'the queue keeps going');
       expect(counts.pending, 1);
+    });
+
+    test('a USB print that never returns is retried rather than stuck claimed',
+        () async {
+      final mediaId = await seedItem();
+      await queue.enqueue(kind: 'print', mediaId: mediaId);
+      final worker = PrintJobWorker(
+        queue: queue,
+        ledger: ledger,
+        mediaStore: mediaStore,
+        printFn: (file, {required printSize, int quantity = 1}) =>
+            Completer<void>().future,
+        settings: () => settingsWith(),
+        statusReader: FakeStatusReader(),
+      )..printTimeout = const Duration(milliseconds: 20);
+
+      expect(await worker.drain(), 0);
+      final job = await queue.findFor(kind: 'print', mediaId: mediaId);
+      expect(job!.status, PipelineJobStatus.pending);
+      expect(job.lastError, contains('TimeoutException'));
     });
   });
 

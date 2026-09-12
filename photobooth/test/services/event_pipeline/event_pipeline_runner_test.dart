@@ -5,6 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/models/event_pipeline/event_pipeline_flags.dart';
 import 'package:photobooth/models/event_pipeline/event_print_size.dart';
 import 'package:photobooth/models/event_pipeline/media_item.dart';
+import 'package:photobooth/models/event_pipeline/media_rendition.dart';
+import 'package:photobooth/models/event_pipeline/pipeline_job.dart';
+import 'package:photobooth/models/event_pipeline/event_pipeline_settings.dart';
 import 'package:photobooth/services/event_pipeline/event_media_store.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_config.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_db.dart';
@@ -309,6 +312,37 @@ void main() {
       await injected.ensureStarted();
       expect(injected.printWorker, isNotNull);
       expect(called, 0, reason: 'wired, not yet used');
+    });
+  });
+
+  group('reprint', () {
+    test('requeues a claimed print left by a crash', () async {
+      await config.cacheFlags(
+        const EventPipelineFlags(pipelineEnabled: true, autoPrint: true),
+      );
+      await runner.ensureStarted();
+      final mediaId = await seedItem();
+      final store = EventMediaStore(resolveDirectory: () async => mediaDir);
+      final path = 'EVT1/$mediaId-source.jpg';
+      await store.putBytes(path, const [1]);
+      await runner.ledger!.putRendition(MediaRendition(
+        mediaId: mediaId,
+        kind: RenditionKind.source,
+        path: path,
+        createdAtMs: 1,
+      ));
+      await runner.queue!.enqueue(kind: EventPipelineStep.print, mediaId: mediaId);
+      await runner.queue!.claimReady('print');
+      expect(
+        (await runner.queue!.findFor(kind: 'print', mediaId: mediaId))!.status,
+        PipelineJobStatus.claimed,
+      );
+
+      expect(await runner.reprint(mediaId), isTrue);
+      expect(
+        (await runner.queue!.findFor(kind: 'print', mediaId: mediaId))!.status,
+        PipelineJobStatus.pending,
+      );
     });
   });
 }

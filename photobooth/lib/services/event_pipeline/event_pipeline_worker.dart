@@ -105,8 +105,19 @@ abstract class EventPipelineWorker {
 
   void start({Duration interval = const Duration(seconds: 5)}) {
     if (_timer != null) return;
-    unawaited(drain());
+    unawaited(_recoverAndDrain());
     _timer = Timer.periodic(interval, (_) => unawaited(drain()));
+  }
+
+  /// A `CLAIMED` row left behind by a crash is otherwise never picked up again.
+  Future<void> _recoverAndDrain() async {
+    try {
+      await _queue.releaseClaimed(kind);
+      await drain();
+    } catch (e) {
+      // Tests and teardown close SQLite while this is still in flight.
+      AppLogger.debug('EventPipelineWorker($kind) recover skipped: $e');
+    }
   }
 
   void stop() {

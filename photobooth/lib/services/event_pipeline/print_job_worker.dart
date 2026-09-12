@@ -1,4 +1,5 @@
 import 'package:cross_file/cross_file.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../models/event_pipeline/event_pipeline_settings.dart';
 import '../../models/event_pipeline/media_item.dart';
@@ -47,6 +48,10 @@ class PrintJobWorker extends EventPipelineWorker {
   final EventPipelineSettings Function() _settings;
   final PrinterStatusReader _status;
 
+  /// A USB print that never returns would leave the job `CLAIMED` forever.
+  @visibleForTesting
+  Duration printTimeout = const Duration(minutes: 2);
+
   @override
   Future<JobResult> process(PipelineJob job) async {
     final item = await _ledger.findById(job.mediaId);
@@ -76,7 +81,7 @@ class PrintJobWorker extends EventPipelineWorker {
         XFile(file.path, mimeType: 'image/jpeg'),
         printSize: settings.printSize,
         quantity: copies,
-      );
+      ).timeout(printTimeout);
       return const JobResult.done();
     } catch (e) {
       // Re-read status: a mid-job failure is very often the media running out,

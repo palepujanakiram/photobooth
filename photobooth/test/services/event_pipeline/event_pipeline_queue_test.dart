@@ -180,6 +180,30 @@ void main() {
       expect(reloaded.attempts, 0, reason: 'waiting is not failing');
       expect(reloaded.nextAttemptAtMs, greaterThan(clock));
     });
+
+    test('releaseClaimed returns orphaned claims to the queue', () async {
+      await queue.enqueue(kind: 'print', mediaId: 'm1');
+      await queue.enqueue(kind: 'ai', mediaId: 'm1');
+      await queue.claimReady('print');
+      await queue.claimReady('ai');
+      expect(await queue.releaseClaimed('print'), 1);
+      expect((await queue.counts('print')).pending, 1);
+      expect((await queue.counts('print')).claimed, 0);
+      expect((await queue.counts('ai')).claimed, 1,
+          reason: 'other kinds stay claimed');
+      expect(await queue.claimReady('print'), hasLength(1));
+    });
+
+    test('releaseClaimed can target one item', () async {
+      await queue.enqueue(kind: 'print', mediaId: 'm1');
+      await queue.enqueue(kind: 'print', mediaId: 'm2');
+      await queue.claimReady('print', limit: 2);
+      expect(await queue.releaseClaimed('print', mediaId: 'm1'), 1);
+      expect((await queue.findFor(kind: 'print', mediaId: 'm1'))!.status,
+          PipelineJobStatus.pending);
+      expect((await queue.findFor(kind: 'print', mediaId: 'm2'))!.status,
+          PipelineJobStatus.claimed);
+    });
   });
 
   group('pause and resume', () {

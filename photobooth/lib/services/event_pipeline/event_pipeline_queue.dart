@@ -201,6 +201,29 @@ class EventPipelineQueue {
     return status;
   }
 
+  /// After a crash, `CLAIMED` jobs are orphans: [claimReady] only picks
+  /// `PENDING`, so a photo that was on the printer when the process died would
+  /// sit at Printing forever. Putting them back on the queue is the restart
+  /// recovery. [mediaId] scopes it to one item (Reprint of a stuck job).
+  Future<int> releaseClaimed(String kind, {String? mediaId}) async {
+    final now = _nowMs();
+    final scoped = mediaId != null;
+    return _db.update(
+      'evp_pipeline_jobs',
+      <String, Object?>{
+        'status': PipelineJobStatus.pending,
+        'next_attempt_at_ms': 0,
+        'updated_at_ms': now,
+      },
+      where: scoped
+          ? 'kind = ? AND status = ? AND media_id = ?'
+          : 'kind = ? AND status = ?',
+      whereArgs: scoped
+          ? <Object?>[kind, PipelineJobStatus.claimed, mediaId]
+          : <Object?>[kind, PipelineJobStatus.claimed],
+    );
+  }
+
   /// Returns a claimed job to the queue **without** counting an attempt.
   ///
   /// For a precondition that is not the job's fault — an AI job whose media item

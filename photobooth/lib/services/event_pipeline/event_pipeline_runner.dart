@@ -349,6 +349,9 @@ class EventPipelineRunner {
     // Nothing to reprint if no derivative was ever produced.
     if (await ledger.bestRenditionForPrint(mediaId) == null) return false;
 
+    // A crash mid-print leaves the job CLAIMED, and enqueue is a no-op for an
+    // open row. Release it so Reprint actually runs again.
+    await queue.releaseClaimed(EventPipelineStep.print, mediaId: mediaId);
     await queue.enqueue(
       kind: EventPipelineStep.print,
       mediaId: mediaId,

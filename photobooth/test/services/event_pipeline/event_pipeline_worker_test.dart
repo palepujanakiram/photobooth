@@ -227,5 +227,22 @@ void main() {
       worker.stop();
       expect(worker.isRunning, isFalse);
     });
+
+    test('start recovers a claimed job left by a crash', () async {
+      await queue.enqueue(kind: 'print', mediaId: 'm1');
+      await queue.claimReady('print');
+      expect((await queue.counts('print')).claimed, 1);
+      worker.start(interval: const Duration(hours: 1));
+      await worker.drain();
+      expect(worker.processed, ['m1']);
+      expect((await queue.counts('print')).done, 1);
+    });
+
+    test('start recover ignores a closed database', () async {
+      await db.close();
+      worker.start(interval: const Duration(hours: 1));
+      await Future<void>.delayed(Duration.zero);
+      worker.stop();
+    });
   });
 }
