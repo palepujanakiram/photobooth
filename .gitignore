@@ -62,6 +62,8 @@ fastlane/screenshots
 fastlane/test_output
 **/fastlane/play-store-*.json
 **/fastlane/*-service-account.json
+**/fastlane/credentials/*-service-account.json
+**/fastlane/credentials/play-store-*.json
 
 # Claude Code local settings (contains secrets, not for VCS)
 .claude/settings.local.json

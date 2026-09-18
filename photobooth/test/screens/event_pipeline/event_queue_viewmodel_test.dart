@@ -5,6 +5,7 @@ import 'package:photobooth/models/event_pipeline/event_pipeline_flags.dart';
 import 'package:photobooth/models/event_pipeline/media_item.dart';
 import 'package:photobooth/models/event_info_model.dart';
 import 'package:photobooth/models/event_pipeline/media_rendition.dart';
+import 'package:photobooth/models/event_pipeline/pipeline_job.dart';
 import 'package:photobooth/screens/event_pipeline/event_queue_viewmodel.dart';
 import 'package:photobooth/services/event_manager.dart';
 import 'package:photobooth/services/event_pipeline/event_media_store.dart';
@@ -656,18 +657,35 @@ void main() {
 
     test('resuming releases the work', () async {
       final queue = EventPipelineQueue(db: db);
-      await queue.enqueue(kind: 'print', mediaId: 'm1');
 
       final vm = build();
       await vm.start();
       addTearDown(vm.dispose);
 
       await vm.setPaused(true);
+      // Pause first, then enqueue, so a live print worker cannot snatch the
+      // row before the hold is in place.
+      await queue.enqueue(kind: 'print', mediaId: 'm1');
       expect(await queue.claimReady('print'), isEmpty);
 
+      runner.stop();
       await vm.setPaused(false);
       expect(vm.isPaused, isFalse);
-      expect(await queue.claimReady('print'), hasLength(1));
+      expect(await queue.isPaused(), isFalse);
+      final claimed = await queue.claimReady('print');
+      if (claimed.isNotEmpty) {
+        expect(claimed, hasLength(1));
+        return;
+      }
+      // A live print worker may claim the moment pause lifts. That still
+      // means the hold released — the row is in-flight, finished, or backing
+      // off, not sitting idle under the operator pause.
+      final job = await queue.findFor(kind: 'print', mediaId: 'm1');
+      expect(job, isNotNull);
+      expect(job!.status, isNot(PipelineJobStatus.paused));
+      final takenByWorker = job.status != PipelineJobStatus.pending ||
+          job.nextAttemptAtMs > 0;
+      expect(takenByWorker, isTrue);
     });
 
     test('processing is the live indicator, and pausing stops it', () async {

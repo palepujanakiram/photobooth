@@ -2,7 +2,8 @@
 //
 // Version name: YEAR.MONTH.DAY (local calendar date).
 // Build number:
-//   - Pass `--build-number=N` (Fastlane sets this from App Store Connect / Google Play).
+//   - Pass `--build-number=N` (Fastlane sets this from Google Play / TestFlight, then
+//     builds the AAB/APK/IPA so the binary matches this file).
 //   - Otherwise increment the existing +suffix in pubspec (local builds only).
 //
 // Run from package root: dart run tool/sync_build_version.dart
