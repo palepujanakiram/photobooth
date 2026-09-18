@@ -37,6 +37,12 @@ void main() {
       expect((await config.readCachedFlags()).isEmpty, isTrue);
     });
 
+    test('clearCachedFlags drops the auto-print override too', () async {
+      await config.setAutoPrintOverride(true);
+      await config.clearCachedFlags();
+      expect(await config.readAutoPrintOverride(), isNull);
+    });
+
     test('clearCachedFlags empties the cache', () async {
       await config.cacheFlags(const EventPipelineFlags(aiEnabled: true));
       await config.clearCachedFlags();
@@ -71,6 +77,27 @@ void main() {
       await config.recordSyncedAt('GALA-01', 42);
       expect(await config.readSyncedAtMs('WEDDING-02'), isNull,
           reason: 'last weekend\'s sync must not unblock this weekend');
+    });
+
+    test('binding a different event drops the auto-print override', () async {
+      await config.recordSyncedAt('GALA-01', 42);
+      await config.setAutoPrintOverride(true);
+      await config.recordSyncedAt('WEDDING-02', 43);
+      expect(await config.readAutoPrintOverride(), isNull,
+          reason: 'last weekend\'s "auto print on" must not print this one');
+    });
+
+    test('re-syncing the same event keeps the auto-print override', () async {
+      await config.recordSyncedAt('GALA-01', 42);
+      await config.setAutoPrintOverride(true);
+      await config.recordSyncedAt('  gala-01  ', 43);
+      expect(await config.readAutoPrintOverride(), isTrue);
+    });
+
+    test('the first sync keeps an override set before it', () async {
+      await config.setAutoPrintOverride(true);
+      await config.recordSyncedAt('GALA-01', 42);
+      expect(await config.readAutoPrintOverride(), isTrue);
     });
 
     test('a blank code is not a syncable event', () async {
@@ -191,6 +218,44 @@ void main() {
         defaults: const EventPipelineDefaults(printerEnabled: true),
       );
       expect(on.autoPrint, isTrue);
+    });
+
+    test('a local override beats an explicit backend autoPrint', () async {
+      // The case that matters in the field: ZenAI sends `false` for every event
+      // because its admin UI cannot set the column, so without the override
+      // there is no way to reach an auto-printing chain at all.
+      await config.setAutoPrintOverride(true);
+      final s = await config.resolve(
+        flags: const EventPipelineFlags(autoPrint: false),
+      );
+      expect(s.autoPrint, isTrue);
+    });
+
+    test('a local override can also turn autoPrint off', () async {
+      await config.setAutoPrintOverride(false);
+      final s = await config.resolve(
+        flags: const EventPipelineFlags(autoPrint: true),
+      );
+      expect(s.autoPrint, isFalse);
+    });
+
+    test('clearing the override defers to the backend again', () async {
+      await config.setAutoPrintOverride(true);
+      await config.setAutoPrintOverride(null);
+      expect(await config.readAutoPrintOverride(), isNull);
+      final s = await config.resolve(
+        flags: const EventPipelineFlags(autoPrint: false),
+      );
+      expect(s.autoPrint, isFalse);
+    });
+
+    test('with no override and no backend opinion, printerEnabled still wins',
+        () async {
+      expect(await config.readAutoPrintOverride(), isNull);
+      final s = await config.resolve(
+        defaults: const EventPipelineDefaults(printerEnabled: false),
+      );
+      expect(s.autoPrint, isFalse);
     });
 
     test('resolve populates the sync pipeline-enabled snapshot', () async {

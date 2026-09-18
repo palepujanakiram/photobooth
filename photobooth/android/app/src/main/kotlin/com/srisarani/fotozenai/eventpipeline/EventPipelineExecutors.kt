@@ -20,6 +20,8 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * - [ai] is network-bound and mostly idle waiting on the server, so a small pool
  *   overlaps requests without spending CPU.
+ * - [preview] decodes import-picker thumbnails, which are small and must never
+ *   queue behind a real import.
  * - [frame] and [import] each hold a full-resolution bitmap, so they are single
  *   threaded and additionally share [bitmapPermit].
  * - [print] is single by necessity: there is one printer, and interleaving jobs
@@ -41,6 +43,25 @@ object EventPipelineExecutors {
 
     /** Card enumeration and byte sampling. Cheap, but still off the UI thread. */
     val io = named("evp-io", 1)
+
+    /**
+     * Import-picker preview thumbnails. Its own lane on purpose.
+     *
+     * These are decoded *before* anything is imported, purely so an operator can
+     * see what they are choosing, and they must not slow the real work down. On
+     * [import] they would queue behind — and compete with — an import that may be
+     * running, so scrolling the picker would stall the event's actual pipeline.
+     *
+     * They also deliberately skip [withBitmapMemory]: a preview is subsampled at
+     * decode time to ~256 px, roughly a third of a megabyte, so the large-bitmap
+     * guard would make them wait on a 96 MB permit they have no need of.
+     *
+     * Four threads because the work is mostly waiting on the card, not the CPU:
+     * the common path is a MediaStore thumbnail-cache read. The picker shows
+     * roughly sixty tiles at once, so a narrow lane is felt directly as tiles
+     * filling in one row at a time.
+     */
+    val preview = named("evp-preview", 4)
 
     /** Downscale during import. Bitmap-heavy — see [bitmapPermit]. */
     val import = named("evp-import", 1)
@@ -103,7 +124,7 @@ object EventPipelineExecutors {
         mapOf(
             "bitmapPermitsAvailable" to bitmapPermit.availablePermits(),
             "bitmapQueueLength" to bitmapPermit.queueLength,
-            "lanes" to listOf("io", "import", "ai", "frame", "print"),
+            "lanes" to listOf("io", "preview", "import", "ai", "frame", "print"),
         )
 
     /**
@@ -111,7 +132,7 @@ object EventPipelineExecutors {
      * outlive any single screen.
      */
     fun shutdown() {
-        for (pool in listOf(io, import, ai, frame, print)) {
+        for (pool in listOf(io, preview, import, ai, frame, print)) {
             pool.shutdown()
             try {
                 if (!pool.awaitTermination(2, TimeUnit.SECONDS)) {

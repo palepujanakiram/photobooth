@@ -3,12 +3,15 @@ package com.srisarani.fotozenai.eventpipeline
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
+import android.media.ThumbnailUtils
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.util.Size
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.BinaryMessenger
+import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -55,6 +58,10 @@ object EventImageDownscaler {
     ) {
         val appContext = context.applicationContext
         MethodChannel(messenger, CHANNEL_NAME).setMethodCallHandler { call, result ->
+            if (call.method == "thumbnail") {
+                handleThumbnail(appContext, call, result)
+                return@setMethodCallHandler
+            }
             if (call.method != "downscale") {
                 result.notImplemented()
                 return@setMethodCallHandler
@@ -86,6 +93,119 @@ object EventImageDownscaler {
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * Preview thumbnail for the import picker, straight off the card.
+     *
+     * Separate from [downscale] because the import screen needs a picture
+     * *before* anything is imported, and the print derivative it would otherwise
+     * have to build costs roughly fifty times as much to produce and hold. An
+     * operator scrolling a 3,000-frame card would be waiting on 2880 px encodes
+     * nobody keeps.
+     *
+     * The decode is subsampled straight to the preview size, so peak memory is
+     * the thumbnail rather than the 24 MP source.
+     */
+    private fun handleThumbnail(
+        context: Context,
+        call: MethodCall,
+        result: MethodChannel.Result,
+    ) {
+        val uri = call.argument<String>("uri")
+        if (uri.isNullOrBlank()) {
+            result.error("bad_args", "uri is required", null)
+            return
+        }
+        val shortSide = call.argument<Int>("shortSide") ?: 256
+        // The preview lane, never the import one: a picker being scrolled must
+        // not queue behind — or compete with — an import that is already running.
+        // No bitmap permit either; see EventPipelineExecutors.preview.
+        EventPipelineExecutors.preview.execute {
+            try {
+                val bytes = thumbnail(context, uri, shortSide)
+                mainHandler.post { result.success(bytes) }
+            } catch (e: Throwable) {
+                // A card full of odd files is normal; the tile falls back to an
+                // icon rather than the screen failing.
+                Log.w(TAG, "thumbnail failed for $uri", e)
+                mainHandler.post { result.success(null) }
+            }
+        }
+    }
+
+    /**
+     * A small JPEG for [uri], by the cheapest route that works.
+     *
+     * Decoding the original is the *fallback*, not the plan. A card item is a
+     * MediaStore `content://`, and MediaStore already keeps a thumbnail for it —
+     * asking for that is tens of milliseconds against the hundreds a 24 MP
+     * subsampled decode costs, and the picker shows sixty tiles at once. Reading
+     * sixty 6 MB originals off an SD card to draw sixty 160 dp squares is the
+     * whole of the delay this avoids.
+     */
+    fun thumbnail(
+        context: Context,
+        uri: String,
+        shortSide: Int,
+    ): ByteArray {
+        val started = System.currentTimeMillis()
+        var source = "cache"
+        var bitmap = cachedThumbnail(context, uri, shortSide)
+        if (bitmap == null) {
+            source = "decode"
+            bitmap = decodeSubsampled(context, uri, shortSide)
+        }
+        val out = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, THUMB_QUALITY, out)
+        bitmap.recycle()
+        val elapsed = System.currentTimeMillis() - started
+        // Timed because the difference between the two routes is the difference
+        // between a picker that fills instantly and one that crawls.
+        Log.d(TAG, "thumbnail $source ${elapsed}ms ${out.size()}B $uri")
+        return out.toByteArray()
+    }
+
+    /**
+     * The thumbnail the platform already has, or null if it has none.
+     *
+     * `loadThumbnail` reads MediaStore's cache for a `content://`; for a plain
+     * path `createImageThumbnail` uses the JPEG's embedded EXIF thumbnail where
+     * there is one. Either way the original is never fully decoded.
+     */
+    private fun cachedThumbnail(
+        context: Context,
+        uri: String,
+        shortSide: Int,
+    ): Bitmap? {
+        val size = Size(shortSide, shortSide)
+        return try {
+            if (uri.startsWith("content://")) {
+                context.contentResolver.loadThumbnail(Uri.parse(uri), size, null)
+            } else {
+                ThumbnailUtils.createImageThumbnail(File(uri), size, null)
+            }
+        } catch (e: Throwable) {
+            // No cached thumbnail, an unindexed card, or a format with no EXIF
+            // thumbnail. The caller falls back to a real decode.
+            Log.d(TAG, "no cached thumbnail for $uri: ${e.message}")
+            null
+        }
+    }
+
+    /** Last resort: decode the original, subsampled to [shortSide]. */
+    private fun decodeSubsampled(
+        context: Context,
+        uri: String,
+        shortSide: Int,
+    ): Bitmap {
+        val source = decodeSource(context, uri)
+        return ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+            decoder.isMutableRequired = false
+            val size = targetSize(info.size.width, info.size.height, shortSide, shortSide * 4)
+            decoder.setTargetSize(size.first, size.second)
         }
     }
 

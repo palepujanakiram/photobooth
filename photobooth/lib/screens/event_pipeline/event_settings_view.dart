@@ -7,12 +7,13 @@ import '../../views/widgets/app_scaffold.dart';
 import 'event_image_viewer.dart';
 import 'event_settings_viewmodel.dart';
 
-/// What this device is running the event on. Read-only, with one `Sync`.
+/// What this device is running the event on. `Sync`, and one toggle.
 ///
-/// Event settings live on ZenAI. The practical consequence is that getting an
-/// event wrong is fixed on the backend and re-synced, not worked around on the
-/// box — which is the right place for it to be fixed, but does mean a badly
-/// configured event is blocked on backend access (spec §9).
+/// Event settings live on ZenAI, so getting an event wrong is fixed on the
+/// backend and re-synced rather than worked around on the box — the right place
+/// for it to be fixed, though it does mean a badly configured event is blocked
+/// on backend access (spec §9). Auto print is the exception, because ZenAI has
+/// no control for it yet; see [EventPipelineConfig.readAutoPrintOverride].
 class EventSettingsScreen extends StatelessWidget {
   const EventSettingsScreen({super.key, this.viewModel});
 
@@ -43,6 +44,41 @@ class _SettingsBody extends StatelessWidget {
   const _SettingsBody({required this.vm});
 
   final EventSettingsViewModel vm;
+
+  /// The one control on a settings row, plus the way back off it.
+  ///
+  /// "Use ZenAI value" only appears once a choice has been made, so the normal
+  /// state of the screen is still a device that simply follows the backend.
+  Widget? _autoPrintActions(EventSettingsViewModel vm) {
+    if (!vm.isAutoPrintOverridden) return null;
+    return TextButton(
+      onPressed: vm.isBusy ? null : () => vm.setAutoPrint(null),
+      child: const Text('Use ZenAI value'),
+    );
+  }
+
+  /// The controls that sit under a row, if that row has any.
+  Widget? _rowActions(
+    BuildContext context,
+    EventSettingsViewModel vm,
+    AppColors colors,
+    EventSettingRow row,
+  ) {
+    if (row.label == 'Apply frame') return _frameActions(context, vm, colors);
+    if (row.label == EventSettingsViewModel.autoPrintLabel) {
+      return _autoPrintActions(vm);
+    }
+    return null;
+  }
+
+  /// The right-hand control for a settable row. Only auto print has one.
+  Widget? _rowControl(EventSettingsViewModel vm, EventSettingRow row) {
+    if (row.label != EventSettingsViewModel.autoPrintLabel) return null;
+    return Switch(
+      value: vm.settings?.autoPrint ?? false,
+      onChanged: vm.isBusy ? null : vm.setAutoPrint,
+    );
+  }
 
   /// Download and view, shown against the frame setting itself.
   Widget? _frameActions(
@@ -110,10 +146,12 @@ class _SettingsBody extends StatelessWidget {
                 ),
               ),
               Text(
-                '(read only)',
+                vm.sourceLabel,
                 style: TextStyle(
                   fontSize: 11,
-                  color: colors.secondaryTextColor,
+                  color: vm.isAutoPrintOverridden
+                      ? colors.warningColor
+                      : colors.secondaryTextColor,
                 ),
               ),
             ],
@@ -125,9 +163,9 @@ class _SettingsBody extends StatelessWidget {
             _SettingTile(
               row: row,
               colors: colors,
-              trailing: row.label == 'Apply frame'
-                  ? _frameActions(context, vm, colors)
-                  : null,
+              trailing: _rowActions(context, vm, colors, row),
+              // Auto print is the only settable row; the rest follow ZenAI.
+              control: _rowControl(vm, row),
             ),
           const SizedBox(height: 16),
           Container(
@@ -298,6 +336,7 @@ class _SettingTile extends StatelessWidget {
     required this.row,
     required this.colors,
     this.trailing,
+    this.control,
   });
 
   final EventSettingRow row;
@@ -305,6 +344,10 @@ class _SettingTile extends StatelessWidget {
 
   /// Controls belonging to this setting, e.g. the frame's download and view.
   final Widget? trailing;
+
+  /// Replaces the right-hand value text when the row is settable, so the value
+  /// and the way to change it are the same thing rather than two readings of it.
+  final Widget? control;
 
   @override
   Widget build(BuildContext context) {
@@ -325,14 +368,17 @@ class _SettingTile extends StatelessWidget {
                   ),
                 ),
               ),
-              Text(
-                row.value,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: colors.textColor,
+              if (control != null)
+                control!
+              else
+                Text(
+                  row.value,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: colors.textColor,
+                  ),
                 ),
-              ),
             ],
           ),
           Text(

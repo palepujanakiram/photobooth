@@ -42,11 +42,17 @@ class EventSettingRow {
   final String? warning;
 }
 
-/// The device's record of how this event is configured. Read-only.
+/// The device's record of how this event is configured. Read-only but for one
+/// setting: auto print.
 ///
-/// ZenAI is the only source (spec §9). One source of truth means a device can
-/// never silently disagree with the backend, and an operator can never "fix" an
-/// event into a state nobody can reproduce — so `Sync` is the only control.
+/// ZenAI is the only source of the rest (spec §9). One source of truth means a
+/// device can never silently disagree with the backend, and an operator can
+/// never "fix" an event into a state nobody can reproduce — so `Sync` is the
+/// only other control.
+///
+/// Auto print is the exception because ZenAI has no control for it at all: see
+/// [EventPipelineConfig.readAutoPrintOverride] for why, and for when this comes
+/// back out.
 class EventSettingsViewModel extends ChangeNotifier {
   EventSettingsViewModel({
     EventPipelineConfig? config,
@@ -73,6 +79,10 @@ class EventSettingsViewModel extends ChangeNotifier {
   final Future<EventPipelineDb?> Function() _openDb;
   late final EventPipelineSync _sync;
 
+  /// The label the view matches on to render the auto-print switch. Defined
+  /// once so the two files cannot drift apart.
+  static const String autoPrintLabel = 'Auto print';
+
   EventPipelineSettings? _settings;
   EventSyncStatus _syncStatus = const EventSyncStatus.never();
   FrameCacheStatus? _frames;
@@ -81,8 +91,26 @@ class EventSettingsViewModel extends ChangeNotifier {
   bool _downloadingFrames = false;
   bool _purging = false;
   List<String> _purgeBlockers = const [];
+  bool? _autoPrintOverride;
+  bool? _backendAutoPrint;
 
   EventPipelineSettings? get settings => _settings;
+
+  /// The operator's local auto-print choice, or null when this device defers to
+  /// ZenAI. Non-null is what makes the row show as set on this device.
+  bool? get autoPrintOverride => _autoPrintOverride;
+
+  bool get isAutoPrintOverridden => _autoPrintOverride != null;
+
+  /// What the backend last said, for the "ZenAI says off" line on an overridden
+  /// row. Null when it sent no opinion at all.
+  bool? get backendAutoPrint => _backendAutoPrint;
+
+  /// The header line. No longer a flat "(read only)" now that one setting is
+  /// settable here, and saying so is the point — an operator needs to know at a
+  /// glance whether this device is running something ZenAI does not know about.
+  String get sourceLabel =>
+      isAutoPrintOverridden ? 'Auto print set here' : '(read only)';
   EventSyncStatus get syncStatus => _syncStatus;
   FrameCacheStatus? get frames => _frames;
 
@@ -148,12 +176,7 @@ class EventSettingsViewModel extends ChangeNotifier {
         detail: s.frameEnabled ? 'Frame · ${s.frameId ?? 'not set'}' : null,
         warning: s.frameEnabled ? _frameWarning() : null,
       ),
-      EventSettingRow(
-        label: 'Auto print',
-        value: s.autoPrint ? 'on' : 'off',
-        subtitle: 'Prints each photo as soon as it is ready. '
-            'Off means you release prints yourself.',
-      ),
+      _autoPrintRow(s),
       EventSettingRow(
         label: 'Copies per photo',
         value: '${s.defaultCopies}',
@@ -165,6 +188,56 @@ class EventSettingsViewModel extends ChangeNotifier {
         subtitle: 'Must match the media loaded in the printer.',
       ),
     ];
+  }
+
+  /// The one settable row.
+  ///
+  /// The warning is not decoration: an operator who flips this expects the
+  /// photos already on screen to change behaviour, and they will not. Chains are
+  /// frozen per item at queue time (spec §2.2), so turning auto print on does
+  /// not print the backlog, and turning it off does not cancel prints already
+  /// queued. Saying so here is cheaper than a confused operator at the printer.
+  EventSettingRow _autoPrintRow(EventPipelineSettings s) {
+    return EventSettingRow(
+      label: autoPrintLabel,
+      value: s.autoPrint ? 'on' : 'off',
+      subtitle: 'Prints each photo as soon as it is ready. '
+          'Off means you release prints yourself with Reprint.',
+      detail: isAutoPrintOverridden ? _autoPrintSourceLine() : null,
+      warning: isAutoPrintOverridden
+          ? 'Applies to photos queued from now on, not to ones already running.'
+          : null,
+    );
+  }
+
+  String _autoPrintSourceLine() {
+    if (_backendAutoPrint == null) {
+      return 'Set on this device · ZenAI has no setting for this yet';
+    }
+    return 'Set on this device · ZenAI says '
+        '${_backendAutoPrint! ? 'on' : 'off'}';
+  }
+
+  /// Turns auto print on or off for this device, or clears the choice with null
+  /// so the event goes back to whatever ZenAI says.
+  ///
+  /// Reaches the running pipeline immediately via [EventPipelineRunner
+  /// .refreshSettings] — workers read settings through a getter rather than a
+  /// captured snapshot, so the next item queued picks this up without a
+  /// restart.
+  Future<void> setAutoPrint(bool? value) async {
+    if (_busy) return;
+    _busy = true;
+    notifyListeners();
+    try {
+      await _config.setAutoPrintOverride(value);
+      await _runner.refreshSettings();
+    } catch (e, st) {
+      AppLogger.error('Auto print override failed', error: e, stackTrace: st);
+    } finally {
+      _busy = false;
+      await refresh();
+    }
   }
 
   /// True when framing is on but the artwork is not on the device.
@@ -198,6 +271,8 @@ class EventSettingsViewModel extends ChangeNotifier {
         frameCount: await _events.getFrameCount(),
       ),
     );
+    _autoPrintOverride = await _config.readAutoPrintOverride();
+    _backendAutoPrint = (await _config.readCachedFlags()).autoPrint;
     _frames = await _readFrameStatus();
     _frameImage = await _readFrameImage();
     final eventId = await _events.getEventId();
