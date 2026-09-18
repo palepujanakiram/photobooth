@@ -11,8 +11,16 @@ String resolveApiImageUrl(String raw) {
 }
 
 /// Adds session context for protected generated image endpoints when needed.
-String withGeneratedImageSessionId(String url) {
-  final sessionId = SessionManager().sessionId;
+String withGeneratedImageSessionId(String url) =>
+    withExplicitGeneratedImageSessionId(url, SessionManager().sessionId);
+
+/// [withGeneratedImageSessionId] for a caller that knows which session owns the
+/// image, rather than assuming the ambient one.
+///
+/// The event pipeline needs this: it holds many sessions at once, one per
+/// photo, and `SessionManager`'s single "current session" is not the owner of
+/// any image it downloads.
+String withExplicitGeneratedImageSessionId(String url, String? sessionId) {
   if (sessionId == null || sessionId.isEmpty) return url;
 
   final uri = Uri.tryParse(url);

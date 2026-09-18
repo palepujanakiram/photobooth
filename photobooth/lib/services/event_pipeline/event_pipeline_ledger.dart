@@ -155,9 +155,28 @@ class EventPipelineLedger {
     }
     await _db.insert(
       'evp_media_items',
-      incoming.toRow(),
+      _keepLocalOnlyFields(incoming, existing).toRow(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+  }
+
+  /// Carries columns the backend never sees across a remote replace.
+  ///
+  /// [upsertFromRemote] replaces the whole row, and the incoming item was
+  /// rebuilt from the align payload — so any field [MediaItem.toJson] omits
+  /// comes back null and would overwrite a good local value.
+  ///
+  /// `remoteSessionToken` is exactly that: the per-item session credential is
+  /// deliberately kept out of the align payload, so align used to null it a few
+  /// seconds after the mirror stored it. Generation then sent no token and the
+  /// server answered 403 "No active kiosk session" — with the session itself
+  /// alive and correct, which is what made it look like a server bug.
+  static MediaItem _keepLocalOnlyFields(MediaItem incoming, MediaItem? existing) {
+    final localToken = existing?.remoteSessionToken?.trim() ?? '';
+    if (localToken.isEmpty || incoming.remoteSessionToken != null) {
+      return incoming;
+    }
+    return incoming.copyWith(remoteSessionToken: localToken);
   }
 
   Future<List<MediaItem>> listByStage(
@@ -420,12 +439,14 @@ END''';
   Future<void> setRemoteIds(
     String id, {
     String? sessionId,
+    String? sessionToken,
     String? photoId,
   }) async {
     await _db.update(
       'evp_media_items',
       <String, Object?>{
         if (sessionId != null) 'remote_session_id': sessionId,
+        if (sessionToken != null) 'remote_session_token': sessionToken,
         if (photoId != null) 'remote_photo_id': photoId,
         'updated_at_ms': _nowMs(),
       },

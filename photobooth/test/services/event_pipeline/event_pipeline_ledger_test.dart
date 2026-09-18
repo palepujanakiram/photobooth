@@ -373,6 +373,36 @@ void main() {
       expect((await ledger.findById(local.item.id))!.stage, MediaStage.done);
     });
 
+    test('upsertFromRemote does not wipe the local session token', () async {
+      final local = await insert();
+      await ledger.setRemoteIds(
+        local.item.id,
+        sessionId: 'sess-1',
+        sessionToken: 'tok-1',
+      );
+
+      // The align payload never carries the token (MediaItem.toJson omits it),
+      // so a remote copy always arrives with it null. Replacing the row
+      // wholesale used to null the local one seconds after the mirror stored
+      // it, and generation then 403'd with "No active kiosk session".
+      final remote = MediaItem(
+        id: local.item.id,
+        source: local.item.source,
+        sourceRef: local.item.sourceRef,
+        contentKey: local.item.contentKey,
+        stage: MediaStage.done,
+        remoteSessionId: 'sess-1',
+        createdAtMs: local.item.createdAtMs,
+        updatedAtMs: 9999,
+      );
+      await ledger.upsertFromRemote(remote);
+
+      final after = await ledger.findById(local.item.id);
+      expect(after!.remoteSessionToken, 'tok-1');
+      expect(after.stage, MediaStage.done,
+          reason: 'the rest of the remote copy still applies');
+    });
+
     test('upsertFromRemote ignores a blank id', () async {
       await ledger.upsertFromRemote(const MediaItem(
         id: '  ',

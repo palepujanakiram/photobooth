@@ -63,6 +63,10 @@ class FakeApiService extends ApiService {
   int declineSurpriseMeCalls = 0;
   int updateSessionCalls = 0;
   String? lastPatchedThemeId;
+
+  /// The per-item credential the event pipeline sends, so a test can assert the
+  /// caller's own token was used rather than the ambient SessionManager one.
+  String? lastFetchSessionToken;
   bool lastIncludeSelectedFrameId = false;
   String? lastPatchedFrameId;
   SurpriseMeStatus? surpriseMeStatus;
@@ -105,6 +109,7 @@ class FakeApiService extends ApiService {
     String? selectedFrameId,
     int? personCount,
     Map<String, dynamic>? framingMetadata,
+    String? sessionToken,
   }) async {
     updateSessionCalls++;
     lastPatchedThemeId = selectedThemeId;
@@ -149,8 +154,12 @@ class FakeApiService extends ApiService {
   }
 
   @override
-  Future<Map<String, dynamic>?> fetchSession(String sessionId) async {
+  Future<Map<String, dynamic>?> fetchSession(
+    String sessionId, {
+    String? sessionToken,
+  }) async {
     fetchSessionCalls++;
+    lastFetchSessionToken = sessionToken;
     return fetchSessionResult ?? sessionResponse;
   }
 

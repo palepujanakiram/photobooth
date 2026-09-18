@@ -225,8 +225,9 @@ class DnpUsbPrinter(
         )
 
         // Reference driver sleeps 1s after the job stream before polling STATUS.
+        DnpTrace.log("job stream sent (${jobData.size} bytes); settling 1000ms before STATUS")
         Thread.sleep(1000)
-        cmd.recoverEndpoints()
+        DnpTrace.timed("recoverEndpoints before polling") { cmd.recoverEndpoints() }
         report("printing", "Print job started — waiting for printer…", 0.90)
         val printMs = measureTimeMillis { monitor.waitForPrintComplete() }
         Log.i(TAG, "Print completed: waitForPrintComplete=${printMs}ms")

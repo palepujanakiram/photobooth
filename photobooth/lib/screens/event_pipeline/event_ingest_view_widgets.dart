@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../../models/event_pipeline/event_pipeline_chain.dart';
@@ -5,6 +7,7 @@ import '../../models/event_pipeline/event_readiness.dart';
 import '../../services/event_pipeline/ingest/event_storage_channel.dart';
 import '../../services/event_pipeline/ingest/ingest_diff.dart';
 import '../../services/event_pipeline/ingest/ingest_source.dart';
+import '../../services/event_pipeline/ingest/ingest_thumbnailer.dart';
 import '../../services/event_pipeline/ingest/ingest_worker.dart';
 import '../../views/widgets/app_colors.dart';
 
@@ -210,13 +213,25 @@ class IngestFolderList extends StatelessWidget {
 /// Deliberately renders names and metadata, not thumbnails: decoding 412 JPEGs
 /// off a card to paint a grid is the same memory mistake the old import tray
 /// made, and the operator is triaging by folder and time, not by looking.
-class IngestCandidateGrid extends StatelessWidget {
+/// The candidates, as pictures.
+///
+/// A grid rather than a list of filenames because choosing what to import is a
+/// visual job: `IMG_0631.JPG` tells an operator nothing about whether the frame
+/// is the good one, and a card holds hundreds of near-identical names. The name
+/// stays under each tile, since it is still how an operator matches a photo to
+/// something a guest has quoted at them.
+///
+/// Thumbnails are decoded lazily through [IngestThumbnailer] — only tiles the
+/// grid actually builds are ever requested, so a 3,000-frame card costs the same
+/// to open as a 30-frame one.
+class IngestCandidateGrid extends StatefulWidget {
   const IngestCandidateGrid({
     super.key,
     required this.appColors,
     required this.candidates,
     required this.isSelected,
     required this.onToggle,
+    this.thumbnailer,
   });
 
   final AppColors appColors;
@@ -224,33 +239,203 @@ class IngestCandidateGrid extends StatelessWidget {
   final bool Function(IngestCandidate) isSelected;
   final void Function(IngestCandidate) onToggle;
 
+  /// Injected by tests; production builds its own.
+  final IngestThumbnailer? thumbnailer;
+
+  @override
+  State<IngestCandidateGrid> createState() => _IngestCandidateGridState();
+}
+
+class _IngestCandidateGridState extends State<IngestCandidateGrid> {
+  late final IngestThumbnailer _thumbs;
+  late final bool _ownsThumbnailer;
+
+  @override
+  void initState() {
+    super.initState();
+    _ownsThumbnailer = widget.thumbnailer == null;
+    _thumbs = widget.thumbnailer ?? IngestThumbnailer();
+  }
+
+  @override
+  void dispose() {
+    // Only dispose what this widget made; an injected one belongs to the caller.
+    if (_ownsThumbnailer) _thumbs.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return ListView.builder(
-      itemCount: candidates.length,
-      itemExtent: 56,
+    return GridView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        // Max extent rather than a fixed column count: the same grid has to work
+        // on a 7" operator tablet and a TV-sized Mini PC display.
+        maxCrossAxisExtent: 170,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
+        childAspectRatio: 0.82,
+      ),
+      itemCount: widget.candidates.length,
       itemBuilder: (context, index) {
-        final candidate = candidates[index];
-        final selected = isSelected(candidate);
-        return CheckboxListTile(
-          dense: true,
-          value: selected,
-          onChanged: (_) => onToggle(candidate),
-          title: Text(
-            candidate.displayName,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 14, color: appColors.textColor),
+        final candidate = widget.candidates[index];
+        return _CandidateTile(
+          key: ValueKey(candidate.sourceRef),
+          appColors: widget.appColors,
+          candidate: candidate,
+          thumbs: _thumbs,
+          selected: widget.isSelected(candidate),
+          onToggle: () => widget.onToggle(candidate),
+        );
+      },
+    );
+  }
+}
+
+/// One selectable photo: the picture, its name, and whether it is going in.
+class _CandidateTile extends StatefulWidget {
+  const _CandidateTile({
+    super.key,
+    required this.appColors,
+    required this.candidate,
+    required this.thumbs,
+    required this.selected,
+    required this.onToggle,
+  });
+
+  final AppColors appColors;
+  final IngestCandidate candidate;
+  final IngestThumbnailer thumbs;
+  final bool selected;
+  final VoidCallback onToggle;
+
+  @override
+  State<_CandidateTile> createState() => _CandidateTileState();
+}
+
+class _CandidateTileState extends State<_CandidateTile> {
+  Uint8List? _bytes;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  void _load() {
+    // A scroll-back hits this and paints in the same frame, with no placeholder
+    // flash for an image the device has already decoded once.
+    final ready = widget.thumbs.cached(widget.candidate);
+    if (ready != null || widget.thumbs.isCached(widget.candidate)) {
+      _bytes = ready;
+      return;
+    }
+    _loading = true;
+    widget.thumbs.thumbnail(widget.candidate).then((bytes) {
+      // The tile is recycled as the grid scrolls; a late decode must not paint
+      // one photo's thumbnail onto another photo's tile.
+      if (!mounted) return;
+      setState(() {
+        _bytes = bytes;
+        _loading = false;
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = widget.appColors;
+    return InkWell(
+      onTap: widget.onToggle,
+      borderRadius: BorderRadius.circular(8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: _picture(colors),
+                ),
+                if (widget.selected)
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: colors.primaryColor, width: 3),
+                    ),
+                  ),
+                Positioned(
+                  top: 4,
+                  right: 4,
+                  child: _SelectionBadge(
+                    selected: widget.selected,
+                    colors: colors,
+                  ),
+                ),
+              ],
+            ),
           ),
-          subtitle: Text(
-            '${candidate.folder} · ${_sizeLabel(candidate.sizeBytes)}',
+          const SizedBox(height: 3),
+          Text(
+            widget.candidate.displayName,
+            maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontSize: 11,
-              color: appColors.secondaryTextColor,
+              fontWeight: widget.selected ? FontWeight.w700 : FontWeight.w500,
+              color: colors.textColor,
             ),
           ),
-        );
-      },
+          Text(
+            _sizeLabel(widget.candidate.sizeBytes),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 10, color: colors.secondaryTextColor),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _picture(AppColors colors) {
+    if (_bytes != null) {
+      return Image.memory(
+        _bytes!,
+        fit: BoxFit.cover,
+        // Already a ~256px JPEG; this bounds the decode to the tile it fills.
+        cacheWidth: 256,
+        gaplessPlayback: true,
+        errorBuilder: (_, __, ___) => _placeholder(colors, failed: true),
+      );
+    }
+    return _placeholder(colors, failed: !_loading);
+  }
+
+  /// A tile that is still decoding, versus one that never will.
+  ///
+  /// Distinguished deliberately: an operator watching a card fill in needs to
+  /// know the difference between "wait" and "this file is not readable".
+  Widget _placeholder(AppColors colors, {required bool failed}) {
+    return Container(
+      color: colors.cardBackgroundColor,
+      alignment: Alignment.center,
+      child: failed
+          ? Icon(
+              Icons.image_not_supported_outlined,
+              size: 20,
+              color: colors.secondaryTextColor,
+            )
+          : SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: colors.secondaryTextColor,
+              ),
+            ),
     );
   }
 
@@ -259,6 +444,36 @@ class IngestCandidateGrid extends StatelessWidget {
       return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     }
     return '${(bytes / 1024).round()} KB';
+  }
+}
+
+/// The tick. Always present so the tile reads as selectable before it is tapped.
+class _SelectionBadge extends StatelessWidget {
+  const _SelectionBadge({required this.selected, required this.colors});
+
+  final bool selected;
+  final AppColors colors;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 22,
+      height: 22,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: selected
+            ? colors.primaryColor
+            // Neutral scrim rather than the card colour: the badge sits on the
+            // photo, and a pale photo would otherwise swallow it.
+            : Colors.black.withValues(alpha: 0.45),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.9)),
+      ),
+      child: Icon(
+        selected ? Icons.check : Icons.circle_outlined,
+        size: 14,
+        color: Colors.white,
+      ),
+    );
   }
 }
 

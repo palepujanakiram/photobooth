@@ -350,6 +350,7 @@ class _PatchOnceApi extends ApiService {
     String? selectedFrameId,
     int? personCount,
     Map<String, dynamic>? framingMetadata,
+    String? sessionToken,
   }) async {
     _patches += 1;
     if (_patches > 1) throw ApiException('patch-fail');

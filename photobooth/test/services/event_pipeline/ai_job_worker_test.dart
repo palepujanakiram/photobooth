@@ -27,6 +27,22 @@ class FakeApi extends ApiService {
   String? lastPhotoId;
   String? lastThemeId;
   int? lastCount;
+  String? lastSessionToken;
+
+  /// Session payload `fetchSession` returns, as the server would shape it.
+  Map<String, dynamic>? session;
+  int fetchSessionCalls = 0;
+  String? lastFetchSessionToken;
+
+  @override
+  Future<Map<String, dynamic>?> fetchSession(
+    String sessionId, {
+    String? sessionToken,
+  }) async {
+    fetchSessionCalls++;
+    lastFetchSessionToken = sessionToken;
+    return session;
+  }
 
   @override
   Future<ParallelGenerationResult> generateImages({
@@ -37,12 +53,14 @@ class FakeApi extends ApiService {
     required String themeId,
     void Function(String message)? onProgress,
     void Function(String eventType, Map<String, dynamic> json)? onSseEvent,
+    String? sessionToken,
   }) async {
     calls++;
     lastSessionId = sessionId;
     lastPhotoId = originalPhotoId;
     lastThemeId = themeId;
     lastCount = count;
+    lastSessionToken = sessionToken;
     final err = throwThis;
     if (err != null) throw err;
     return result ??
@@ -110,6 +128,7 @@ void main() {
   Future<String> seedItem({
     String? sessionId = 'sess-1',
     String? photoId = 'photo-1',
+    String? sessionToken = 'tok-1',
   }) async {
     final result = await ledger.insertIfNew(
       source: MediaSource.sdCard,
@@ -125,10 +144,11 @@ void main() {
       path: path,
       createdAtMs: 1,
     ));
-    if (sessionId != null || photoId != null) {
+    if (sessionId != null || photoId != null || sessionToken != null) {
       await ledger.setRemoteIds(
         result.item.id,
         sessionId: sessionId,
+        sessionToken: sessionToken,
         photoId: photoId,
       );
     }
@@ -170,6 +190,90 @@ void main() {
       final item = await ledger.findById(mediaId);
       expect(item!.currentStep, 'print');
       expect(await queue.findFor(kind: 'print', mediaId: mediaId), isNotNull);
+    });
+
+    test('sends that item own session token, not the ambient one', () async {
+      final mediaId = await seedItem();
+      await ledger.markSelected(mediaId, const ['ai', 'print']);
+      await queue.enqueue(kind: 'ai', mediaId: mediaId, eventId: 'EVT1');
+
+      await buildWorker().drain();
+
+      // The server scopes generation to the session that owns the photo. The
+      // device's SessionManager token belongs to no item in this pipeline, so
+      // sending it (or nothing) is what produced the 403s.
+      expect(api.lastSessionToken, 'tok-1');
+    });
+
+    test('a consumed session fails instead of burning all eight attempts',
+        () async {
+      // maxRegenerations is 1 on these kiosks, so the server deletes the
+      // original photo after the first run and answers 500 "Invalid photo
+      // input" forever after. Retrying that cannot succeed.
+      api.throwThis = ApiException('Invalid photo input. '
+          'Please capture/upload the photo again.', 500);
+      final mediaId = await seedItem();
+      await ledger.markSelected(mediaId, const ['ai', 'print']);
+      await queue.enqueue(kind: 'ai', mediaId: mediaId, eventId: 'EVT1');
+
+      await buildWorker().drain();
+
+      final job = await queue.findFor(kind: 'ai', mediaId: mediaId);
+      expect(job!.status, PipelineJobStatus.failed);
+      expect(job.attempts, 1, reason: 'permanent, so it stops at the first');
+    });
+
+    test('adopts a generation the server already produced', () async {
+      api.throwThis = ApiException('Invalid photo input. '
+          'Please capture/upload the photo again.', 500);
+      // The run actually worked; only the response was lost. The image is on
+      // the session and must be collected rather than paid for again.
+      api.session = <String, dynamic>{
+        'generatedImages': <String>['/api/img/generated/out.jpg'],
+      };
+      final mediaId = await seedItem();
+      await ledger.markSelected(mediaId, const ['ai', 'print']);
+      await queue.enqueue(kind: 'ai', mediaId: mediaId, eventId: 'EVT1');
+
+      expect(await buildWorker().drain(), 1);
+
+      expect(api.fetchSessionCalls, 1);
+      expect(api.lastFetchSessionToken, 'tok-1',
+          reason: 'the per-item credential, not the ambient one');
+
+      final best = await ledger.bestRenditionForPrint(mediaId);
+      expect(best!.kind, RenditionKind.ai);
+
+      final item = await ledger.findById(mediaId);
+      expect(item!.currentStep, 'print', reason: 'the chain moves on');
+    });
+
+    test('a session with nothing generated still fails permanently', () async {
+      api.throwThis = ApiException('Invalid photo input. '
+          'Please capture/upload the photo again.', 500);
+      api.session = <String, dynamic>{'generatedImages': <String>[]};
+      final mediaId = await seedItem();
+      await ledger.markSelected(mediaId, const ['ai', 'print']);
+      await queue.enqueue(kind: 'ai', mediaId: mediaId, eventId: 'EVT1');
+
+      await buildWorker().drain();
+
+      final job = await queue.findFor(kind: 'ai', mediaId: mediaId);
+      expect(job!.status, PipelineJobStatus.failed);
+    });
+
+    test('an ordinary server fault is still retried', () async {
+      api.throwThis = ApiException('Upstream provider timed out', 500);
+      final mediaId = await seedItem();
+      await ledger.markSelected(mediaId, const ['ai', 'print']);
+      await queue.enqueue(kind: 'ai', mediaId: mediaId, eventId: 'EVT1');
+
+      await buildWorker().drain();
+
+      final job = await queue.findFor(kind: 'ai', mediaId: mediaId);
+      expect(job!.status, PipelineJobStatus.pending,
+          reason: 'a genuine 5xx can succeed on a later attempt');
+      expect(api.fetchSessionCalls, 0);
     });
 
     test('asks for exactly one image', () async {

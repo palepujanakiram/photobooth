@@ -143,12 +143,24 @@ Future<TransformedImageModel> generateTransformedImageOnce({
   required String themeId,
   required Uuid uuid,
   void Function(String message)? onProgress,
+
+  /// Sends the request itself instead of [apiClient], when the caller needs
+  /// per-request headers the Retrofit interface cannot express.
+  ///
+  /// Only the event pipeline passes this, to carry that item's own
+  /// `X-Kiosk-Session-Token` (see [ApiService.generateImage]). The guest flow
+  /// leaves it null and keeps the generated Retrofit path exactly as it was —
+  /// deliberate, because that path is the main product and this response
+  /// parsing is the only part worth sharing.
+  Future<dynamic> Function(Map<String, dynamic> body)? post,
 }) async {
-  final response = await apiClient.generateImage({
+  final body = <String, dynamic>{
     'sessionId': sessionId,
     'attempt': attempt,
     'trackDetails': true,
-  });
+  };
+  final response =
+      post != null ? await post(body) : await apiClient.generateImage(body);
   onProgress?.call('Response received');
 
   if (response['success'] != true) {

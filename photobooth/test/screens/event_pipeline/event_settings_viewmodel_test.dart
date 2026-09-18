@@ -199,6 +199,192 @@ void main() {
     });
   });
 
+  group('auto print override', () {
+    test('defers to ZenAI until an operator says otherwise', () async {
+      await cache(const EventPipelineFlags(
+        pipelineEnabled: true,
+        autoPrint: false,
+      ));
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.isAutoPrintOverridden, isFalse);
+      expect(vm.autoPrintOverride, isNull);
+      expect(vm.sourceLabel, '(read only)');
+      final row = vm.rows.firstWhere((r) => r.label == 'Auto print');
+      expect(row.value, 'off');
+      expect(row.detail, isNull);
+      expect(row.warning, isNull);
+    });
+
+    test('turning it on reaches the resolved chain', () async {
+      // ZenAI sends an explicit false for every event, so this is the only
+      // route to a chain that prints.
+      await cache(const EventPipelineFlags(
+        pipelineEnabled: true,
+        autoPrint: false,
+      ));
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+      expect(vm.settings!.resolveSteps(), isNot(contains('print')));
+
+      await vm.setAutoPrint(true);
+
+      expect(vm.settings!.autoPrint, isTrue);
+      expect(vm.settings!.resolveSteps(), contains('print'));
+      expect(vm.rows.firstWhere((r) => r.label == 'Auto print').value, 'on');
+    });
+
+    test('the running pipeline picks the change up without a restart',
+        () async {
+      await cache(const EventPipelineFlags(
+        pipelineEnabled: true,
+        autoPrint: false,
+      ));
+      // The runner resolved its settings when it started, before this test
+      // cached its own flags; entering a station is what re-reads them.
+      await runner.refreshSettings();
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+      expect(runner.settings.autoPrint, isFalse);
+
+      await vm.setAutoPrint(true);
+
+      expect(runner.settings.autoPrint, isTrue,
+          reason: 'an operator who flips this expects the next photo to print');
+    });
+
+    test('an overridden row says so, and what ZenAI thinks', () async {
+      await cache(const EventPipelineFlags(
+        pipelineEnabled: true,
+        autoPrint: false,
+      ));
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      await vm.setAutoPrint(true);
+
+      expect(vm.isAutoPrintOverridden, isTrue);
+      expect(vm.autoPrintOverride, isTrue);
+      expect(vm.backendAutoPrint, isFalse);
+      expect(vm.sourceLabel, 'Auto print set here');
+      final row = vm.rows.firstWhere((r) => r.label == 'Auto print');
+      expect(row.detail, 'Set on this device · ZenAI says off');
+      // Chains are frozen per item, so the backlog does not retroactively
+      // print. An operator told otherwise stands at a silent printer.
+      expect(row.warning, contains('from now on'));
+    });
+
+    test('says plainly when ZenAI has no opinion at all', () async {
+      await cache(const EventPipelineFlags(pipelineEnabled: true));
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      await vm.setAutoPrint(false);
+
+      expect(vm.backendAutoPrint, isNull);
+      expect(
+        vm.rows.firstWhere((r) => r.label == 'Auto print').detail,
+        'Set on this device · ZenAI has no setting for this yet',
+      );
+    });
+
+    test('turning it off overrides a backend that wanted it on', () async {
+      await cache(const EventPipelineFlags(
+        pipelineEnabled: true,
+        autoPrint: true,
+      ));
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+      expect(vm.settings!.autoPrint, isTrue);
+
+      await vm.setAutoPrint(false);
+
+      expect(vm.settings!.autoPrint, isFalse);
+      expect(vm.settings!.resolveSteps(), isNot(contains('print')));
+    });
+
+    test('clearing the choice hands the setting back to ZenAI', () async {
+      await cache(const EventPipelineFlags(
+        pipelineEnabled: true,
+        autoPrint: false,
+      ));
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+      await vm.setAutoPrint(true);
+      expect(vm.settings!.autoPrint, isTrue);
+
+      await vm.setAutoPrint(null);
+
+      expect(vm.isAutoPrintOverridden, isFalse);
+      expect(vm.settings!.autoPrint, isFalse);
+      expect(vm.sourceLabel, '(read only)');
+    });
+
+    test('leaving the event drops the override with the rest', () async {
+      await cache(const EventPipelineFlags(
+        pipelineEnabled: true,
+        autoPrint: false,
+      ));
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+      await vm.setAutoPrint(true);
+
+      await vm.leaveEvent();
+
+      expect(await config.readAutoPrintOverride(), isNull);
+    });
+
+    test('a write that fails leaves the screen usable', () async {
+      await cache(const EventPipelineFlags(
+        pipelineEnabled: true,
+        autoPrint: false,
+      ));
+      final vm = EventSettingsViewModel(
+        config: _ThrowingConfig(),
+        events: events,
+        sync: FakeSync(result: synced),
+        runner: runner,
+        openDb: () async => db,
+      );
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      // A prefs write can fail on a box with no space left. The operator gets
+      // the setting unchanged and a screen that still responds, not a crash
+      // mid-event.
+      await vm.setAutoPrint(true);
+
+      expect(vm.isBusy, isFalse);
+      expect(vm.isAutoPrintOverridden, isFalse);
+    });
+
+    test('a toggle while busy is ignored rather than queued', () async {
+      await cache(const EventPipelineFlags(
+        pipelineEnabled: true,
+        autoPrint: false,
+      ));
+      final vm = build();
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      final first = vm.setAutoPrint(true);
+      // A second tap lands before the first write settles; it must not stack.
+      await vm.setAutoPrint(false);
+      await first;
+
+      expect(vm.settings!.autoPrint, isTrue);
+    });
+  });
+
   group('chain preview', () {
     test('says plainly what each photo will run', () async {
       await cache(const EventPipelineFlags(
@@ -234,7 +420,7 @@ void main() {
   });
 
   group('sync', () {
-    test('is the only control, and re-fetches on demand', () async {
+    test('re-fetches on demand and never on open', () async {
       await cache(const EventPipelineFlags(pipelineEnabled: true));
       final sync = FakeSync(result: synced);
       final vm = EventSettingsViewModel(
@@ -433,4 +619,12 @@ void main() {
       expect(await vm.clearEventData(), 0);
     });
   });
+}
+
+/// Fails only the auto-print write; everything else behaves normally.
+class _ThrowingConfig extends EventPipelineConfig {
+  @override
+  Future<void> setAutoPrintOverride(bool? value) async {
+    throw StateError('prefs unavailable');
+  }
 }

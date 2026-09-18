@@ -71,6 +71,14 @@ class KioskSessionTokenInterceptor extends Interceptor {
       handler.next(options);
       return;
     }
+    // A caller that already set the header owns a token more specific than the
+    // device-wide ambient one - the event pipeline's per-item session tokens in
+    // particular, where SessionManager's single "current session" is not any
+    // one item's and would otherwise silently stomp the right credential.
+    if (options.headers.containsKey(kKioskSessionTokenHeader)) {
+      handler.next(options);
+      return;
+    }
     final token = _sessionManager.kioskAuthToken;
     if (token != null && token.isNotEmpty) {
       options.headers[kKioskSessionTokenHeader] = token;

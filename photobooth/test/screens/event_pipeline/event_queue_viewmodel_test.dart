@@ -656,36 +656,30 @@ void main() {
     });
 
     test('resuming releases the work', () async {
-      final queue = EventPipelineQueue(db: db);
-
       final vm = build();
       await vm.start();
       addTearDown(vm.dispose);
 
+      // Stop the workers, and only then enqueue. A real PrintJobWorker is live
+      // here — `setUp` starts one and `vm.start()` restarts it — and it claims
+      // any `print` job the moment it appears, then fails it, because there is
+      // nothing to print in a unit test. Racing it for the same row made this
+      // assert on whichever won. `stop()` leaves the queue wired, so the
+      // view model still works; pause and resume are queue behaviour, and the
+      // test needs to own the queue to observe them.
+      runner.stop();
+
+      final queue = EventPipelineQueue(db: db);
       await vm.setPaused(true);
       // Pause first, then enqueue, so a live print worker cannot snatch the
       // row before the hold is in place.
       await queue.enqueue(kind: 'print', mediaId: 'm1');
       expect(await queue.claimReady('print'), isEmpty);
 
-      runner.stop();
       await vm.setPaused(false);
       expect(vm.isPaused, isFalse);
       expect(await queue.isPaused(), isFalse);
-      final claimed = await queue.claimReady('print');
-      if (claimed.isNotEmpty) {
-        expect(claimed, hasLength(1));
-        return;
-      }
-      // A live print worker may claim the moment pause lifts. That still
-      // means the hold released — the row is in-flight, finished, or backing
-      // off, not sitting idle under the operator pause.
-      final job = await queue.findFor(kind: 'print', mediaId: 'm1');
-      expect(job, isNotNull);
-      expect(job!.status, isNot(PipelineJobStatus.paused));
-      final takenByWorker = job.status != PipelineJobStatus.pending ||
-          job.nextAttemptAtMs > 0;
-      expect(takenByWorker, isTrue);
+      expect(await queue.claimReady('print'), hasLength(1));
     });
 
     test('processing is the live indicator, and pausing stops it', () async {

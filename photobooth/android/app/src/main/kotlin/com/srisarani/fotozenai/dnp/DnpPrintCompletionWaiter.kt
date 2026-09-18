@@ -8,10 +8,20 @@ internal class DnpPrintCompletionWaiter(
 ) {
     fun waitForPrintComplete() {
         val state = PrintWaitState()
+        val startedAt = DnpTrace.now()
         repeat(DnpPrintStatusHooks.MAX_STATUS_RETRIES) { attempt ->
+            // Timed around the call, not after it. A STATUS read that stacks four
+            // USB timeouts takes ~17s and logs nothing until it gives up, so the
+            // poll's own cost was invisible in exactly the window that was slow.
+            val pollStarted = DnpTrace.now()
             val status = hooks.parseStatus()
+            DnpTrace.log(
+                "poll $attempt: status=$status read=${DnpTrace.now() - pollStarted}ms " +
+                    "sinceSend=${DnpTrace.now() - startedAt}ms active=${state.sawPrinterActive}",
+            )
             Log.d(TAG, "Print wait poll $attempt: status=$status (active=${state.sawPrinterActive})")
             if (printPollFinished(state, status, attempt)) {
+                DnpTrace.log("print finished after ${DnpTrace.now() - startedAt}ms of polling")
                 return
             }
             Thread.sleep(1_000)
@@ -41,6 +51,11 @@ internal class DnpPrintCompletionWaiter(
         status: Int,
     ) {
         if (status == 1 || status == 500 || status == 510) {
+            // The transition worth timing: everything before it is start latency,
+            // everything after it is the printer actually pulling paper.
+            if (!state.sawPrinterActive) {
+                DnpTrace.log("printer went ACTIVE (status=$status)")
+            }
             state.sawPrinterActive = true
             state.unreadableStatusCount = 0
         }
@@ -81,7 +96,7 @@ internal class DnpPrintCompletionWaiter(
         Log.w(TAG, "Printer still idle after job send; retrying CNTRL START")
         state.startRetried = true
         try {
-            hooks.sendStartCommand()
+            DnpTrace.timed("standalone CNTRL START") { hooks.sendStartCommand() }
             Thread.sleep(1_000)
         } catch (e: Exception) {
             Log.w(TAG, "CNTRL START retry failed: ${e.message}")

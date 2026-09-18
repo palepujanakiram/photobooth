@@ -35,6 +35,7 @@ import 'api_dio_errors.dart';
 import 'api_http_response.dart';
 import 'generation_api_errors.dart';
 import 'kiosk_manager.dart';
+import 'kiosk_session_auth.dart' show kKioskSessionTokenHeader;
 import 'event_manager.dart';
 import 'session_manager.dart';
 import 'api_service_legacy_media.dart';
@@ -1339,6 +1340,15 @@ class ApiService {
 
     /// Optional framing metadata (recommended with photo upload).
     Map<String, dynamic>? framingMetadata,
+
+    /// Explicit `X-Kiosk-Session-Token` for [sessionId], overriding the
+    /// device's ambient [SessionManager] token.
+    ///
+    /// Needed by the event pipeline: it mirrors many sessions concurrently,
+    /// one per photo, and none of them is the single "current session" the
+    /// ambient token tracks. Ignored on the web upload path, which the
+    /// pipeline never takes.
+    String? sessionToken,
   }) async {
     try {
       if (userImageUrl != null) {
@@ -1358,6 +1368,9 @@ class ApiService {
         responseType: ResponseType.plain,
         sendTimeout: AppConstants.kSessionUploadTimeout,
         receiveTimeout: AppConstants.kSessionUploadTimeout,
+        headers: (sessionToken != null && sessionToken.isNotEmpty)
+            ? <String, dynamic>{kKioskSessionTokenHeader: sessionToken}
+            : null,
       );
 
       final Response<String> httpResponse;
@@ -1465,10 +1478,31 @@ class ApiService {
   }
 
   /// GET `/api/sessions/{sessionId}` — used to poll approval state when gateway is disabled.
-  Future<Map<String, dynamic>?> fetchSession(String sessionId) async {
+  ///
+  /// Pass [sessionToken] to read a session the ambient [SessionManager] does not
+  /// own — the event pipeline's per-item sessions, where each has its own
+  /// credential. See [updateSession] for the full reasoning.
+  ///
+  /// Note the response omits `userImageUrl` / `compressedImageUrl` (the server
+  /// strips them as they are 100KB+); `hasUserImage` reports whether one is
+  /// still stored.
+  Future<Map<String, dynamic>?> fetchSession(
+    String sessionId, {
+    String? sessionToken,
+  }) async {
     if (sessionId.trim().isEmpty) return null;
     try {
-      final raw = await _apiClient.getSession(sessionId.trim());
+      final raw = (sessionToken == null || sessionToken.isEmpty)
+          ? await _apiClient.getSession(sessionId.trim())
+          : (await _dio.get<dynamic>(
+              '/api/sessions/${sessionId.trim()}',
+              options: Options(
+                headers: <String, dynamic>{
+                  kKioskSessionTokenHeader: sessionToken,
+                },
+              ),
+            ))
+              .data;
       if (raw is Map<String, dynamic>) return raw;
       if (raw is Map) return Map<String, dynamic>.from(raw);
     } on DioException catch (e) {
@@ -1683,6 +1717,11 @@ class ApiService {
     required String originalPhotoId,
     required String themeId,
     void Function(String message)? onProgress,
+
+    /// Explicit `X-Kiosk-Session-Token` for [sessionId] — see
+    /// [ApiService.updateSession] for why the event pipeline needs this
+    /// instead of the ambient [SessionManager] token.
+    String? sessionToken,
   }) async {
     final apiClientWithTimeout =
         ApiClient(_aiDio, baseUrl: AppConstants.kBaseUrl);
@@ -1701,6 +1740,24 @@ class ApiService {
           themeId: themeId,
           uuid: _uuid,
           onProgress: onProgress,
+          // Per-request header, so two pipeline items generating at once
+          // cannot see each other's credential. Setting it on the shared
+          // _aiDio would be exactly that race (the AI worker runs two jobs
+          // concurrently), which is why this is not a BaseOptions header.
+          post: (sessionToken == null || sessionToken.isEmpty)
+              ? null
+              : (body) async {
+                  final r = await _aiDio.post<dynamic>(
+                    '/api/generate-image',
+                    data: body,
+                    options: Options(
+                      headers: <String, dynamic>{
+                        kKioskSessionTokenHeader: sessionToken,
+                      },
+                    ),
+                  );
+                  return r.data;
+                },
         );
       } on DioException catch (e) {
         if (isGenerateImageDioTimeout(e) && retryCount < maxRetries) {
@@ -1733,6 +1790,11 @@ class ApiService {
     required String themeId,
     void Function(String message)? onProgress,
     void Function(String eventType, Map<String, dynamic> json)? onSseEvent,
+
+    /// Explicit per-session credential, forwarded to [generateImage] on the
+    /// `count == 1` path (the event pipeline's only path — see there for why).
+    /// Not read on the parallel SSE path below; nothing calls it with one yet.
+    String? sessionToken,
   }) async {
     final n = count < 1 ? 1 : count;
     if (n == 1) {
@@ -1742,6 +1804,7 @@ class ApiService {
         originalPhotoId: originalPhotoId,
         themeId: themeId,
         onProgress: onProgress,
+        sessionToken: sessionToken,
       );
       return ParallelGenerationResult(
         imageUrlsBySlot: [m.imageUrl],
@@ -1807,15 +1870,21 @@ class ApiService {
     }
   }
 
+  /// Pass [sessionToken] / [sessionId] to fetch an image owned by a session
+  /// other than the ambient one — see [updateSession].
   Future<XFile> downloadImageToTemp(
     String imageUrl, {
     void Function(String message)? onProgress,
+    String? sessionToken,
+    String? sessionId,
   }) =>
       ApiServiceLegacyMedia.downloadImageToTemp(
         dio: _dio,
         uuid: _uuid,
         imageUrl: imageUrl,
         onProgress: onProgress,
+        sessionToken: sessionToken,
+        sessionId: sessionId,
       );
 
   /// POST `/api/preprocess-image` — server person detection + consensus.

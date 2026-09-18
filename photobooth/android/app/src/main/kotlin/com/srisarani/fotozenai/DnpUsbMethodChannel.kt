@@ -16,6 +16,7 @@ import com.srisarani.fotozenai.dnp.DnpPrepareBitmapOptions
 import com.srisarani.fotozenai.dnp.DnpPrintImage
 import com.srisarani.fotozenai.dnp.DnpPrintJob
 import com.srisarani.fotozenai.dnp.DnpPrintProgressEmitter
+import com.srisarani.fotozenai.dnp.DnpTrace
 import com.srisarani.fotozenai.dnp.DnpPrintSize
 import com.srisarani.fotozenai.dnp.DnpPrinterException
 import com.srisarani.fotozenai.dnp.DnpUsbPrinter
@@ -74,6 +75,8 @@ object DnpUsbMethodChannel {
 
     fun register(messenger: BinaryMessenger, context: Context) {
         appContext = context.applicationContext
+        // Print-path timing trace; no-ops unless this is a debuggable build.
+        DnpTrace.init(appContext)
         val usbManager = appContext.getSystemService(Context.USB_SERVICE) as UsbManager
         usbPrinter = DnpUsbPrinter(appContext, usbManager)
         wifiNetworkBinder = DnpWifiNetworkBinder(appContext, mainHandler)
@@ -137,7 +140,15 @@ object DnpUsbMethodChannel {
         }
         wifiNetworkBinder?.release()
         usbPrinter.disconnect()
-        ioExecutor.shutdownNow()
+        // Deliberately not shutting down ioExecutor: it belongs to this `object`
+        // singleton, which outlives any one Activity instance, while onDestroy runs
+        // on every Activity recreation (rotation, low memory, "don't keep
+        // activities"). Terminating it here left every later print request calling
+        // execute() on a dead pool - it threw RejectedExecutionException, which
+        // skipped the MethodChannel result callback entirely, so the Dart side hung
+        // forever on "needs USB permission" even after the user tapped Allow. The
+        // pool is a handful of daemon threads; the process death that actually ends
+        // its life reclaims them without help.
     }
 
     private fun requestUsbPermission(result: MethodChannel.Result) {

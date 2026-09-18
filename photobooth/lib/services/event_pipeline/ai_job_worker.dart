@@ -3,6 +3,8 @@ import '../../models/event_pipeline/media_item.dart';
 import '../../models/event_pipeline/media_rendition.dart';
 import '../../models/event_pipeline/pipeline_job.dart';
 import '../../utils/exceptions.dart';
+import '../../utils/logger.dart';
+import '../api_image_url_utils.dart';
 import '../api_service.dart';
 import '../kiosk_manager.dart';
 import 'event_media_store.dart';
@@ -131,6 +133,9 @@ class AiJobWorker extends EventPipelineWorker {
         attempt: attempt,
         originalPhotoId: item.remotePhotoId!,
         themeId: themeId,
+        // This item's own session token — the mirror's session step is what
+        // set it, and the device's ambient SessionManager token is not it.
+        sessionToken: item.remoteSessionToken,
       );
 
       final url = result.preferredImageUrl;
@@ -139,6 +144,17 @@ class AiJobWorker extends EventPipelineWorker {
       }
       return await _storeResult(item, url);
     } on ApiException catch (e) {
+      // The server deletes the session's original photo once the regeneration
+      // budget is spent (`maxRegenerations`, which is 1 on these kiosks), so a
+      // second call for the same session can never succeed. Before giving up,
+      // check whether the run we are retrying actually *worked* — a response
+      // lost to a timeout or a dropped link leaves the image on the session
+      // with nothing here to show for it.
+      if (_isUnrecoverableInput(e.message)) {
+        final adopted = await _adoptExistingGeneration(item);
+        if (adopted != null) return adopted;
+        return JobResult.fail(e.message);
+      }
       return isRetryableEventError(e)
           ? JobResult.retry(e.message)
           : JobResult.fail(e.message);
@@ -147,8 +163,71 @@ class AiJobWorker extends EventPipelineWorker {
     }
   }
 
+  /// Server rejections that describe the *input*, which a retry cannot change.
+  ///
+  /// These arrive as HTTP 500, which [isRetryableEventError] treats as
+  /// retryable — correct for a genuine server fault, wrong here: the photo the
+  /// generation needs is gone, so all eight attempts would burn on a call that
+  /// is guaranteed to fail. Matched on text because the endpoint returns only
+  /// `{error: "..."}` with no machine-readable code.
+  static bool _isUnrecoverableInput(String message) {
+    final m = message.toLowerCase();
+    return m.contains('invalid photo input') ||
+        m.contains('unsupported image format') ||
+        m.contains('photo is too large');
+  }
+
+  /// Takes a generation the server already completed for this item's session.
+  ///
+  /// Makes the step idempotent: generation is expensive and one-shot here, so
+  /// an image that exists server-side must be collected rather than paid for
+  /// again — or, once the original is cleared, lost entirely.
+  ///
+  /// Returns null when there is nothing to adopt, leaving the caller to decide.
+  Future<JobResult?> _adoptExistingGeneration(MediaItem item) async {
+    final sessionId = item.remoteSessionId?.trim() ?? '';
+    if (sessionId.isEmpty) return null;
+    try {
+      final session = await _api.fetchSession(
+        sessionId,
+        sessionToken: item.remoteSessionToken,
+      );
+      if (session == null) return null;
+      final url = _generatedImageUrl(session);
+      if (url == null) return null;
+      AppLogger.info(
+        'Adopting a generation the server already produced for ${item.id}',
+      );
+      return await _storeResult(item, url);
+    } catch (e) {
+      AppLogger.debug('Could not adopt an existing generation: $e');
+      return null;
+    }
+  }
+
+  /// Newest usable image on a session payload, as an absolute URL.
+  static String? _generatedImageUrl(Map<String, dynamic> session) {
+    final candidates = <String>[];
+    final generated = session['generatedImages'];
+    if (generated is List) {
+      for (final entry in generated) {
+        if (entry is String && entry.trim().isNotEmpty) {
+          candidates.add(entry.trim());
+        }
+      }
+    }
+    final latest = session['latestImageUrl'];
+    if (latest is String && latest.trim().isNotEmpty) {
+      candidates.add(latest.trim());
+    }
+    if (candidates.isEmpty) return null;
+    // Session URLs are stored relative (`/api/img/generated/...`); the generate
+    // response path resolves them already, this one has to.
+    return resolveApiImageUrl(candidates.last);
+  }
+
   Future<JobResult> _storeResult(MediaItem item, String url) async {
-    final bytes = await _download(url);
+    final bytes = await _download(url, item);
     if (bytes.isEmpty) {
       return const JobResult.retry('Generated image could not be downloaded');
     }
@@ -173,10 +252,18 @@ class AiJobWorker extends EventPipelineWorker {
     return const JobResult.done();
   }
 
-  Future<List<int>> _download(String url) async {
+  /// Generated images are session-owned, so the download carries this item's
+  /// own session and token. Without them the request authenticates as the
+  /// ambient session — which does not own the image — and the server answers
+  /// 403, losing a generation that was already produced and paid for.
+  Future<List<int>> _download(String url, MediaItem item) async {
     final fetch = _fetchImage;
     if (fetch != null) return fetch(url);
-    final file = await _api.downloadImageToTemp(url);
+    final file = await _api.downloadImageToTemp(
+      url,
+      sessionToken: item.remoteSessionToken,
+      sessionId: item.remoteSessionId,
+    );
     return file.readAsBytes();
   }
 

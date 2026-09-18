@@ -9,6 +9,7 @@ import '../../utils/exceptions.dart';
 import '../../utils/logger.dart';
 import '../api_service.dart';
 import '../kiosk_manager.dart';
+import '../kiosk_session_auth.dart' show parseKioskAuthToken;
 import 'event_media_store.dart';
 import 'event_pipeline_db.dart';
 import 'event_pipeline_ledger.dart';
@@ -240,6 +241,13 @@ class EventMirrorWorker {
   ///
   /// The host accepted the event's terms, so every photo accepts on their
   /// behalf — the same call `_importOnePhoto` makes today for card imports.
+  ///
+  /// One session per photo is the current design and stays that way for now;
+  /// consolidating to fewer sessions is a later change. What was missing was
+  /// this session's own `kioskAuthToken` — every call after this one for this
+  /// item needs it explicitly, because the device's single ambient
+  /// `SessionManager` session is not any one of these and ends up sending
+  /// none or the wrong one, which the server answers with 403.
   Future<_MirrorOutcome> _mirrorSession(String kioskCode, MediaItem item) async {
     if ((item.remoteSessionId?.trim().isNotEmpty ?? false)) {
       return _MirrorOutcome.done;
@@ -253,7 +261,12 @@ class EventMirrorWorker {
     if (sessionId == null) {
       throw ApiException('Session create returned no id');
     }
-    await _ledger.setRemoteIds(item.id, sessionId: sessionId);
+    final sessionToken = parseKioskAuthToken(response);
+    await _ledger.setRemoteIds(
+      item.id,
+      sessionId: sessionId,
+      sessionToken: sessionToken,
+    );
     return _MirrorOutcome.done;
   }
 
@@ -281,10 +294,12 @@ class EventMirrorWorker {
       bytes: bytes,
     );
     // The session's photo id is what AI generation keys on; attaching the image
-    // is what makes it exist.
+    // is what makes it exist. This item's own session token, not the device's
+    // ambient one — see _mirrorSession.
     await _api.updateSession(
       sessionId: sessionId,
       userImageUrl: eventImportBytesToDataUrl(bytes, 'image/jpeg'),
+      sessionToken: item.remoteSessionToken,
     );
     await _ledger.setRemoteIds(item.id, photoId: item.id);
     return _MirrorOutcome.done;

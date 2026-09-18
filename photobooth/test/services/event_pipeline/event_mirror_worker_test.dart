@@ -22,7 +22,11 @@ class FakeApi extends ApiService {
   Object? sessionThrows;
   Object? assetThrows;
   String? lastAssetPrefix;
+  String? lastUpdateSessionToken;
   final List<Map<String, dynamic>> entities = [];
+
+  /// Set false to model a backend that issues no token on session create.
+  bool issuesToken = true;
 
   @override
   Future<Map<String, dynamic>> acceptTermsAndCreateSession({
@@ -36,7 +40,10 @@ class FakeApi extends ApiService {
     sessionCalls++;
     final err = sessionThrows;
     if (err != null) throw err;
-    return <String, dynamic>{'id': 'sess-$sessionCalls'};
+    return <String, dynamic>{
+      'id': 'sess-$sessionCalls',
+      if (issuesToken) 'kioskAuthToken': 'tok-$sessionCalls',
+    };
   }
 
   @override
@@ -61,8 +68,10 @@ class FakeApi extends ApiService {
     String? selectedFrameId,
     int? personCount,
     Map<String, dynamic>? framingMetadata,
+    String? sessionToken,
   }) async {
     updateCalls++;
+    lastUpdateSessionToken = sessionToken;
     return <String, dynamic>{};
   }
 
@@ -151,6 +160,57 @@ void main() {
       final item = await ledger.findById(mediaId);
       expect(item!.remoteSessionId, 'sess-1');
       expect(item.remotePhotoId, isNotNull);
+    });
+
+    test('the session stage records the token that session was issued',
+        () async {
+      final mediaId = await seedItem();
+      final worker = buildWorker();
+      await worker.enqueueItem(mediaId);
+      await worker.drainUntilIdle();
+
+      // Without this the calls that follow fall back to the device's ambient
+      // SessionManager token - which belongs to no item here - and the server
+      // answers 403, stranding every photo at "waiting for the server session".
+      final item = await ledger.findById(mediaId);
+      expect(item!.remoteSessionToken, 'tok-1');
+    });
+
+    test('the asset upload carries that item own session token', () async {
+      final mediaId = await seedItem();
+      final worker = buildWorker();
+      await worker.enqueueItem(mediaId);
+      await worker.drainUntilIdle();
+
+      expect(api.lastUpdateSessionToken, 'tok-1');
+    });
+
+    test('a backend that issues no token still mirrors', () async {
+      api.issuesToken = false;
+      final mediaId = await seedItem();
+      final worker = buildWorker();
+      await worker.enqueueItem(mediaId);
+      await worker.drainUntilIdle();
+
+      final item = await ledger.findById(mediaId);
+      expect(item!.remoteSessionId, 'sess-1');
+      expect(item.remoteSessionToken, isNull);
+      expect(api.lastUpdateSessionToken, isNull,
+          reason: 'no token to send is not the same as sending a wrong one');
+    });
+
+    test('each item gets its own session and its own token', () async {
+      final first = await seedItem();
+      final second = await seedItem();
+      final worker = buildWorker();
+      await worker.enqueueItem(first);
+      await worker.enqueueItem(second);
+      await worker.drainUntilIdle();
+
+      final a = await ledger.findById(first);
+      final b = await ledger.findById(second);
+      expect(a!.remoteSessionId, isNot(b!.remoteSessionId));
+      expect(a.remoteSessionToken, isNot(b.remoteSessionToken));
     });
 
     test('the asset stage attaches the image and unblocks AI', () async {

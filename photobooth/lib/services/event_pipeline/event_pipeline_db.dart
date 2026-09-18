@@ -110,6 +110,17 @@ class EventPipelineDb {
         // Without it a queue wait is indistinguishable from a slow generation.
         'started_at_ms': 'INTEGER',
       },
+      'evp_media_items': <String, String>{
+        // The bearer token the *session* step's create-session response issued
+        // for this item's own server session. Without it, the asset upload and
+        // AI generation calls that follow have no per-item credential to send
+        // and fall back to whatever the device's single ambient guest session
+        // happens to hold — usually none, since this pipeline runs with no
+        // guest ever at the terms screen. The server then rejects them with
+        // 403, and every photo sits stuck waiting on a session that in fact
+        // already exists.
+        'remote_session_token': 'TEXT',
+      },
     };
     for (final table in additions.entries) {
       final existing = <String>{

@@ -108,7 +108,10 @@ object ReceiptUsbMethodChannel {
             permissionReceiverRegistered = false
         }
         usbPrinter.disconnect()
-        ioExecutor.shutdownNow()
+        // Not shutting down ioExecutor here - see the matching comment in
+        // DnpUsbMethodChannel.onDestroy(). Same singleton-outlives-Activity trap:
+        // the pool died on first Activity recreation and every print after that
+        // silently hung instead of erroring.
     }
 
     private fun requestUsbPermission(result: MethodChannel.Result) {

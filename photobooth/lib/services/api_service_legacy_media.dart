@@ -12,6 +12,7 @@ import '../utils/constants.dart';
 import '../utils/exceptions.dart';
 import '../utils/logger.dart';
 import 'alice_inspector.dart';
+import 'kiosk_session_auth.dart' show kKioskSessionTokenHeader;
 import 'api_client.dart';
 import 'api_dio_errors.dart';
 import 'api_image_url_utils.dart';
@@ -172,6 +173,8 @@ class ApiServiceLegacyMedia {
     required Uuid uuid,
     required String imageUrl,
     void Function(String message)? onProgress,
+    String? sessionToken,
+    String? sessionId,
   }) async {
     if (kIsWeb) {
       return XFile(imageUrl);
@@ -182,7 +185,16 @@ class ApiServiceLegacyMedia {
       return local;
     }
 
-    final resolvedUrl = withGeneratedImageSessionId(resolveApiImageUrl(imageUrl));
+    // `/api/img/generated/...` is owned by one session. [withGeneratedImageSessionId]
+    // stamps the *ambient* session on the URL, which is not this image's owner
+    // when the event pipeline downloads — every item has its own session — so an
+    // explicit [sessionId] takes precedence when given.
+    final resolvedUrl = sessionId != null && sessionId.isNotEmpty
+        ? withExplicitGeneratedImageSessionId(
+            resolveApiImageUrl(imageUrl),
+            sessionId,
+          )
+        : withGeneratedImageSessionId(resolveApiImageUrl(imageUrl));
     final previousConnectTimeout = dio.options.connectTimeout;
     final previousReceiveTimeout = dio.options.receiveTimeout;
     dio.options = dio.options.copyWith(
@@ -205,6 +217,7 @@ class ApiServiceLegacyMedia {
         file: file,
         filePath: filePath,
         onProgress: onProgress,
+        sessionToken: sessionToken,
       );
     } finally {
       dio.options = dio.options.copyWith(
@@ -222,6 +235,7 @@ class ApiServiceLegacyMedia {
     required dynamic file,
     required String filePath,
     void Function(String message)? onProgress,
+    String? sessionToken,
   }) async {
     var lastReportedPercent = -1;
 
@@ -242,8 +256,18 @@ class ApiServiceLegacyMedia {
       );
     }
 
+    // `/api/img/generated/...` authorizes against the session that owns the
+    // image. The interceptor would attach the ambient token, which for a
+    // pipeline download belongs to a different session (or no session) and is
+    // answered with 403 — so an explicit token replaces it rather than
+    // supplementing it.
+    final headers = Map<String, dynamic>.from(dio.options.headers);
+    if (sessionToken != null && sessionToken.isNotEmpty) {
+      headers[kKioskSessionTokenHeader] = sessionToken;
+    }
+
     try {
-      await attemptDownload(headers: dio.options.headers);
+      await attemptDownload(headers: headers);
     } on DioException catch (e) {
       final status = e.response?.statusCode;
       final body = e.response?.data;

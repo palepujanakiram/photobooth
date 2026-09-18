@@ -104,6 +104,37 @@ void main() {
         'secret-token',
       );
     });
+
+    test('a caller-set token wins over the ambient one', () async {
+      SharedPreferences.setMockInitialValues({});
+      final sm = SessionManager();
+      sm.setSessionFromResponse({
+        'id': 'sess-ambient',
+        'kioskAuthToken': 'ambient-token',
+        'termsAccepted': true,
+        'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+        'attemptsUsed': 0,
+        'generatedImages': [],
+        'expiresAt': DateTime.utc(2027, 1, 1).toIso8601String(),
+      });
+
+      final dio = Dio();
+      dio.interceptors.add(KioskSessionTokenInterceptor(sessionManager: sm));
+      dio.httpClientAdapter = _CapturingAdapter();
+
+      // The event pipeline's case: many sessions in flight, one per photo, and
+      // none of them is SessionManager's "current" one. Stomping the explicit
+      // token with the ambient one is what made the server answer 403.
+      await dio.patch<void>(
+        '/api/sessions/sess-item',
+        options: Options(
+          headers: <String, dynamic>{kKioskSessionTokenHeader: 'item-token'},
+        ),
+      );
+
+      final adapter = dio.httpClientAdapter as _CapturingAdapter;
+      expect(adapter.lastHeaders?[kKioskSessionTokenHeader], 'item-token');
+    });
   });
 
   group('parseKioskAuthToken / setSessionFromResponse', () {

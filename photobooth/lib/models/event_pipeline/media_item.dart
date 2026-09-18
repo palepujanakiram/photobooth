@@ -104,6 +104,7 @@ class MediaItem {
     this.capturedAtMs,
     this.originalBytes,
     this.remoteSessionId,
+    this.remoteSessionToken,
     this.remotePhotoId,
     this.steps = const <String>[],
     this.stepIndex = 0,
@@ -142,6 +143,15 @@ class MediaItem {
 
   /// Filled by the mirror's `session` step. The AI step blocks until it is set.
   final String? remoteSessionId;
+
+  /// The bearer token that session's own create-session response issued.
+  ///
+  /// Each item gets its own server session, so each needs its own credential —
+  /// the device's single ambient `SessionManager` token belongs to whatever
+  /// guest last went through the terms screen, if any, and is never this
+  /// item's. Carried explicitly on every subsequent call for this item rather
+  /// than relying on that ambient value.
+  final String? remoteSessionToken;
   final String? remotePhotoId;
 
   /// The chain frozen onto this item at selection or capture-confirm time.
@@ -172,6 +182,7 @@ class MediaItem {
     String? eventId,
     String? stage,
     String? remoteSessionId,
+    String? remoteSessionToken,
     String? remotePhotoId,
     List<String>? steps,
     int? stepIndex,
@@ -191,6 +202,7 @@ class MediaItem {
       originalBytes: originalBytes,
       stage: stage ?? this.stage,
       remoteSessionId: remoteSessionId ?? this.remoteSessionId,
+      remoteSessionToken: remoteSessionToken ?? this.remoteSessionToken,
       remotePhotoId: remotePhotoId ?? this.remotePhotoId,
       steps: steps ?? this.steps,
       stepIndex: stepIndex ?? this.stepIndex,
@@ -213,6 +225,7 @@ class MediaItem {
         'original_bytes': originalBytes,
         'stage': stage,
         'remote_session_id': remoteSessionId,
+        'remote_session_token': remoteSessionToken,
         'remote_photo_id': remotePhotoId,
         'steps_json': jsonEncode(steps),
         'step_index': stepIndex,
@@ -223,6 +236,10 @@ class MediaItem {
         'updated_at_ms': updatedAtMs,
       };
 
+  /// Deliberately omits [remoteSessionToken]: this is the wire format for the
+  /// staff-dashboard align sync ([EventPipelineAlignApi.align]), and a bearer
+  /// credential has no business riding along in a reporting payload. It is a
+  /// DB-only field — see [toRow] / [fromRow].
   Map<String, dynamic> toJson() => <String, dynamic>{
         'id': id,
         'eventId': eventId,
@@ -307,6 +324,7 @@ class MediaItem {
       originalBytes: row['original_bytes'] as int?,
       stage: (row['stage'] ?? MediaStage.ingested).toString(),
       remoteSessionId: row['remote_session_id'] as String?,
+      remoteSessionToken: row['remote_session_token'] as String?,
       remotePhotoId: row['remote_photo_id'] as String?,
       steps: decodeSteps(row['steps_json'] as String?),
       stepIndex: (row['step_index'] as int?) ?? 0,
