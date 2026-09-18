@@ -8,6 +8,17 @@ void main() {
     expect(url, contains('/api/img/abc'));
   });
 
+  test('absolutize leaves on-device data JPEGs unchanged', () {
+    const dataUrl = 'data:image/jpeg;base64,/9j/4AAQ';
+    expect(SecureImageUrl.absolutize(dataUrl), dataUrl);
+    expect(SecureImageUrl.absolutize('blob:https://fotozen-web.fly.dev/x'),
+        'blob:https://fotozen-web.fly.dev/x');
+    expect(
+      SecureImageUrl.absolutize('local-media://fotoflashback/a.jpg'),
+      'local-media://fotoflashback/a.jpg',
+    );
+  });
+
   test('previewUrlFromStepMap reads previewImageUrl', () {
     final url = SecureImageUrl.previewUrlFromStepMap({
       'previewImageUrl': '/api/img/preview',

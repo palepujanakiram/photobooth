@@ -146,6 +146,12 @@ void main() {
     expect(empty.filters, isEmpty);
     expect(empty.printSize, AppConstants.kPrintSizeStripDual2x6);
     expect(empty.copiesOnSheet, 2);
+    final withFrame = empty.withFrames(const [
+      StripFrame(id: 'classic', name: 'Classic', description: 'White'),
+    ]);
+    expect(withFrame.frames.single.id, 'classic');
+    expect(withFrame.shotCount, empty.shotCount);
+    expect(withFrame.enableOsdScrub, empty.enableOsdScrub);
   });
 
   test('StripComposeResult prefers stripCompositeUrl for dual strip', () {
@@ -355,5 +361,383 @@ void main() {
     expect(frame.overlayUrl, 'https://example.com/o.png');
     expect(frame.caption, 'Date night');
     expect(isStripSheetLayout(frame.id), isFalse);
+  });
+
+  test('StripFrame treats occasion-frame 6x2 ids as templates', () {
+    final frame = StripFrame.fromJson({
+      'id': 'fr:frame-uuid',
+      'name': 'DPS 6×2',
+      'description': 'Classic strip',
+      'kind': 'template',
+      'overlayUrl': 'https://example.com/6x2.png',
+    });
+    expect(frame.isTemplate, isTrue);
+    expect(isStripTemplateFrame(frame.id), isTrue);
+    expect(isStripTemplateFrame('classic'), isFalse);
+    expect(isStripSheetLayout(frame.id), isFalse);
+  });
+
+  test('StripFrame treats 3-shot 6x2 and 1-shot occasion ids', () {
+    final three = StripFrame.fromJson({
+      'id': 'f3:frame-uuid',
+      'name': 'DPS 3-shot 6×2',
+      'description': 'Classic strip',
+      'kind': 'template',
+      'overlayUrl': 'https://example.com/6x2-3.png',
+      'shotCount': 3,
+    });
+    expect(three.isTemplate, isTrue);
+    expect(isStrip3TemplateFrame(three.id), isTrue);
+    expect(isStripTemplateFrame(three.id), isTrue);
+    expect(three.shotCount, 3);
+    expect(classicFrameCatalogShotCount(three), 3);
+    expect(classicFrameVisibleForShotCount(three, 3), isTrue);
+    expect(classicFrameVisibleForShotCount(three, 4), isFalse);
+
+    final one = StripFrame.fromJson({
+      'id': 'ai:frame-uuid',
+      'name': 'DPS',
+      'description': 'AI overlay',
+      'kind': 'occasion',
+      'overlayUrl': 'https://example.com/ai.png',
+      'landscapeOverlayUrl': 'https://example.com/ai-6x4.png',
+      'landscapeSlots': [
+        {'left': 0.12, 'top': 0.1, 'width': 0.76, 'height': 0.78},
+      ],
+      'shotCount': 1,
+    });
+    expect(one.isOccasion, isTrue);
+    expect(one.landscapeOverlayUrl, 'https://example.com/ai-6x4.png');
+    expect(one.landscapeSlots.single.left, 0.12);
+    expect(isOccasionFrameId(one.id), isTrue);
+    expect(isStripTemplateFrame(one.id), isFalse);
+    expect(classicFrameVisibleForShotCount(one, 1), isTrue);
+    expect(classicFrameVisibleForShotCount(one, 4), isFalse);
+    expect(isOccasionFrameId('ai:'), isFalse);
+    expect(isStrip3TemplateFrame('f3:'), isFalse);
+    expect(isFrameStripVariantId('fr:frame-uuid'), isTrue);
+    expect(isFrameStripVariantId('fr:'), isFalse);
+    expect(classicFrameDbId('ai:frame-uuid'), 'frame-uuid');
+    expect(classicFrameDbId('f3:frame-uuid'), 'frame-uuid');
+    expect(classicFrameDbId('fr:frame-uuid'), 'frame-uuid');
+    expect(classicFrameDbId('st:tpl-1'), 'tpl-1');
+    expect(classicFrameDbId('classic'), isNull);
+    expect(classicFrameDbId('ai:'), isNull);
+  });
+
+  test('StripFrame parses 6x2 template slots', () {
+    final frame = StripFrame.fromJson({
+      'id': 'fr:frame-uuid',
+      'name': 'DPS 6×2',
+      'description': 'Classic strip',
+      'kind': 'template',
+      'overlayUrl': 'https://example.com/6x2.png',
+      'shotCount': 4,
+      'slots': [
+        {'left': 0.08, 'top': 0.16, 'width': 0.84, 'height': 0.155},
+        {'left': 0.08, 'top': 0.325, 'width': 0.84, 'height': 0.155},
+        {'left': 0.08, 'top': 0.49, 'width': 0.84, 'height': 0.155},
+        {
+          'left': 0.08,
+          'top': 0.655,
+          'width': 0.84,
+          'height': 0.155,
+          'rotDeg': 0,
+        },
+      ],
+    });
+    expect(frame.slots, hasLength(4));
+    expect(frame.slots.first.left, 0.08);
+    expect(frame.slots.first.rotDeg, 0);
+    expect(parseStripTemplateSlots(null), isEmpty);
+    expect(parseStripTemplateSlots('nope'), isEmpty);
+    expect(
+      parseStripTemplateSlots([
+        {'left': 0.1},
+      ]),
+      isEmpty,
+    );
+    expect(StripTemplateSlot.tryParse(null), isNull);
+    expect(
+      StripTemplateSlot.tryParse({
+        'left': 0.1,
+        'top': 0.1,
+        'width': 0.01,
+        'height': 0.2,
+      }),
+      isNull,
+    );
+    expect(
+      StripTemplateSlot.tryParse({
+        'left': 0.1,
+        'top': 0.1,
+        'width': 0.2,
+        'height': 0.2,
+        'rotDeg': 40,
+      })?.rotDeg,
+      25,
+    );
+    expect(defaultOccasionStripSlots(3), hasLength(3));
+    expect(defaultOccasionStripSlots(4), hasLength(4));
+    expect(
+      occasionSinglePhotoHole(const <StripTemplateSlot>[]),
+      defaultOccasionSinglePhotoHole,
+    );
+    expect(
+      occasionSinglePhotoHole(const <StripTemplateSlot>[], landscape: true),
+      defaultClassicLandscapePhotoHole,
+    );
+    expect(
+      classicOccasionOverlayUrl(
+        overlayUrl: 'https://cdn/p.png',
+        landscapeOverlayUrl: 'https://cdn/l.png',
+        landscape: true,
+      ),
+      'https://cdn/l.png',
+    );
+    expect(
+      classicOccasionOverlayUrl(
+        overlayUrl: 'https://cdn/p.png',
+        landscapeOverlayUrl: 'https://cdn/l.png',
+        landscape: false,
+      ),
+      'https://cdn/p.png',
+    );
+    expect(
+      classicOccasionOverlayUrl(
+        overlayUrl: 'https://cdn/p.png',
+        landscapeOverlayUrl: '  ',
+        landscape: true,
+      ),
+      'https://cdn/p.png',
+    );
+    expect(
+      classicOccasionOverlayUrl(overlayUrl: '  ', landscape: false),
+      isNull,
+    );
+    const landHole = StripTemplateSlot(
+      left: 0.12,
+      top: 0.1,
+      width: 0.76,
+      height: 0.78,
+    );
+    expect(
+      classicOccasionOverlaySlots(
+        slots: const [defaultOccasionSinglePhotoHole],
+        landscapeSlots: const [landHole],
+        landscape: true,
+        hasLandscapeOverlay: true,
+      ),
+      const [landHole],
+    );
+    expect(
+      classicOccasionOverlaySlots(
+        slots: const [defaultOccasionSinglePhotoHole],
+        landscapeSlots: const [landHole],
+        landscape: false,
+        hasLandscapeOverlay: true,
+      ),
+      const [defaultOccasionSinglePhotoHole],
+    );
+    expect(
+      classicOccasionOverlaySlots(
+        slots: const [defaultOccasionSinglePhotoHole],
+        landscape: true,
+        hasLandscapeOverlay: true,
+      ),
+      const [defaultClassicLandscapePhotoHole],
+    );
+    final catalogHole = occasionSinglePhotoHole(const [
+      StripTemplateSlot(left: 0.1, top: 0.2, width: 0.8, height: 0.5),
+    ]);
+    expect(catalogHole.left, 0.1);
+    expect(catalogHole.top, 0.2);
+    expect(catalogHole.width, 0.8);
+    expect(catalogHole.height, 0.5);
+    final landChrome = resolveClassicSinglePhotoHole(
+      hasOverlay: false,
+      landscape: true,
+    );
+    expect(landChrome.left, kClassicSingleMatteRatio);
+    expect(landChrome.top, kClassicSingleMatteRatio);
+    expect(landChrome.width, 1 - 2 * kClassicSingleMatteRatio);
+    expect(landChrome.height, 1 - 2 * kClassicSingleMatteRatio);
+    expect(
+      resolveClassicSinglePhotoHole(
+        hasOverlay: false,
+        landscape: false,
+      ).left,
+      kClassicSingleMatteRatio,
+    );
+    expect(
+      classicBuiltInSinglePhotoHole(landscape: false)?.left,
+      kClassicSingleMatteRatio,
+    );
+    expect(
+      classicChromeSinglePhotoHole(frameId: 'filmstrip').left,
+      kClassicFilmstripRailRatio,
+    );
+    // hasOverlay=true with no overlayHole falls back to occasionSinglePhotoHole
+    final fallbackHole = resolveClassicSinglePhotoHole(
+      hasOverlay: true,
+      landscape: false,
+    );
+    expect(fallbackHole, isNotNull);
+    expect(
+      const StripTemplateSlot(
+        left: 0.1,
+        top: 0.2,
+        width: 0.8,
+        height: 0.5,
+      ).toJson(),
+      {
+        'left': 0.1,
+        'top': 0.2,
+        'width': 0.8,
+        'height': 0.5,
+      },
+    );
+    expect(
+      const StripTemplateSlot(
+        left: 0.1,
+        top: 0.2,
+        width: 0.8,
+        height: 0.5,
+        rotDeg: 5,
+      ).toJson()['rotDeg'],
+      5,
+    );
+    expect(
+      occasionSinglePhotoHole(const [
+        StripTemplateSlot(left: 0.1, top: 0.1, width: 0.2, height: 0.2),
+        StripTemplateSlot(left: 0.1, top: 0.4, width: 0.2, height: 0.2),
+      ]),
+      defaultOccasionSinglePhotoHole,
+    );
+  });
+
+  test('preferredClassicFrameId picks occasion variants over classic', () {
+    const frames = [
+      StripFrame(id: 'classic', name: 'Classic', description: 'White'),
+      StripFrame(id: 'noir', name: 'Noir', description: 'Black'),
+      StripFrame(
+        id: 'ai:f1',
+        name: 'DPS',
+        description: 'AI',
+        kind: 'occasion',
+        shotCount: 1,
+      ),
+      StripFrame(
+        id: 'f3:f1',
+        name: 'DPS 3',
+        description: '3-shot',
+        kind: 'template',
+        shotCount: 3,
+      ),
+      StripFrame(
+        id: 'fr:f1',
+        name: 'DPS 6×2',
+        description: '4-shot',
+        kind: 'template',
+        shotCount: 4,
+      ),
+      StripFrame(id: 'grid_2x2', name: '2×2', description: 'Sheet'),
+    ];
+    expect(
+      preferredClassicFrameId(
+        frames: frames,
+        shotCount: 1,
+        selectedId: kDefaultStripFrameId,
+      ),
+      'ai:f1',
+    );
+    expect(
+      preferredClassicFrameId(
+        frames: frames,
+        shotCount: 3,
+        selectedId: kDefaultStripFrameId,
+      ),
+      'f3:f1',
+    );
+    expect(
+      preferredClassicFrameId(
+        frames: frames,
+        shotCount: 4,
+        selectedId: kDefaultStripFrameId,
+      ),
+      'fr:f1',
+    );
+    expect(
+      preferredClassicFrameId(
+        frames: frames,
+        shotCount: 1,
+        selectedId: 'noir',
+      ),
+      'noir',
+    );
+    expect(preferredOccasionFrameId(frames, 1), 'ai:f1');
+    expect(preferredOccasionFrameId(const <StripFrame>[], 4), isNull);
+    expect(
+      preferredClassicFrameId(
+        frames: const <StripFrame>[],
+        shotCount: 4,
+        selectedId: 'classic',
+      ),
+      'classic',
+    );
+    expect(
+      preferredClassicFrameId(
+        frames: const [
+          StripFrame(id: 'classic', name: 'Classic', description: 'White'),
+        ],
+        shotCount: 4,
+        selectedId: kDefaultStripFrameId,
+      ),
+      'classic',
+    );
+    expect(
+      preferredClassicFrameId(
+        frames: const [
+          StripFrame(id: 'classic', name: 'Classic', description: 'White'),
+        ],
+        shotCount: 4,
+        selectedId: 'missing',
+      ),
+      'classic',
+    );
+    expect(
+      classicFrameCatalogShotCount(
+        const StripFrame(id: 'ai:x', name: 'A', description: ''),
+      ),
+      1,
+    );
+    expect(
+      classicFrameCatalogShotCount(
+        const StripFrame(id: 'f3:x', name: 'A', description: ''),
+      ),
+      3,
+    );
+    expect(
+      classicFrameCatalogShotCount(
+        const StripFrame(id: 'fr:x', name: 'A', description: ''),
+      ),
+      4,
+    );
+    expect(
+      classicFrameCatalogShotCount(
+        const StripFrame(id: 'grid_2x2', name: 'A', description: ''),
+      ),
+      4,
+    );
+    expect(
+      classicFrameCatalogShotCount(
+        const StripFrame(id: 'classic', name: 'A', description: '', shotCount: 2),
+      ),
+      isNull,
+    );
+    expect(classicFrameIdVisibleForShotCount('grid_2x2', 1), isFalse);
+    expect(classicFrameIdVisibleForShotCount('classic', 1), isTrue);
+    expect(classicFrameIdVisibleForShotCount('st:tpl', 4), isTrue);
+    expect(classicFrameIdVisibleForShotCount('st:tpl', 3), isFalse);
   });
 }

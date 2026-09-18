@@ -63,9 +63,8 @@ class EventCaptureStationScreen extends StatelessWidget {
         showBackButton: true,
         onBackPressed: () => _changeRole(context),
         actions: [
-          TextButton(
+          EventStationChangeRoleButton(
             onPressed: () => _changeRole(context),
-            child: const Text(AppStrings.eventStationChangeRole),
           ),
         ],
         child: EventStationBoundShell(
@@ -77,14 +76,12 @@ class EventCaptureStationScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   EventStationStatsBar(stats: vm.stats, delivery: vm.delivery),
-                  if (vm.carouselUrls.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    EventStationImageCarousel(urls: vm.carouselUrls),
-                  ],
                   const SizedBox(height: 12),
                   EventStationStatusTabs(
                     selected: vm.statusFilter,
                     onSelected: vm.setStatusFilter,
+                    includeAll: true,
+                    allCount: vm.captures.length,
                     pendingCount: stationStatusCount(
                       vm.captures,
                       'PENDING',

@@ -16,6 +16,7 @@ import '../models/parallel_generation_result.dart';
 import '../models/strip_models.dart';
 import '../screens/result/transformed_image_model.dart';
 import '../screens/theme_selection/theme_model.dart';
+import '../utils/app_strings.dart';
 import '../utils/exceptions.dart';
 import '../utils/constants.dart';
 import '../utils/print_orientation.dart';
@@ -29,6 +30,7 @@ import 'client_identification.dart';
 import 'catalog_disk_cache.dart';
 import 'image_cache_service.dart';
 import 'image_cache_source.dart';
+import '../utils/classic_offline_frames.dart';
 import 'api_dio_errors.dart';
 import 'api_http_response.dart';
 import 'generation_api_errors.dart';
@@ -249,6 +251,39 @@ class ApiService {
       throwApiExceptionAfterWebCors(
         e,
         messagePrefix: 'Kiosk asset ingest failed',
+      );
+    }
+  }
+
+  /// POST `/api/kiosk/heartbeat` — liveness + historical Android process exits.
+  Future<void> postKioskHeartbeat({
+    required String kioskCode,
+    required String appVersion,
+    List<Map<String, dynamic>> processExits = const [],
+  }) async {
+    final code = kioskCode.trim().toUpperCase();
+    if (code.isEmpty) {
+      throw ApiException('kioskCode is required');
+    }
+    try {
+      final r = await _dio.post<dynamic>(
+        '/api/kiosk/heartbeat',
+        data: <String, dynamic>{
+          'kioskCode': code,
+          'appVersion': appVersion,
+          'processExits': processExits,
+        },
+        options: Options(
+          headers: {'X-Kiosk-Code': code},
+          responseType: ResponseType.json,
+          validateStatus: (c) => c != null && c >= 200 && c < 500,
+        ),
+      );
+      throwIfHttpErrorResponse(r, operationLabel: 'Kiosk heartbeat failed');
+    } on DioException catch (e) {
+      throwApiExceptionAfterWebCors(
+        e,
+        messagePrefix: 'Kiosk heartbeat failed',
       );
     }
   }
@@ -583,10 +618,58 @@ class ApiService {
     final cache = _imageCacheService;
     if (cache == null) return;
     for (final frame in frames) {
-      await cache.cacheImage(
-        SecureImageUrl.absolutize(frame.overlayUrl),
-        cacheKey: catalogCacheKeyForFrame(frame.id),
+      await _cacheFrameOverlay(
+        cache,
+        frame.overlayUrl,
+        catalogCacheKeyForFrame(frame.id),
       );
+      await _cacheFrameOverlay(
+        cache,
+        frame.strip.overlayUrl,
+        catalogCacheKeyForFrame('${frame.id}-strip'),
+      );
+      await _cacheFrameOverlay(
+        cache,
+        frame.strip.overlay3Url,
+        catalogCacheKeyForFrame('${frame.id}-strip3'),
+      );
+      await _cacheFrameOverlay(
+        cache,
+        frame.landscapeOverlayUrl,
+        catalogCacheKeyForFrame('${frame.id}-land'),
+      );
+    }
+  }
+
+  Future<void> _cacheFrameOverlay(
+    ImageCacheService cache,
+    String overlayUrl,
+    String? cacheKey,
+  ) async {
+    final url = overlayUrl.trim();
+    if (url.isEmpty) return;
+    await cache.cacheImage(
+      SecureImageUrl.absolutize(url),
+      cacheKey: cacheKey,
+    );
+  }
+
+  /// Disk-only occasion frames for Classic offline chrome (no network).
+  Future<List<KioskFrameModel>> getCachedKioskFrames() async {
+    try {
+      final kioskCode =
+          (await KioskManager().getKioskCode())?.trim().toUpperCase() ?? '';
+      final eventCode =
+          (await EventManager().getEventCode())?.trim().toUpperCase() ?? '';
+      final kioskId = SessionManager().currentSession?.kioskId ?? '';
+      return _readCachedFrames(
+        _frameCatalogDiskKey(
+          kioskCode.isEmpty ? kioskId : kioskCode,
+          eventCode,
+        ),
+      );
+    } catch (_) {
+      return const [];
     }
   }
 
@@ -687,11 +770,47 @@ class ApiService {
     }
   }
 
+  Future<StripFiltersCatalog?> _readCachedStripFilters(String key) async {
+    final raw = await _catalogDiskCache.readJson(key);
+    if (raw is! Map) return null;
+    try {
+      return StripFiltersCatalog.fromJson(Map<String, dynamic>.from(raw));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _precacheStripCatalogOverlays(StripFiltersCatalog catalog) async {
+    final cache = _imageCacheService;
+    if (cache == null) return;
+    for (final frame in catalog.frames) {
+      final url = frame.overlayUrl?.trim() ?? '';
+      if (url.isNotEmpty) {
+        await cache.cacheImage(
+          SecureImageUrl.absolutize(url),
+          cacheKey: classicFrameOverlayCacheKey(frame.id),
+        );
+      }
+      final landscapeUrl = frame.landscapeOverlayUrl?.trim() ?? '';
+      if (landscapeUrl.isEmpty) continue;
+      await cache.cacheImage(
+        SecureImageUrl.absolutize(landscapeUrl),
+        cacheKey: classicFrameOverlayCacheKey(frame.id, landscape: true),
+      );
+    }
+  }
+
   /// GET `/api/strip/filters` — FotoFlashback look catalog + print hints.
   Future<StripFiltersCatalog> fetchStripFilters() async {
+    final kioskCode =
+        (await KioskManager().getKioskCode())?.trim().toUpperCase();
+    final diskKey = stripFiltersCatalogDiskKey(kioskCode);
+    final cached = await _readCachedStripFilters(diskKey);
+    if (SessionManager().isOfflineSession) {
+      if (cached != null) return cached;
+      throw ApiException('Strip filters unavailable offline');
+    }
     try {
-      final kioskCode =
-          (await KioskManager().getKioskCode())?.trim().toUpperCase();
       final qp = <String, dynamic>{};
       if (kioskCode != null && kioskCode.isNotEmpty) {
         qp['kiosk'] = kioskCode;
@@ -701,20 +820,35 @@ class ApiService {
         queryParameters: qp.isEmpty ? null : qp,
         options: Options(responseType: ResponseType.json),
       );
+      final status = r.statusCode;
+      if (status != null && status >= 400) {
+        if (cached != null) return cached;
+        throw ApiException(AppStrings.flashbackFiltersLoadFailed, status);
+      }
       final data = r.data;
+      Map<String, dynamic>? map;
       if (data is Map<String, dynamic>) {
-        return StripFiltersCatalog.fromJson(data);
+        map = data;
+      } else if (data is Map) {
+        map = Map<String, dynamic>.from(data);
       }
-      if (data is Map) {
-        return StripFiltersCatalog.fromJson(Map<String, dynamic>.from(data));
+      if (map == null) {
+        throw ApiException('Unexpected strip filters response');
       }
-      throw ApiException('Unexpected strip filters response');
+      final catalog = StripFiltersCatalog.fromJson(map);
+      await _catalogDiskCache.writeJson(diskKey, map);
+      unawaited(_precacheStripCatalogOverlays(catalog));
+      return catalog;
     } on ApiException {
       rethrow;
     } on DioException catch (e) {
       _handleWebNetworkError(e);
+      if (cached != null) return cached;
+      if (isDioTimeoutOrConnection(e)) {
+        throw ApiException(AppConstants.kErrorNetwork);
+      }
       throw ApiException(
-        'Failed to load strip filters: ${e.message}',
+        AppStrings.flashbackFiltersLoadFailed,
         e.response?.statusCode,
       );
     }
@@ -979,7 +1113,12 @@ class ApiService {
           responseType: ResponseType.json,
           sendTimeout: timeout ?? AppConstants.kClassicStripComposeTimeout,
           receiveTimeout: timeout ?? AppConstants.kClassicStripComposeTimeout,
+          validateStatus: (c) => c != null && c < 600,
         ),
+      );
+      throwIfHttpErrorResponse(
+        r,
+        operationLabel: AppStrings.flashbackComposeFailed,
       );
       final data = r.data;
       Map<String, dynamic>? map;
@@ -1017,10 +1156,57 @@ class ApiService {
       rethrow;
     } on DioException catch (e) {
       _handleWebNetworkError(e);
+      if (isDioTimeoutOrConnection(e)) {
+        throw ApiException(
+          AppConstants.kErrorNetwork,
+          e.response?.statusCode,
+        );
+      }
       throw ApiException(
-        'Failed to compose strip: ${e.message}',
+        AppStrings.flashbackComposeFailed,
         e.response?.statusCode,
       );
+    }
+  }
+
+  /// POST `/api/sessions/:id/strip/deliverable` — store a locally baked print.
+  Future<String?> registerStripDeliverable({
+    required String sessionId,
+    required String imageDataUrl,
+  }) async {
+    final sid = sessionId.trim();
+    final dataUrl = imageDataUrl.trim();
+    if (sid.isEmpty || !dataUrl.startsWith(AppStrings.dataImagePrefix)) {
+      return null;
+    }
+    try {
+      final r = await _dio.post<dynamic>(
+        '/api/sessions/$sid/strip/deliverable',
+        data: <String, dynamic>{'imageDataUrl': dataUrl},
+        options: Options(
+          responseType: ResponseType.json,
+          validateStatus: (c) => c != null && c < 600,
+        ),
+      );
+      throwIfHttpErrorResponse(
+        r,
+        operationLabel: AppStrings.flashbackComposeFailed,
+      );
+      final data = r.data;
+      Map<String, dynamic>? map;
+      if (data is Map<String, dynamic>) {
+        map = data;
+      } else if (data is Map) {
+        map = Map<String, dynamic>.from(data);
+      }
+      if (map == null || map['success'] == false) return null;
+      final url = map['imageUrl']?.toString().trim() ?? '';
+      return url.isEmpty ? null : url;
+    } on ApiException {
+      return null;
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+      return null;
     }
   }
 

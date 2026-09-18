@@ -2116,7 +2116,8 @@ class CaptureViewModel extends ChangeNotifier {
   /// [onCountdownFinished] runs as soon as the timer clears (before the short
   /// settle delay) so HDMI pose can mask the Canon status LCD before shutter.
   ///
-  /// [onCountdownStep] is invoked each second with the displayed value (10…1)
+  /// [onCountdownStep] is invoked each second with the displayed value
+  /// (kiosk Classic countdown … 1, or 5…1 for AI)
   /// so Classic can start Pi still-prep while guests still see the countdown.
   ///
   /// [captureNow] is polled during each second; if it returns true, remaining

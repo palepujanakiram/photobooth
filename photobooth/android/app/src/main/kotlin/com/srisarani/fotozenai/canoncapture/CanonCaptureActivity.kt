@@ -1,6 +1,8 @@
 package com.srisarani.fotozenai.canoncapture
 
+import android.content.res.ColorStateList
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.media.AudioManager
 import android.media.MediaActionSound
 import android.media.ToneGenerator
@@ -205,6 +207,18 @@ class CanonCaptureActivity : ComponentActivity() {
         }
         request.shutterText?.let { shutterButton.text = it }
         request.cancelText?.let { cancelButton.text = it }
+        applyEventChrome()
+        if (request.continuous) {
+            // The booth layout hides the cancel button and leaves only a bare
+            // chevron, which is right in front of a guest but not for an
+            // operator who has to find the way out of a screen they will sit in
+            // all evening. Give the exit a label in an operator session.
+            cancelButton.visibility = View.VISIBLE
+
+            CaptureShotBus.onMessage = { text ->
+                runOnUiThread { if (isCaptureUiAlive()) setStatus(text) }
+            }
+        }
 
         shutterButton.setOnClickListener { onShutter() }
         val cancel =
@@ -341,8 +355,35 @@ class CanonCaptureActivity : ComponentActivity() {
             // *before* the next countdown and showed live view — so the guest was told to
             // rearrange while watching themselves move, never seeing the shot. Flutter holds
             // on the captured photo instead, which is what this does.
-            if (shotReview.present(request, shots) == ReviewOutcome.RETAKE) {
+            val outcome = shotReview.present(request, shots)
+
+            // An operator session never ends on its own. Hand the accepted frame
+            // to Dart, tell the photographer it landed, and go back to live view
+            // for the next one — the screen stays up all evening.
+            if (request.continuous && outcome != ReviewOutcome.RETAKE) {
+                publishAcceptedShot()
+                captureJob = null
+                armShutterForNextShot()
+                return
+            }
+
+            if (outcome == ReviewOutcome.RETAKE) {
                 dropLastShot()
+                // With no countdown there is no framing window, so continuing the
+                // loop fires the shutter the instant Retake is tapped — the
+                // photographer never sees live view again. Hand the button back
+                // instead: live view is already running, and the next press
+                // takes the shot. A countdown session keeps looping, because
+                // there the countdown *is* the framing window.
+                if (request.countdownSeconds == 0) {
+                    // Cleared before arming, not after: startShotSequence refuses
+                    // to start while captureJob is active, and this job is still
+                    // running until the return below — so a press landing in that
+                    // gap would be swallowed and the photographer would tap twice.
+                    captureJob = null
+                    armShutterForNextShot()
+                    return
+                }
             }
         }
 
@@ -373,6 +414,41 @@ class CanonCaptureActivity : ComponentActivity() {
             thumbStrip.clearAt(shots.size, shots.size)
         }
         CanonCaptureChrome.refreshUploads(uploadViews, uploadActions)
+    }
+
+    /**
+     * Hands the just-accepted shot to Dart and clears it from this session.
+     *
+     * Removed from [shots] deliberately: it has left, so the session's own list
+     * must not also report it when the screen finally closes, or an evening's
+     * photos would be queued twice.
+     */
+    private fun publishAcceptedShot() {
+        val accepted = shots.removeLastOrNull() ?: return
+        if (::thumbStrip.isInitialized) {
+            thumbStrip.clearAt(shots.size, shots.size)
+        }
+        setStatus(getString(R.string.canon_status_added_to_queue))
+        CanonLog.i("Accepted shot handed to the queue: %s", accepted.originalPath)
+        CaptureShotBus.publish(accepted)
+    }
+
+    /**
+     * Returns to live view with the shutter armed, waiting for a press.
+     *
+     * The same state [request.autoStart] `false` starts a session in, reached
+     * again after a retake so a shutter-driven session stays shutter-driven.
+     */
+    private fun armShutterForNextShot() {
+        restoreShutterForCapture()
+        setStatus(
+            getString(
+                R.string.canon_status_ready_format,
+                shots.size + 1,
+                request.shotCount,
+            ),
+        )
+        shutterButton.isEnabled = true
     }
 
     /** Puts the primary button back to its "Take shot" identity after a review. */
@@ -419,6 +495,38 @@ class CanonCaptureActivity : ComponentActivity() {
      * press therefore runs a whole Classic strip, which is what the guest wants — walking
      * back to the screen between shots of a 4-shot strip is not a booth experience.
      */
+    /**
+     * Dresses the screen in the event's colours.
+     *
+     * Only the chrome — never the viewfinder or the review still, which must
+     * show what the sensor actually recorded rather than something tinted.
+     *
+     * Each colour is applied independently and a bad value is ignored, so a
+     * malformed hex from the backend costs one tinted view rather than a
+     * capture screen that will not open.
+     */
+    private fun applyEventChrome() {
+        parseColor(request.inkColor)?.let { ink ->
+            titleText.setTextColor(ink)
+            findViewById<TextView?>(R.id.canon_subtitle)?.setTextColor(ink)
+            findViewById<TextView?>(R.id.canon_status)?.setTextColor(ink)
+        }
+        parseColor(request.accentColor)?.let { accent ->
+            shutterButton.backgroundTintList = ColorStateList.valueOf(accent)
+        }
+        parseColor(request.backgroundColor)?.let { background ->
+            findViewById<View?>(R.id.canon_body_chrome)?.setBackgroundColor(background)
+        }
+    }
+
+    private fun parseColor(raw: String?): Int? {
+        val value = raw?.trim().orEmpty()
+        if (value.isEmpty()) return null
+        return runCatching { Color.parseColor(value) }
+            .onFailure { CanonLog.d("Ignoring bad event colour: %s", value) }
+            .getOrNull()
+    }
+
     private fun onShutter() = startShotSequence()
 
     /**
@@ -523,6 +631,8 @@ class CanonCaptureActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        // Dart must not be able to write to a status line that has gone.
+        CaptureShotBus.onMessage = null
         // Leave the camera connected: the session is process-scoped and reconnecting for
         // every shot would cost seconds and an extra permission round trip.
         stopLiveView()

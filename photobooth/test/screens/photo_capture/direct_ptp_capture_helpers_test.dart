@@ -1,7 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:photobooth/models/app_settings_model.dart';
 import 'package:photobooth/models/strip_models.dart';
 import 'package:photobooth/screens/photo_capture/direct_ptp_capture_helpers.dart';
 import 'package:photobooth/services/direct_ptp_camera_service.dart';
+import 'package:photobooth/utils/app_runtime_config.dart';
 import 'package:photobooth/utils/app_strings.dart';
 import 'package:photobooth/utils/capture_session_kind.dart';
 import 'package:photobooth/utils/constants.dart';
@@ -58,6 +60,17 @@ void main() {
         directPtpCountdownSecondsFor(CaptureSessionKind.fotoZen),
         AppConstants.kCaptureCountdownSeconds,
       );
+    });
+
+    test('Classic uses the kiosk pose countdown when set', () {
+      AppRuntimeConfig.instance.applyFromSettings(
+        AppSettingsModel(classicPoseCountdownSeconds: 7),
+      );
+      expect(
+        directPtpCountdownSecondsFor(CaptureSessionKind.classicFourShot),
+        7,
+      );
+      AppRuntimeConfig.instance.applyFromSettings(null);
     });
 
     test('the rearrange gap comes from AppConstants, not a native default', () {

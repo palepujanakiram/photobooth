@@ -28,4 +28,17 @@ class DnpPrintSize {
       _ => portrait4x6,
     };
   }
+
+  /// True when USB should send one job per copy (2-inch cutter ignores QTY).
+  static bool usesPerCopyUsbJobs(String? networkPrintSize) {
+    final token = networkPrintSize?.trim().toLowerCase() ?? '';
+    return token == 's6x2_2' || token == 's2x6';
+  }
+}
+
+/// USB jobs to send for [copies] of this WCM token (cutter firmware workaround).
+int dnpUsbCopyJobCount(String? networkPrintSize, int copies) {
+  final n = copies < 1 ? 1 : copies;
+  if (!DnpPrintSize.usesPerCopyUsbJobs(networkPrintSize)) return 1;
+  return n;
 }

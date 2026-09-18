@@ -5,6 +5,7 @@ import 'package:photobooth/models/kiosk_info_model.dart';
 import 'package:photobooth/models/kiosk_share_link_model.dart';
 import 'package:photobooth/models/parallel_generation_result.dart';
 import 'package:photobooth/models/payment_initiate_result.dart';
+import 'package:photobooth/models/strip_models.dart';
 import 'package:photobooth/screens/result/transformed_image_model.dart';
 import 'package:photobooth/screens/theme_selection/theme_model.dart';
 
@@ -95,6 +96,21 @@ void main() {
     expect(m.cameraSidecarPath, '/');
   });
 
+  test('AppSettingsModel.fromJson parses skipOfflineCashPin', () {
+    expect(
+      AppSettingsModel.fromJson({'skipOfflineCashPin': true}).skipOfflineCashPin,
+      isTrue,
+    );
+  });
+
+  test('AppSettingsModel.fromJson parses autoApproveCashPrint', () {
+    expect(
+      AppSettingsModel.fromJson({'autoApproveCashPrint': true})
+          .autoApproveCashPrint,
+      isTrue,
+    );
+  });
+
   test('AppSettingsModel.fromJson parses offlineCashPins', () {
     final m = AppSettingsModel.fromJson({
       'offlineCashPins': ['1357', '9999', 'nope', 2468],
@@ -135,6 +151,7 @@ void main() {
       accountId: 'a1',
       paymentEnabled: false,
       classicPhotosEnabled: false,
+      aiPhotosEnabled: false,
       initialPrice: 100,
       additionalPrintPrice: 50,
       regenerationPrice: 75,
@@ -149,11 +166,13 @@ void main() {
     expect(again.accountId, original.accountId);
     expect(again.paymentEnabled, original.paymentEnabled);
     expect(again.classicPhotosEnabled, original.classicPhotosEnabled);
+    expect(again.aiPhotosEnabled, original.aiPhotosEnabled);
     expect(again.initialPrice, original.initialPrice);
     expect(again.additionalPrintPrice, original.additionalPrintPrice);
     expect(again.regenerationPrice, original.regenerationPrice);
     expect(again.operatingMode, original.operatingMode);
     expect(again.invoiceLastSeq, original.invoiceLastSeq);
+    expect(again.classicPoseCountdownSeconds, 10);
   });
 
   test('KioskInfoModel parses price overrides', () {
@@ -179,6 +198,61 @@ void main() {
       'classicShotModes': [1, 3.2, '4', 'nope'],
     });
     expect(m.classicShotModes, [1, 3, 4]);
+  });
+
+  test('KioskInfoModel parses and clamps classicPoseCountdownSeconds', () {
+    expect(
+      KioskInfoModel.fromJson({'id': 'k1', 'code': 'ABC'})
+          .classicPoseCountdownSeconds,
+      10,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'classicPoseCountdownSeconds': 7,
+      }).classicPoseCountdownSeconds,
+      7,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'classic_pose_countdown_seconds': '4',
+      }).classicPoseCountdownSeconds,
+      5,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'classicPoseCountdownSeconds': 15.6,
+      }).classicPoseCountdownSeconds,
+      15,
+    );
+  });
+
+  test('KioskInfoModel aiPhotosEnabled defaults true and parses false', () {
+    expect(
+      KioskInfoModel.fromJson({'id': 'k1', 'code': 'ABC'}).aiPhotosEnabled,
+      isTrue,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'aiPhotosEnabled': false,
+      }).aiPhotosEnabled,
+      isFalse,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'ai_photos_enabled': 'off',
+      }).aiPhotosEnabled,
+      isFalse,
+    );
   });
 
   test('KioskInfoModel classicPhotosEnabled defaults and parses false', () {
@@ -335,6 +409,32 @@ void main() {
     );
     expect(f.toJson()['scheduledStartAt'], start.toIso8601String());
     expect(f.toJson()['scheduledEndAt'], end.toIso8601String());
+  });
+
+  test('KioskFrameModel round-trips strip overlay variants', () {
+    const slots = [
+      StripTemplateSlot(left: 0.08, top: 0.16, width: 0.84, height: 0.155),
+    ];
+    const original = KioskFrameModel(
+      id: 'dps-1',
+      name: 'Delhi Public School',
+      overlayUrl: 'https://cdn.example/ai.png',
+      landscapeOverlayUrl: 'https://cdn.example/ai-6x4.png',
+      strip: KioskFrameStripAssets(
+        overlayUrl: 'https://cdn.example/6x2.png',
+        overlay3Url: 'https://cdn.example/6x2-3.png',
+        slots: slots,
+        slots3: slots,
+      ),
+    );
+    final parsed = KioskFrameModel.fromJson(original.toJson());
+    expect(parsed.strip.overlayUrl, 'https://cdn.example/6x2.png');
+    expect(parsed.landscapeOverlayUrl, 'https://cdn.example/ai-6x4.png');
+    expect(parsed.strip.overlay3Url, 'https://cdn.example/6x2-3.png');
+    expect(parsed.strip.has4, isTrue);
+    expect(parsed.strip.has3, isTrue);
+    expect(parsed.strip.slots.single.left, 0.08);
+    expect(parsed.strip.slots3.single.top, 0.16);
   });
 
   test('KioskShareLinkModel.fromJson', () {

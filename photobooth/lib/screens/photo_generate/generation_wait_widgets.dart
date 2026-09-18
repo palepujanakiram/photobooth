@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 
 import '../../services/customer_session_lifecycle.dart';
 import '../../services/generation_eta_estimator.dart';
+import '../../services/session_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/secure_image_url.dart';
@@ -2057,7 +2058,10 @@ class _GenerationWaitBodyState extends State<GenerationWaitBody> {
   }
 
   Future<void> _startOver(BuildContext context) async {
-    await endPhotoboothCustomerSessionLogged('generation_wait_start_over');
+    await endPhotoboothCustomerSessionLogged(
+      'generation_wait_start_over',
+      onlyIfId: SessionManager().sessionId,
+    );
     if (!context.mounted) return;
     await Navigator.pushNamedAndRemoveUntil(
       context,

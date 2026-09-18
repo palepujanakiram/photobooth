@@ -25,6 +25,8 @@ class EventStationApi {
   final KioskManager _kioskManager;
   final Future<String?> Function()? _readKioskCode;
   final Future<String?> Function()? _readEventCode;
+  String? _boardEtag;
+  EventStationBoard? _cachedBoard;
 
   Future<Map<String, dynamic>> _codes({String? deviceId}) async {
     final kiosk =
@@ -91,6 +93,26 @@ class EventStationApi {
     _throwIfFailed(r, 'Failed to complete theme job');
   }
 
+  Future<void> skipThemeJob(String jobId) async {
+    final deviceId = await _eventManager.getOrCreateDeviceId();
+    final body = await _codes(deviceId: deviceId);
+    final r = await _dio.post<dynamic>(
+      '/api/event/station/theme-jobs/$jobId/skip',
+      data: body,
+    );
+    _throwIfFailed(r, 'Failed to drop theme job');
+  }
+
+  Future<void> retryThemeJob(String jobId) async {
+    final deviceId = await _eventManager.getOrCreateDeviceId();
+    final body = await _codes(deviceId: deviceId);
+    final r = await _dio.post<dynamic>(
+      '/api/event/station/theme-jobs/$jobId/retry',
+      data: body,
+    );
+    _throwIfFailed(r, 'Failed to retry theme job');
+  }
+
   Future<List<EventPrintStationJob>> listPrintJobs() async {
     final qp = await _codes();
     final r = await _dio.get<dynamic>(
@@ -145,15 +167,29 @@ class EventStationApi {
 
   Future<EventStationBoard> fetchBoard() async {
     final qp = await _codes();
+    final etag = _boardEtag;
     final r = await _dio.get<dynamic>(
       '/api/event/station/board',
       queryParameters: qp,
+      options: Options(
+        headers: {
+          if (etag != null && etag.isNotEmpty) 'If-None-Match': etag,
+        },
+        validateStatus: (code) => code != null,
+      ),
     );
+    if (r.statusCode == 304) {
+      final cached = _cachedBoard;
+      if (cached != null) return cached;
+    }
     _throwIfFailed(r, 'Failed to fetch station board');
-    return EventStationBoard.fromJson(r.data).withStationImageAuth(
+    final next = EventStationBoard.fromJson(r.data).withStationImageAuth(
       kioskCode: qp['kioskCode'] as String,
       eventCode: qp['eventCode'] as String,
     );
+    _cachedBoard = next;
+    _boardEtag = r.headers.value('etag');
+    return next;
   }
 
   Future<EventPrintStationJob> reissuePrintJob(String jobId) async {

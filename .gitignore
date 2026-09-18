@@ -63,6 +63,9 @@ fastlane/test_output
 **/fastlane/play-store-*.json
 **/fastlane/*-service-account.json
 
+# Claude Code local settings (contains secrets, not for VCS)
+.claude/settings.local.json
+
 # Environment variables — any name, any depth.
 #
 # The old rules were anchored (a pattern with a slash only matches from the

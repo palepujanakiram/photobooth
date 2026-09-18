@@ -60,6 +60,34 @@ void main() {
     }
   });
 
+  testWidgets('switching frames keeps the four look photos on screen', (
+    tester,
+  ) async {
+    final url = 'data:image/jpeg;base64,$jpegB64';
+    Future<void> pumpFrame(String frameId, String filterId) {
+      return tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: FotoFlashbackStripPreview(
+              imageDataUrls: List.filled(4, url),
+              filterId: filterId,
+              frameId: frameId,
+              width: 120,
+              height: 360,
+            ),
+          ),
+        ),
+      );
+    }
+
+    await pumpFrame('classic', 'clean');
+    expect(find.byType(Image), findsNWidgets(4));
+    await pumpFrame('noir', 'mono');
+    await tester.pump();
+    expect(find.byType(Image), findsNWidgets(4));
+    expect(find.byKey(const ValueKey('strip_chrome_noir')), findsOneWidget);
+  });
+
   testWidgets('sheet layouts render distinct 4×6 previews', (tester) async {
     final url = 'data:image/jpeg;base64,$jpegB64';
     const sheetW = FotoFlashbackStripPreview.defaultSheetWidth;

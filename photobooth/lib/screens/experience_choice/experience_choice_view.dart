@@ -49,6 +49,7 @@ class _ExperienceChoiceScreenState extends State<ExperienceChoiceScreen> {
   bool _redirectingToAi = false;
   /// null while loading kiosk Classic flag from prefs / bind cache.
   bool? _classicEnabled;
+  bool? _aiEnabled;
   List<int> _classicShotModes = const [1, 3, 4];
 
   @override
@@ -64,13 +65,16 @@ class _ExperienceChoiceScreenState extends State<ExperienceChoiceScreen> {
   /// Offline: never auto-enter AI — show a clear message instead.
   Future<void> _resolveClassicGate() async {
     final classicEnabled = await _kioskManager.isClassicPhotosEnabled();
+    final aiEnabled = await _kioskManager.isAiPhotosEnabled();
     final modes = await _kioskManager.getClassicShotModes();
     if (!mounted) return;
     setState(() {
       _classicEnabled = classicEnabled;
+      _aiEnabled = aiEnabled;
       _classicShotModes = modes;
     });
     if (classicEnabled || _redirectingToAi) return;
+    if (!aiEnabled) return;
     if (KioskOfflineUx.shouldDisableAiExperience(
       sessionOffline: SessionManager().isOfflineSession,
     )) {
@@ -206,7 +210,9 @@ class _ExperienceChoiceScreenState extends State<ExperienceChoiceScreen> {
                     maxWidth: 640,
                     child: Consumer<ExperienceChoiceViewModel>(
                       builder: (context, vm, _) {
-                        final classicOn = _classicEnabled ?? true;
+                        final aiOn = _aiEnabled ?? true;
+                        final classicOn =
+                            (_classicEnabled ?? true) || !aiOn;
                         final classicReady =
                             classicOn && vm.fotoFlashAvailable;
                         return _ExperienceChoicePanel(
@@ -325,17 +331,19 @@ class _ExperienceChoicePanel extends StatelessWidget {
               ),
             )
           else if (!noPath) ...[
-            _ExperienceOptionCard(
-              title: AppStrings.experienceAiTitle,
-              subtitle: aiAvailable
-                  ? AppStrings.experienceAiSubtitle
-                  : AppStrings.experienceAiOfflineSubtitle,
-              preview: ExperienceFotoZenThumb(muted: !aiAvailable),
-              accent: const Color(0xFF6B4EFF),
-              enabled: aiAvailable,
-              onTap: aiAvailable ? onAi : null,
-            ),
-            const SizedBox(height: 14),
+            if (aiAvailable || offline) ...[
+              _ExperienceOptionCard(
+                title: AppStrings.experienceAiTitle,
+                subtitle: aiAvailable
+                    ? AppStrings.experienceAiSubtitle
+                    : AppStrings.experienceAiOfflineSubtitle,
+                preview: ExperienceFotoZenThumb(muted: !aiAvailable),
+                accent: const Color(0xFF6B4EFF),
+                enabled: aiAvailable,
+                onTap: aiAvailable ? onAi : null,
+              ),
+              const SizedBox(height: 14),
+            ],
             _ExperienceOptionCard(
               title: AppStrings.experienceFotoFlashTitle,
               subtitle: classicSubtitle,

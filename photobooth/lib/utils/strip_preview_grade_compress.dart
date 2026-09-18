@@ -12,6 +12,10 @@ const int kStripPreviewGradeUploadMaxEdge = 1600;
 
 const int kStripPreviewGradeUploadJpegQuality = 90;
 
+/// Parallel isolate compact for 2–3 Classic shots. Four+ stay sequential in
+/// one isolate to avoid Mini PC LMK from overlapping decode RAM.
+const int kStripPreviewGradeParallelMaxShots = 3;
+
 /// Downscale strip shot data URLs before POST `/strip/preview-grade`.
 ///
 /// Fail-open: on decode errors returns the original URL for that slot.
@@ -19,6 +23,13 @@ Future<List<String>> compressDataUrlsForStripPreviewGrade(
   List<String> dataUrls,
 ) async {
   if (dataUrls.isEmpty) return dataUrls;
+  if (dataUrls.length >= 2 &&
+      dataUrls.length <= kStripPreviewGradeParallelMaxShots) {
+    return Future.wait([
+      for (final url in dataUrls)
+        compute(_compressOneStripPreviewGradeDataUrl, url),
+    ]);
+  }
   return compute(_compressStripPreviewGradeIsolate, List<String>.from(dataUrls));
 }
 

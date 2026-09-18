@@ -99,6 +99,8 @@ class EventStationStatusTabs extends StatelessWidget {
     this.pendingCount,
     this.claimedCount,
     this.doneCount,
+    this.allCount,
+    this.includeAll = false,
   });
 
   final String selected;
@@ -106,11 +108,18 @@ class EventStationStatusTabs extends StatelessWidget {
   final int? pendingCount;
   final int? claimedCount;
   final int? doneCount;
+  final int? allCount;
+  final bool includeAll;
 
   @override
   Widget build(BuildContext context) {
     return SegmentedButton<String>(
       segments: [
+        if (includeAll)
+          ButtonSegment(
+            value: 'ALL',
+            label: Text(_tab(AppStrings.eventStationStatusAll, allCount)),
+          ),
         ButtonSegment(
           value: 'PENDING',
           label: Text(_tab(AppStrings.eventStationStatusPending, pendingCount)),

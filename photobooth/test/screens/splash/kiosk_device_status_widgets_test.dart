@@ -161,16 +161,10 @@ void main() {
     expect(find.textContaining(AppStrings.kioskDeviceSelphyPrinter), findsNothing);
     expect(find.textContaining(AppStrings.kioskDeviceUsbCamera), findsNothing);
     expect(find.textContaining(AppStrings.kioskDeviceDnpPrinter), findsOneWidget);
-    expect(find.textContaining(AppStrings.kioskDeviceReceiptPrinter), findsOneWidget);
+    expect(find.textContaining(AppStrings.kioskDeviceReceiptPrinter), findsNothing);
     expect(
       find.textContaining(
         '${AppStrings.kioskDeviceDnpPrinter}  ${AppStrings.kioskDeviceConnected}  ${AppStrings.kioskDeviceTransportUsb}',
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.textContaining(
-        '${AppStrings.kioskDeviceReceiptPrinter}  ${AppStrings.kioskDeviceNotConnected}  ${AppStrings.kioskDeviceTransportUsb}',
       ),
       findsOneWidget,
     );
@@ -209,5 +203,53 @@ void main() {
     await tester.pump();
     expect(refreshTaps, 0);
     expect(find.byType(CupertinoActivityIndicator), findsOneWidget);
+  });
+
+  testWidgets('KioskDeviceStatusPanel shows receipt printer when configured', (
+    tester,
+  ) async {
+    const snapshot = KioskDeviceStatusSnapshot(
+      dnpPrinter: KioskDeviceStatusEntry(
+        deviceName: AppStrings.kioskDeviceDnpPrinter,
+        connected: true,
+        transport: KioskDeviceTransport.usb,
+      ),
+      selphyPrinter: KioskDeviceStatusEntry(
+        deviceName: AppStrings.kioskDeviceSelphyPrinter,
+        connected: false,
+        transport: KioskDeviceTransport.usb,
+      ),
+      receiptPrinter: KioskDeviceStatusEntry(
+        deviceName: AppStrings.kioskDeviceReceiptPrinter,
+        connected: true,
+        configured: true,
+        transport: KioskDeviceTransport.usb,
+      ),
+      usbCamera: KioskDeviceStatusEntry(
+        deviceName: AppStrings.kioskDeviceUsbCamera,
+        connected: false,
+        transport: KioskDeviceTransport.usb,
+      ),
+      dslrSidecar: KioskDeviceStatusEntry(
+        deviceName: AppStrings.kioskDeviceDslrSidecar,
+        connected: true,
+        transport: KioskDeviceTransport.usb,
+      ),
+    );
+    await tester.pumpWidget(
+      CupertinoApp(
+        home: Builder(
+          builder: (context) {
+            return KioskDeviceStatusPanel(
+              appColors: AppColors.of(context),
+              loading: false,
+              snapshot: snapshot,
+            );
+          },
+        ),
+      ),
+    );
+    expect(find.textContaining(AppStrings.kioskDeviceReceiptPrinter), findsOneWidget);
+    expect(find.textContaining(AppStrings.kioskDeviceConnected), findsWidgets);
   });
 }

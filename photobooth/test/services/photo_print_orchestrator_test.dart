@@ -5,6 +5,29 @@ import 'package:photobooth/utils/app_strings.dart';
 import 'package:photobooth/utils/exceptions.dart';
 
 void main() {
+  group('shouldAttemptSelphyPrint', () {
+    test('skips Selphy when DNP already printed', () {
+      expect(
+        shouldAttemptSelphyPrint(trySelphy: true, dnpSucceeded: true),
+        isFalse,
+      );
+    });
+
+    test('skips Selphy when the caller disabled it', () {
+      expect(
+        shouldAttemptSelphyPrint(trySelphy: false, dnpSucceeded: false),
+        isFalse,
+      );
+    });
+
+    test('tries Selphy only when DNP failed and it is enabled', () {
+      expect(
+        shouldAttemptSelphyPrint(trySelphy: true, dnpSucceeded: false),
+        isTrue,
+      );
+    });
+  });
+
   group('throwIfNoPhotoPrinterSucceeded', () {
     test('allows when DNP succeeded', () {
       expect(

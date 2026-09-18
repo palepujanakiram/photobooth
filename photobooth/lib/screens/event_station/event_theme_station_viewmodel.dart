@@ -15,7 +15,7 @@ class EventThemeStationViewModel extends ChangeNotifier {
   EventThemeStationViewModel({
     EventStationApi? api,
     Future<List<ThemeModel>> Function()? loadThemes,
-    Duration pollInterval = const Duration(seconds: 3),
+    Duration pollInterval = const Duration(seconds: 6),
   })  : _api = api ?? EventStationApi(),
         _loadThemes = loadThemes ?? (() => ThemeManager().fetchThemes()),
         _pollInterval = pollInterval;
@@ -70,7 +70,9 @@ class EventThemeStationViewModel extends ChangeNotifier {
 
   Future<void> refreshQueue() async {
     try {
-      _board = await _api.fetchBoard();
+      final next = await _api.fetchBoard();
+      if (identical(next, _board) && _error == null) return;
+      _board = next;
       _error = null;
     } on ApiException catch (e) {
       _error = e.message;
@@ -145,6 +147,56 @@ class EventThemeStationViewModel extends ChangeNotifier {
     _claimed = null;
     _selectedThemeId = null;
     notifyListeners();
+  }
+
+  Future<bool> skipJob(String jobId) async {
+    if (_busy) return false;
+    _busy = true;
+    _error = null;
+    notifyListeners();
+    try {
+      await _api.skipThemeJob(jobId);
+      if (_claimed?.id == jobId) {
+        _claimed = null;
+        _selectedThemeId = null;
+        _looks = const [];
+      }
+      await refreshQueue();
+      return true;
+    } on ApiException catch (e) {
+      _error = e.message;
+      return false;
+    } catch (e, st) {
+      AppLogger.error('Theme station skip failed', error: e, stackTrace: st);
+      _error = AppStrings.eventStationJobClaimed;
+      return false;
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> retryJob(String jobId) async {
+    if (_busy) return false;
+    _busy = true;
+    _error = null;
+    notifyListeners();
+    try {
+      await _api.retryThemeJob(jobId);
+      _statusFilter = 'PENDING';
+      await refreshQueue();
+      return true;
+    } on ApiException catch (e) {
+      _error = e.message;
+      return false;
+    } catch (e, st) {
+      AppLogger.error('Theme station retry failed', error: e, stackTrace: st);
+      _error = AppStrings.eventStationJobClaimed;
+      return false;
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
   }
 
   @override

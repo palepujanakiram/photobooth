@@ -32,6 +32,7 @@ void main() {
       name: 'Lobby',
       paymentEnabled: true,
       classicPhotosEnabled: false,
+      aiPhotosEnabled: false,
       operatingMode: KioskInfoModel.operatingModeOffline,
       initialPrice: 199,
     );
@@ -43,6 +44,7 @@ void main() {
     expect(loaded.name, 'Lobby');
     expect(loaded.paymentEnabled, isTrue);
     expect(loaded.classicPhotosEnabled, isFalse);
+    expect(loaded.aiPhotosEnabled, isFalse);
     expect(loaded.isOperatingModeOffline, isTrue);
     expect(loaded.initialPrice, 199);
   });

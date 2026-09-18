@@ -13,7 +13,12 @@ import 'local_kiosk_db.dart';
 import 'local_kiosk_models.dart';
 import 'local_session_skeleton.dart';
 
-const _kioskDirName = 'fotozen_kiosk';
+/// Support-directory folder holding `kiosk.db`.
+///
+/// Public so the event pipeline resolves to the **same** folder. Duplicating
+/// the literal there once produced a second, separate database at the support
+/// root that looked like it was working.
+const kKioskDirName = 'fotozen_kiosk';
 const _emptyIdMessage = 'id must not be empty';
 
 enum _LedgerTable { payments, printJobs, receipts }
@@ -51,7 +56,7 @@ class LocalKioskStore {
 
   static Future<Directory> _defaultDirectory() async {
     final root = await supportDirectory();
-    final dir = Directory(p.join(root.path, _kioskDirName));
+    final dir = Directory(p.join(root.path, kKioskDirName));
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }

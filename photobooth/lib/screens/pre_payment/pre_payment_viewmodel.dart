@@ -197,6 +197,19 @@ class PrePaymentViewModel extends ChangeNotifier {
       );
       if (generation != _paymentInitiateGeneration) return;
       _applyPaymentInitiateResult(result);
+      if (paymentVerdictFromStatusString(result.status) ==
+          PaymentPollVerdict.approved) {
+        _paymentInitError = null;
+        await onFcmPaymentPush(
+          PaymentPushPayload(
+            type: PaymentPushCoordinator.typeApproved,
+            paymentId: result.id,
+            title: AppStrings.paymentConfirmedTitle,
+            body: 'Payment approved. Starting AI generation…',
+          ),
+        );
+        return;
+      }
       if (!hasPaymentQrPayload &&
           _activePaymentId != null &&
           _paymentInitiateAttempts < 1) {

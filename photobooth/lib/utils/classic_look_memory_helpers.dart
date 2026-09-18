@@ -79,6 +79,20 @@ bool shouldBakeClassicLooksSequentially({
 /// the isolate. Four Canon plates are well above it.
 const int kClassicComposeCompactPayloadChars = 200000;
 
+/// Event-local Pick-a-look browses with ColorFilter only.
+///
+/// Warming the print twin on every look/frame tap baked a 1200×1800 sheet on
+/// the UI isolate and froze 4GB Android TV kiosks. Continue still composes
+/// once (Skia / native JPEG).
+bool shouldDeferLocalClassicComposeWarm({required int shotCount}) =>
+    shotCount >= 0;
+
+/// Look chips (filter / frame / sticker / scribble) never start a print-twin
+/// bake. ColorFilter + overlay swap is the live preview; Continue composes
+/// once. Idle warm from [loadFilters] / orientation can still run for Fly
+/// 1-shot.
+bool shouldSkipPrintTwinWarmOnLookOptionTap() => true;
+
 /// True when compose uploads are large enough to stall Mini PC Continue.
 bool shouldCompactClassicComposeUploads({
   required List<String> imageDataUrls,

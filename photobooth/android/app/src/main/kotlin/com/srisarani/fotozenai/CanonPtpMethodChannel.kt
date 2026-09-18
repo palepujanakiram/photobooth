@@ -8,10 +8,13 @@ import android.content.IntentFilter
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import com.srisarani.fotozenai.canon.CanonLog
 import com.srisarani.fotozenai.canon.capture.CaptureStorage
 import com.srisarani.fotozenai.canon.capture.ImageStore
 import com.srisarani.fotozenai.canon.session.CameraSessionManager
+import com.srisarani.fotozenai.canoncapture.CaptureShotBus
 import com.srisarani.fotozenai.canon.state.ConnectionState
 import com.srisarani.fotozenai.canon.state.isFault
 import com.srisarani.fotozenai.canon.state.isOperational
@@ -80,6 +83,8 @@ object CanonPtpMethodChannel {
     private var pendingCaptureResult: MethodChannel.Result? = null
 
     private var statusSink: EventChannel.EventSink? = null
+    private var methodChannel: MethodChannel? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
     private var usbReceiversRegistered = false
 
     /**
@@ -178,7 +183,18 @@ object CanonPtpMethodChannel {
             },
         )
 
-        MethodChannel(messenger, METHOD_CHANNEL).setMethodCallHandler(::onMethodCall)
+        val channel = MethodChannel(messenger, METHOD_CHANNEL)
+        channel.setMethodCallHandler(::onMethodCall)
+        methodChannel = channel
+
+        // An operator session stays on screen and hands each accepted frame over
+        // as it lands, rather than reporting once at the end. Marshalled onto the
+        // main thread because a MethodChannel may only be touched there.
+        CaptureShotBus.onShotAccepted = { shot ->
+            mainHandler.post {
+                methodChannel?.invokeMethod("onShotAccepted", shot.toMap())
+            }
+        }
 
         scope.launch {
             CameraSessionManager.state.collect { state ->
@@ -257,6 +273,9 @@ object CanonPtpMethodChannel {
         pendingCaptureResult = null
         activity = null
         statusSink = null
+        CaptureShotBus.onShotAccepted = null
+        methodChannel?.setMethodCallHandler(null)
+        methodChannel = null
         CameraSessionManager.disconnect()
         scope.cancel()
     }
@@ -275,6 +294,13 @@ object CanonPtpMethodChannel {
             "status" -> result.success(stateMap(CameraSessionManager.state.value))
             "runCaptureSession" -> runCaptureSession(call, result)
             "setPreferredStack" -> setPreferredStack(call, result)
+            "postCaptureMessage" -> {
+                // What became of the frame the screen just handed over. The
+                // screen owns its status line, so this goes through the bus
+                // rather than reaching for a view that may already be gone.
+                CaptureShotBus.message(call.argument<String>("text").orEmpty())
+                result.success(null)
+            }
             "disconnect" -> {
                 CameraSessionManager.disconnect()
                 result.success(null)

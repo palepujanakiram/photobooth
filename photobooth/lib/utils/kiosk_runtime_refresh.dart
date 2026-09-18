@@ -19,9 +19,13 @@ const Duration kKioskRuntimeFreshnessTtl = Duration(minutes: 2);
 
 /// Latest `/api/settings` plus Classic flag after a runtime refresh.
 class KioskRuntimeRefreshResult {
-  const KioskRuntimeRefreshResult({required this.classicPhotosEnabled});
+  const KioskRuntimeRefreshResult({
+    required this.classicPhotosEnabled,
+    required this.aiPhotosEnabled,
+  });
 
   final bool classicPhotosEnabled;
+  final bool aiPhotosEnabled;
 }
 
 /// True when settings were fetched for [boundKioskKey] within [ttl].
@@ -97,6 +101,7 @@ Future<KioskRuntimeRefreshResult> refreshKioskRuntimeConfig({
       )) {
     return KioskRuntimeRefreshResult(
       classicPhotosEnabled: await kiosk.isClassicPhotosEnabled(),
+      aiPhotosEnabled: await kiosk.isAiPhotosEnabled(),
     );
   }
   final classicFuture = syncClassicPhotosEnabled(api: api, kiosk: kiosk);
@@ -108,5 +113,6 @@ Future<KioskRuntimeRefreshResult> refreshKioskRuntimeConfig({
   await settingsFuture;
   return KioskRuntimeRefreshResult(
     classicPhotosEnabled: await classicFuture,
+    aiPhotosEnabled: await kiosk.isAiPhotosEnabled(),
   );
 }

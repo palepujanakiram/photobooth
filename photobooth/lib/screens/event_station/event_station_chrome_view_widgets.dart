@@ -16,6 +16,25 @@ Future<EventInfoModel?> fetchBoundEventLive(String code) async {
   return ApiService().fetchEventByCode(code, kioskCode: kiosk);
 }
 
+class EventStationChangeRoleButton extends StatelessWidget {
+  const EventStationChangeRoleButton({super.key, required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: onPressed,
+      child: const Text(
+        AppStrings.eventStationChangeRole,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        softWrap: false,
+      ),
+    );
+  }
+}
+
 class EventStationChromeScope extends InheritedWidget {
   const EventStationChromeScope({
     super.key,
@@ -117,7 +136,7 @@ class EventStationBrandingHeader extends StatelessWidget {
     final ink = Color(eventChromeInkArgb(skin));
     final tagline = eventChromeTaglineLabel(event);
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 18, 16, 18),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
         gradient: LinearGradient(
@@ -159,11 +178,7 @@ class EventStationBrandingHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          CircleAvatar(
-            radius: 28,
-            backgroundColor: ink.withValues(alpha: 0.16),
-            backgroundImage: const AssetImage(AppConstants.kBrandLogoAsset),
-          ),
+          const _EventStationWordmark(height: 44),
         ],
       ),
     );
@@ -178,10 +193,7 @@ class EventStationPoweredByFooter extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const CircleAvatar(
-          radius: 10,
-          backgroundImage: AssetImage(AppConstants.kBrandLogoAsset),
-        ),
+        const _EventStationWordmark(height: 18),
         const SizedBox(width: 8),
         Text(
           AppStrings.eventStationPoweredBy,
@@ -196,6 +208,25 @@ class EventStationPoweredByFooter extends StatelessWidget {
               ),
         ),
       ],
+    );
+  }
+}
+
+class _EventStationWordmark extends StatelessWidget {
+  const _EventStationWordmark({required this.height});
+
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(height < 24 ? 4 : 8),
+      child: Image.asset(
+        AppConstants.kBrandLogoAsset,
+        height: height,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.medium,
+      ),
     );
   }
 }

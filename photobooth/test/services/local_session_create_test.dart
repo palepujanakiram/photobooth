@@ -38,6 +38,33 @@ void main() {
     expect(slim['selectedThemeId'], 't1');
   });
 
+  test('normalizeAcceptTermsSessionJson fills missing fields', () {
+    final json = normalizeAcceptTermsSessionJson(
+      {},
+      fallbackId: 'fallback-id',
+    );
+    expect(json['id'], 'fallback-id');
+    expect(json['termsAccepted'], isTrue);
+    expect((json['termsAcceptedAt'] as String).isNotEmpty, isTrue);
+    expect((json['expiresAt'] as String).isNotEmpty, isTrue);
+  });
+
+  test('normalizeAcceptTermsSessionJson keeps existing accepted-at', () {
+    final json = normalizeAcceptTermsSessionJson(
+      {
+        'id': 'keep-me',
+        'termsAcceptedAt': '2026-01-01T00:00:00.000Z',
+        'expiresAt': '2027-01-01T00:00:00.000Z',
+      },
+      fallbackId: 'fallback',
+      now: DateTime.utc(2026, 8, 23),
+    );
+    expect(json['id'], 'keep-me');
+    expect(json['termsAccepted'], isTrue);
+    expect(json['termsAcceptedAt'], '2026-01-01T00:00:00.000Z');
+    expect(json['expiresAt'], '2027-01-01T00:00:00.000Z');
+  });
+
   test('skeleton uses DateTime.now when now omitted', () {
     final json = localSessionSkeleton(id: 'n');
     expect(json['id'], 'n');
@@ -133,13 +160,32 @@ void main() {
     expect(outbox.single.payload['eventId'], 'event-123');
   });
 
+  test('createKioskSession stamps terms when Fly omits them', () async {
+    final now = DateTime.utc(2026, 8, 23);
+    final result = await createKioskSession(
+      newId: () => 'client-terms',
+      now: now,
+      acceptTerms: (_) async => {'id': 'client-terms'},
+    );
+    expect(result.usedLocalFallback, isFalse);
+    expect(result.sessionJson['id'], 'client-terms');
+    expect(result.sessionJson['termsAccepted'], isTrue);
+    expect(result.sessionJson['termsAcceptedAt'], now.toIso8601String());
+    expect(
+      result.sessionJson['expiresAt'],
+      now.add(kLocalSessionTtl).toIso8601String(),
+    );
+  });
+
   test('createKioskSession keeps client id if Fly omits id', () async {
     final result = await createKioskSession(
       newId: () => 'client-2',
+      now: DateTime.utc(2026, 8, 23),
       acceptTerms: (_) async => {'termsAccepted': true, 'id': '  '},
     );
     expect(result.usedLocalFallback, isFalse);
-    expect(result.sessionJson['id'], '  ');
+    expect(result.sessionJson['id'], 'client-2');
+    expect(result.sessionJson['termsAccepted'], isTrue);
   });
 
   test('createKioskSession rethrows 4xx and clears current', () async {

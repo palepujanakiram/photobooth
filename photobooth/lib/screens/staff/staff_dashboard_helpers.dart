@@ -1,3 +1,20 @@
+import '../../models/staff_dashboard_models.dart';
+
+/// One-shot lookup payload so the dashboard can paint without a second session GET.
+abstract final class StaffOpsSessionHold {
+  static StaffOpsSession? _next;
+
+  static void store(StaffOpsSession session) => _next = session;
+
+  static StaffOpsSession? take() {
+    final value = _next;
+    _next = null;
+    return value;
+  }
+
+  static void clearForTests() => _next = null;
+}
+
 /// Pure helpers for staff dashboard date labels and shift duration.
 abstract final class StaffDashboardHelpers {
   static const defaultTimezone = 'Asia/Kolkata';

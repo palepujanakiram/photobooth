@@ -1,7 +1,10 @@
 import '../../models/strip_models.dart';
 import '../../services/direct_ptp_camera_service.dart';
+import '../../utils/app_runtime_config.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/capture_session_kind.dart';
+import '../../utils/classic_pose_countdown.dart';
+import '../../utils/classic_pose_mode_helpers.dart';
 import '../../utils/constants.dart';
 
 /// How many stills the native screen should collect for [kind].
@@ -13,7 +16,9 @@ int directPtpShotCountFor(CaptureSessionKind kind) =>
 /// Read from [AppConstants] and passed to the native screen rather than
 /// duplicated in Kotlin, so booth timing stays defined in one place.
 int directPtpCountdownSecondsFor(CaptureSessionKind kind) => kind.isClassic
-    ? AppConstants.kFlashbackCaptureCountdownSeconds
+    ? normalizeClassicPoseCountdownSeconds(
+        AppRuntimeConfig.instance.classicPoseCountdownSeconds,
+      )
     : AppConstants.kCaptureCountdownSeconds;
 
 /// Seconds between strip shots for guests to rearrange.
@@ -122,14 +127,11 @@ bool directPtpResultIsUsable(
 ///
 /// Sourced from [AppStrings] so the native screen shows the same words as the
 /// Flutter one — switching between them should be invisible to a guest.
-String directPtpSubtitleFor(CaptureSessionKind kind) => switch (kind) {
-      CaptureSessionKind.classicFourShot => AppStrings.flashbackCaptureSubtitle,
-      CaptureSessionKind.classicThreeShot =>
-        AppStrings.flashbackCaptureSubtitleThree,
-      CaptureSessionKind.classicOneShot =>
-        AppStrings.flashbackCaptureSubtitleSingle,
-      CaptureSessionKind.fotoZen => AppStrings.poseSubtitleDefault,
-    };
+String directPtpSubtitleFor(CaptureSessionKind kind) {
+  final mode = kind.classicShotMode;
+  if (mode != null) return classicPoseSubtitle(mode);
+  return AppStrings.poseSubtitleDefault;
+}
 
 /// Sanity bound on the strip length the native side is asked for.
 ///

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/models/staff_dashboard_models.dart';
 import 'package:photobooth/screens/staff/staff_dashboard_helpers.dart';
@@ -37,6 +39,7 @@ class _FakeGateway implements StaffDashboardGateway {
   bool throwUnexpected = false;
   int checkInCalls = 0;
   int logoutCalls = 0;
+  Completer<StaffPerformanceStats?>? statsDelay;
 
   @override
   Future<StaffOpsSession> fetchStaffOpsSession() async {
@@ -53,6 +56,8 @@ class _FakeGateway implements StaffDashboardGateway {
   @override
   Future<StaffPerformanceStats?> fetchStaffStats(String staffId) async {
     _throwIfNeeded();
+    final delayed = statsDelay;
+    if (delayed != null) return delayed.future;
     return stats;
   }
 
@@ -137,7 +142,23 @@ class _FakeGateway implements StaffDashboardGateway {
   }
 }
 
+Future<void> _flushMicrotasks() => Future<void>.delayed(Duration.zero);
+
 void main() {
+  setUp(StaffOpsSessionHold.clearForTests);
+
+  group('StaffOpsSessionHold', () {
+    test('store then take returns once', () {
+      const session = StaffOpsSession(
+        staff: StaffOpsMember(id: 's1', name: 'Ada', staffCode: 'EMP1'),
+        isCheckedIn: true,
+        hasOpenRegister: false,
+      );
+      StaffOpsSessionHold.store(session);
+      expect(StaffOpsSessionHold.take()?.staff.name, 'Ada');
+      expect(StaffOpsSessionHold.take(), isNull);
+    });
+  });
   group('StaffDashboardHelpers', () {
     test('validates iso dates', () {
       expect(StaffDashboardHelpers.isValidIsoDate('2026-07-20'), isTrue);
@@ -300,10 +321,74 @@ void main() {
         initialDate: '2026-07-20',
       );
       await vm.loadAll();
+      await _flushMicrotasks();
       expect(vm.session?.staff.name, 'Ada');
       expect(vm.daySummary?.sessions, 3);
       expect(vm.stats?.totalHours, 12.5);
       expect(vm.loading, isFalse);
+    });
+
+    test('loadAll paints before slow stats finish', () async {
+      final gw = _FakeGateway();
+      gw.statsDelay = Completer<StaffPerformanceStats?>();
+      final vm = StaffDashboardViewModel(
+        gateway: gw,
+        initialDate: '2026-07-20',
+      );
+      await vm.loadAll();
+      expect(vm.session?.staff.name, 'Ada');
+      expect(vm.daySummary?.sessions, 3);
+      expect(vm.stats, isNull);
+      expect(vm.loading, isFalse);
+      gw.statsDelay!.complete(gw.stats);
+      await _flushMicrotasks();
+      expect(vm.stats?.totalHours, 12.5);
+    });
+
+    test('seeded session is visible before loadAll', () {
+      const seeded = StaffOpsSession(
+        staff: StaffOpsMember(id: 's9', name: 'Seeded', staffCode: 'EMP9'),
+        isCheckedIn: true,
+        hasOpenRegister: false,
+      );
+      final vm = StaffDashboardViewModel(
+        gateway: _FakeGateway(),
+        initialDate: '2026-07-20',
+        seededSession: seeded,
+      );
+      expect(vm.session?.staff.name, 'Seeded');
+      expect(vm.loading, isFalse);
+    });
+
+    test('stats failure does not fail loadAll', () async {
+      final gw = _FakeGateway();
+      gw.statsDelay = Completer<StaffPerformanceStats?>();
+      final vm = StaffDashboardViewModel(
+        gateway: gw,
+        initialDate: '2026-07-20',
+      );
+      await vm.loadAll();
+      expect(vm.loading, isFalse);
+      gw.statsDelay!.completeError(ApiException('stats down', 500));
+      await _flushMicrotasks();
+      expect(vm.session, isNotNull);
+      expect(vm.error, isNull);
+    });
+
+    test('loadAll skips stats when staff id is empty', () async {
+      final gw = _FakeGateway();
+      gw.session = const StaffOpsSession(
+        staff: StaffOpsMember(id: '  ', name: 'Ada', staffCode: 'EMP1'),
+        isCheckedIn: false,
+        hasOpenRegister: false,
+      );
+      final vm = StaffDashboardViewModel(
+        gateway: gw,
+        initialDate: '2026-07-20',
+      );
+      await vm.loadAll();
+      await _flushMicrotasks();
+      expect(vm.stats, isNull);
     });
 
     test('checkIn and checkOut update session', () async {

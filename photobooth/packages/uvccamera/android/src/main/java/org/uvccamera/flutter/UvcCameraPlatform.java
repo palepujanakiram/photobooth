@@ -385,7 +385,9 @@ import io.flutter.view.TextureRegistry;
         try {
             camera.open(deviceCtrlBlock);
         } catch (final Exception e) {
-            releaseCameraSafely(camera);
+            // UVCCamera.open() calls the native release() internally on failure.
+            // Calling releaseCameraSafely() here would invoke close() → release()
+            // a second time, triggering an fdsan SIGABRT on Android 11+.
             throw new IllegalStateException("Failed to open camera", e);
         }
         Log.d(TAG, "openCamera: camera opened");

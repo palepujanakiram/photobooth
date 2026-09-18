@@ -5,6 +5,7 @@ import 'package:photobooth/screens/theme_selection/theme_model.dart';
 import 'package:photobooth/services/event_manager.dart';
 import 'package:photobooth/services/kiosk_manager.dart';
 import 'package:photobooth/utils/constants.dart';
+import 'package:photobooth/utils/app_strings.dart';
 import 'package:photobooth/utils/payment_workflow_helpers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -187,13 +188,13 @@ void main() {
   });
 
   group('shouldSkipOfflinePayCollect', () {
-    test('true only for offline sessions with payments disabled', () {
+    test('never skips cash collect', () {
       expect(
         shouldSkipOfflinePayCollect(
           paymentsEnabled: false,
           sessionOffline: true,
         ),
-        isTrue,
+        isFalse,
       );
       expect(
         shouldSkipOfflinePayCollect(
@@ -208,6 +209,96 @@ void main() {
           sessionOffline: false,
         ),
         isFalse,
+      );
+    });
+  });
+
+  group('shouldCollectCounterCash', () {
+    test('true when UPI is off', () {
+      expect(shouldCollectCounterCash(paymentsEnabled: false), isTrue);
+      expect(shouldCollectCounterCash(paymentsEnabled: true), isFalse);
+    });
+  });
+
+  group('pay screen copy', () {
+    test('app bar is cash at the counter when UPI is off and WAN is up', () {
+      expect(
+        payScreenAppBarSubtitle(
+          collectsCounterCash: true,
+          sessionOffline: false,
+        ),
+        AppStrings.counterCashAppBarSubtitle,
+      );
+      expect(
+        payScreenAppBarSubtitle(
+          collectsCounterCash: true,
+          sessionOffline: true,
+        ),
+        AppStrings.wanDownCashAppBarSubtitle,
+      );
+      expect(
+        payScreenAppBarSubtitle(
+          collectsCounterCash: false,
+          sessionOffline: false,
+        ),
+        AppStrings.payScanToComplete,
+      );
+    });
+
+    test('intro is omitted for offline payment', () {
+      expect(
+        payScreenIntroMessage(collectsCounterCash: true),
+        isNull,
+      );
+      expect(
+        payScreenIntroMessage(collectsCounterCash: false),
+        AppStrings.payUpiIntro,
+      );
+    });
+
+    test('status tells staff to confirm in Payments when WAN is up', () {
+      expect(
+        payScreenCashStatus(sessionOffline: false),
+        AppStrings.counterCashOnlyWaiting,
+      );
+      expect(
+        payScreenCashStatus(sessionOffline: true),
+        AppStrings.offlineCashOnlyWaiting,
+      );
+    });
+
+    test('staff PIN confirm is native WAN-down only', () {
+      expect(
+        payScreenShowsStaffPinConfirm(sessionOffline: true, isWeb: false),
+        isTrue,
+      );
+      expect(
+        payScreenShowsStaffPinConfirm(sessionOffline: true, isWeb: true),
+        isFalse,
+      );
+      expect(
+        payScreenShowsStaffPinConfirm(sessionOffline: false, isWeb: false),
+        isFalse,
+      );
+      expect(
+        payScreenShowsStaffPinConfirm(
+          sessionOffline: true,
+          isWeb: false,
+          skipOfflineCashPin: true,
+        ),
+        isFalse,
+      );
+      expect(
+        payScreenShowsStaffPinConfirm(
+          sessionOffline: true,
+          isWeb: false,
+          autoApproveCashPrint: true,
+        ),
+        isFalse,
+      );
+      expect(
+        skipCashStaffApproval(autoApproveCashPrint: true),
+        isTrue,
       );
     });
   });

@@ -1,5 +1,6 @@
 import '../../models/strip_models.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/constants.dart';
 import '../../utils/print_size_helpers.dart';
 import '../../utils/secure_image_url.dart';
 import 'staff_payments_payload_utils.dart';
@@ -168,7 +169,26 @@ abstract final class StaffPaymentsSessionImages {
       imageUrl: imageUrl,
       sessionId: sessionId,
     );
-    if (generatedMatch != null) return generatedMatch;
+    if (generatedMatch != null) {
+      if (_sessionIsClassicOneShot(raw) &&
+          isStripDualPrintSize(generatedMatch)) {
+        return AppConstants.kPrintSizePortrait4x6;
+      }
+      return generatedMatch;
+    }
+
+    if (_sessionIsClassicOneShot(raw)) {
+      return null;
+    }
+
+    final stripUrl = StaffPaymentsPayloadUtils.pickString(raw, const [
+      'stripCompositeUrl',
+      'strip_composite_url',
+    ]).trim();
+    if (stripUrl.isNotEmpty &&
+        !imageUrlsReferToSameDeliverable(imageUrl, stripUrl)) {
+      return null;
+    }
 
     final printBlock = raw['print'];
     if (printBlock is Map) {
@@ -186,7 +206,7 @@ abstract final class StaffPaymentsSessionImages {
     return top.isEmpty ? null : top;
   }
 
-  /// Classic compose shot count from the session payload (1 → 6×4, 3/4 → strip).
+  /// Classic compose shot count from the session payload (1 → 4×6/6×4, 3/4 → 6×2).
   static int? classicComposeShotCountFromSession(Map<String, dynamic> raw) {
     final captured = raw['capturedImages'] ?? raw['captured_images'];
     if (captured is List && isValidClassicComposeShotCount(captured.length)) {
@@ -196,7 +216,24 @@ abstract final class StaffPaymentsSessionImages {
     if (shotCount is int && isValidClassicComposeShotCount(shotCount)) {
       return shotCount;
     }
+    if (shotCount is String) {
+      final parsed = int.tryParse(shotCount.trim());
+      if (parsed != null && isValidClassicComposeShotCount(parsed)) {
+        return parsed;
+      }
+    }
+    final mode = StaffPaymentsPayloadUtils.pickString(raw, const [
+      'classicShotMode',
+      'classic_shot_mode',
+    ]).trim();
+    if (mode == '1' || mode == 'single6x4' || mode == 'single') return 1;
+    if (mode == '3' || mode == 'threeShot') return 3;
+    if (mode == '4' || mode == 'fourShot') return 4;
     return null;
+  }
+
+  static bool _sessionIsClassicOneShot(Map<String, dynamic> raw) {
+    return classicComposeShotCountFromSession(raw) == 1;
   }
 
   static String? _printSizeFromGeneratedImages(

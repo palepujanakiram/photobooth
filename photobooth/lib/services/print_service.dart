@@ -31,7 +31,7 @@ class PrintService {
     ]);
   }
 
-  /// Guest/staff photo print entry point — always initiates DNP and Selphy.
+  /// Guest/staff photo print entry point — DNP first, Selphy only if DNP fails.
   Future<void> printDnpPhoto(
     XFile imageFile, {
     AppSettingsModel? settings,
@@ -45,16 +45,18 @@ class PrintService {
         quantity: quantity,
       );
 
-  /// Always initiates print to **both** DNP and Canon Selphy.
+  /// Prints DNP first. Selphy runs only when DNP failed and [trySelphy] is true.
   ///
-  /// No printer-selection logic: both jobs are started every time. Whichever
-  /// printer is connected will print; if both are connected, both print.
+  /// Dual USB (DNP + Selphy SDK `getPrinterList`) on the same Android TV host
+  /// ANRs the process. Event kiosks pass [trySelphy] false.
   /// Fails only when neither printer completes a job.
   Future<void> printImageSilent(
     XFile imageFile, {
     AppSettingsModel? settings,
     required String printSize,
     int quantity = AppConstants.kDefaultPrintCopies,
+    bool trySelphy = true,
+    bool prepareForDnp = true,
   }) async {
     // Sequential on purpose: both USB hosts on the same Android TV can freeze
     // if claimed together. Each path is independent otherwise.
@@ -63,7 +65,20 @@ class PrintService {
       settings: settings,
       printSize: printSize,
       quantity: quantity,
+      prepareForDnp: prepareForDnp,
     );
+    if (!shouldAttemptSelphyPrint(
+      trySelphy: trySelphy,
+      dnpSucceeded: dnp.succeeded,
+    )) {
+      throwIfNoPhotoPrinterSucceeded(
+        dnpSucceeded: dnp.succeeded,
+        selphySucceeded: false,
+        dnpError: dnp.error,
+        selphyError: null,
+      );
+      return;
+    }
     final selphy = await _printToSelphy(
       imageFile,
       printSize: printSize,
@@ -82,12 +97,15 @@ class PrintService {
     AppSettingsModel? settings,
     required String printSize,
     required int quantity,
+    bool prepareForDnp = true,
   }) async {
     try {
-      final prepared = await prepareImageForDnpPrint(
-        imageFile,
-        networkPrintSize: printSize,
-      );
+      final prepared = prepareForDnp
+          ? await prepareImageForDnpPrint(
+              imageFile,
+              networkPrintSize: printSize,
+            )
+          : imageFile;
       await _dnpPrintBridge.printImage(
         imageFile: prepared,
         settings: settings,

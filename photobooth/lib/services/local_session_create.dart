@@ -36,16 +36,22 @@ Future<LocalSessionCreateResult> createKioskSession({
   );
   try {
     final response = await acceptTerms(id);
-    final remote = Map<String, dynamic>.from(response);
+    final remote = normalizeAcceptTermsSessionJson(
+      Map<String, dynamic>.from(response),
+      fallbackId: id,
+      now: now,
+    );
     if (eventId != null &&
         eventId.trim().isNotEmpty &&
         (remote['eventId']?.toString().trim().isEmpty ?? true)) {
       remote['eventId'] = eventId.trim();
     }
-    final remoteId = (remote['id'] as String?)?.trim();
-    final idToKeep = (remoteId != null && remoteId.isNotEmpty) ? remoteId : id;
     await store?.upsertSession(
-      LocalSessionWrite(id: idToKeep, payload: remote, kioskCode: kioskCode),
+      LocalSessionWrite(
+        id: remote['id'] as String,
+        payload: remote,
+        kioskCode: kioskCode,
+      ),
     );
     return LocalSessionCreateResult(
       sessionJson: remote,

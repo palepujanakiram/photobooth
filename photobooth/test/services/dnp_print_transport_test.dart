@@ -91,6 +91,14 @@ void main() {
       expect(DnpPrintSize.fromNetworkPrintSize('s6x2_2').usbLabel, '4x6');
       expect(DnpPrintSize.fromNetworkPrintSize('s2x6').usbLabel, '4x6');
     });
+
+    test('serializes USB copies when the 2-inch cutter is on', () {
+      expect(dnpUsbCopyJobCount('s4x6', 3), 1);
+      expect(dnpUsbCopyJobCount('s6x2_2', 3), 3);
+      expect(dnpUsbCopyJobCount('s2x6', 2), 2);
+      expect(DnpPrintSize.usesPerCopyUsbJobs('s6x2_2'), isTrue);
+      expect(DnpPrintSize.usesPerCopyUsbJobs('s4x6'), isFalse);
+    });
   });
 
   group('resolveDnpPrintTransport', () {
@@ -727,10 +735,10 @@ void main() {
         networkPrintSize: AppConstants.kPrintSizeStripDual2x6,
         quantity: 2,
       );
-      expect(usb.printCalls, 1);
+      expect(usb.printCalls, 2);
       expect(usb.lastPaperSize, '4x6');
       expect(usb.lastPrintSize, AppConstants.kPrintSizeStripDual2x6);
-      expect(usb.lastCopies, 2);
+      expect(usb.lastCopies, 1);
       expect(wifi.printerBaseUrl, isNull);
     });
 

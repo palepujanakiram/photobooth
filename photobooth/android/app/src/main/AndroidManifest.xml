@@ -13,6 +13,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <!-- connectedDevice foregroundServiceType requires this on Android 14+ (API 34). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"/>
+    <!-- Event pipeline queue: keeps importing, framing and printing running while
+         the operator has the phone locked. Dart timers are throttled in the
+         background, so without this a long event stalls the moment the screen
+         sleeps. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
 
     <!-- Camera: required for capture and for camera list (availableCameras) -->
     <uses-permission android:name="android.permission.CAMERA"/>
@@ -46,7 +51,8 @@
         android:icon="@mipmap/ic_launcher"
         android:banner="@mipmap/ic_launcher"
         android:networkSecurityConfig="@xml/network_security_config"
-        android:usesCleartextTraffic="false">
+        android:usesCleartextTraffic="false"
+        android:largeHeap="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -110,6 +116,14 @@
             android:name=".canon.CanonSidecarService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+
+        <!-- Started only while the event pipeline has work; stopped when the
+             queue drains. Declared unconditionally for the same reason as the
+             sidecar above: a missing declaration is a runtime crash. -->
+        <service
+            android:name=".eventpipeline.EventPipelineService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <meta-data
             android:name="flutterEmbedding"

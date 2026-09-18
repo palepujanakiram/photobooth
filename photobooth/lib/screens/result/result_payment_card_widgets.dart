@@ -44,7 +44,7 @@ class ResultPaymentCardColumn extends StatelessWidget {
     return Column(
       children: [
         Text(
-          viewModel.cashOnlyOffline
+          viewModel.collectsCounterCash
               ? AppStrings.offlinePayAtCounterTitle
               : 'Pay via UPI',
           style: kResultPaymentBoxTitleStyle,
@@ -74,7 +74,7 @@ class ResultPaymentCardColumn extends StatelessWidget {
         const SizedBox(height: 8),
         ResultPaymentCopiesRow(viewModel: viewModel),
         const SizedBox(height: 6),
-        if (!viewModel.cashOnlyOffline)
+        if (!viewModel.collectsCounterCash)
           ResultPaymentCouponRow(
             appliedDiscount: viewModel.appliedDiscount,
             couponError: viewModel.couponError,
@@ -82,7 +82,7 @@ class ResultPaymentCardColumn extends StatelessWidget {
             onApply: viewModel.applyCoupon,
             onUnapply: viewModel.unapplyCoupon,
           )
-        else
+        else if (viewModel.cashOnlyOffline)
           const Padding(
             padding: EdgeInsets.only(bottom: 6),
             child: Text(
@@ -185,7 +185,7 @@ class ResultPaymentCardColumn extends StatelessWidget {
             ),
           ),
         ],
-        if (viewModel.cashOnlyOffline &&
+        if (viewModel.collectsCounterCash &&
             viewModel.fcmPaymentPushSuccess != true &&
             onStaffCashConfirm != null) ...[
           const SizedBox(height: 10),

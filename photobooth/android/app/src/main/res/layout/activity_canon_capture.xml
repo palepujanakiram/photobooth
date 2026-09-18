@@ -69,14 +69,15 @@
         android:id="@+id/canon_countdown_scrim"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#80000000"
+        android:background="#2E000000"
         android:visibility="gone" />
 
     <LinearLayout
         android:id="@+id/canon_countdown_group"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="center"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="20dp"
         android:gravity="center_horizontal"
         android:orientation="vertical"
         android:visibility="gone">
@@ -100,7 +101,8 @@
         android:id="@+id/canon_countdown"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="center"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="20dp"
         android:textColor="@android:color/white"
         android:textSize="160sp"
         android:textStyle="bold"

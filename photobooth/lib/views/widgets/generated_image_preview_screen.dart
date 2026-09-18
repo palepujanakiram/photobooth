@@ -3,6 +3,37 @@ import 'package:flutter/material.dart';
 
 import 'cached_network_image.dart';
 
+/// Opens [GeneratedImagePreviewScreen] as a fade-in overlay.
+Future<void> showGeneratedImagePreview(
+  BuildContext context, {
+  required String imageUrl,
+  String? title,
+  String? subtitle,
+}) {
+  final url = imageUrl.trim();
+  if (url.isEmpty) return Future<void>.value();
+  return Navigator.of(context).push<void>(
+    PageRouteBuilder<void>(
+      opaque: false,
+      barrierColor: Colors.black.withValues(alpha: 0.92),
+      pageBuilder: (_, __, ___) => GeneratedImagePreviewScreen(
+        imageUrl: url,
+        title: title,
+        subtitle: subtitle,
+      ),
+      transitionsBuilder: (_, animation, __, child) {
+        return FadeTransition(
+          opacity: CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          ),
+          child: child,
+        );
+      },
+    ),
+  );
+}
+
 /// Full-screen preview for a generated portrait (pinch / pan via [InteractiveViewer]).
 class GeneratedImagePreviewScreen extends StatelessWidget {
   const GeneratedImagePreviewScreen({

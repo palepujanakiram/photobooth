@@ -15,6 +15,19 @@ bool kioskDeviceStatusRowEnabled(String deviceName) {
   }
 }
 
+/// Whether a probed device should appear on the kiosk settings panel.
+///
+/// Receipt printer is hidden when Admin has not enabled it, so booths
+/// without a Posiflow do not show a "Not connected" warning.
+bool kioskDeviceStatusRowVisible(KioskDeviceStatusEntry entry) {
+  if (!kioskDeviceStatusRowEnabled(entry.deviceName)) return false;
+  if (entry.deviceName == AppStrings.kioskDeviceReceiptPrinter &&
+      !entry.configured) {
+    return false;
+  }
+  return true;
+}
+
 /// Guest-facing transport for a Device status row.
 ///
 /// DNP and receipt printers are USB-only in the guest UI, matching DSLR.

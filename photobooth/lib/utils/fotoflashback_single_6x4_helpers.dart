@@ -62,6 +62,7 @@ Future<String?> finishClassicSingle6x4({
       image: image,
       printSize: printSize,
       transformationRunId: result.runId,
+      classicComposeShotCount: 1,
     );
     return null;
   } on ApiException catch (e) {

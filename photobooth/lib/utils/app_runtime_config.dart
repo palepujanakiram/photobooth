@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart' show ChangeNotifier, kIsWeb;
 import 'package:flutter/painting.dart';
 
 import '../models/app_settings_model.dart';
+import 'classic_pose_countdown.dart';
+import 'constants.dart';
 
 /// Runtime flags driven by `/api/settings` ([AppSettingsModel]).
 ///
@@ -22,6 +24,8 @@ class AppRuntimeConfig extends ChangeNotifier {
   bool _showApiLogs = true;
   bool _thermalSafeMode = false;
   bool _injectClassicAfMarkers = false;
+  int _classicPoseCountdownSeconds =
+      AppConstants.kFlashbackCaptureCountdownSeconds;
 
   /// Mirrors `/api/settings` → `showGenerationCommentary`. Drives debug / kiosk-RAM behavior.
   bool get showGenerationCommentary => _showGenerationCommentary;
@@ -36,21 +40,41 @@ class AppRuntimeConfig extends ChangeNotifier {
   /// Test-only: burn AF brackets into Classic captures (`photoStripConfig.injectAfMarkers`).
   bool get injectClassicAfMarkers => _injectClassicAfMarkers;
 
+  /// Per-kiosk Classic pose countdown (5–15s). AI capture stays at 5s.
+  int get classicPoseCountdownSeconds => _classicPoseCountdownSeconds;
+
+  /// Apply Classic pose seconds from kiosk bind when `/api/settings` omits the key.
+  void applyClassicPoseCountdown(int? raw) {
+    final next = normalizeClassicPoseCountdownSeconds(raw);
+    if (next == _classicPoseCountdownSeconds) return;
+    _classicPoseCountdownSeconds = next;
+    notifyListeners();
+  }
+
   void applyFromSettings(AppSettingsModel? settings) {
     final nextCommentary = settings?.showGenerationCommentary == true;
     final nextShowApiLogs = settings?.showApiLogs ?? true;
     final nextThermal = settings?.thermalSafeMode == true;
     final nextInject = settings?.injectAfMarkers == true;
+    final nextCountdown = settings == null
+        ? AppConstants.kFlashbackCaptureCountdownSeconds
+        : (settings.classicPoseCountdownSeconds != null
+            ? normalizeClassicPoseCountdownSeconds(
+                settings.classicPoseCountdownSeconds,
+              )
+            : _classicPoseCountdownSeconds);
     if (nextCommentary == _showGenerationCommentary &&
         nextShowApiLogs == _showApiLogs &&
         nextThermal == _thermalSafeMode &&
-        nextInject == _injectClassicAfMarkers) {
+        nextInject == _injectClassicAfMarkers &&
+        nextCountdown == _classicPoseCountdownSeconds) {
       return;
     }
     _showGenerationCommentary = nextCommentary;
     _showApiLogs = nextShowApiLogs;
     _thermalSafeMode = nextThermal;
     _injectClassicAfMarkers = nextInject;
+    _classicPoseCountdownSeconds = nextCountdown;
     notifyListeners();
   }
 }

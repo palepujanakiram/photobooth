@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -329,6 +330,10 @@ class DirectPtpCaptureRequest {
     this.subtitleText,
     this.shutterText,
     this.cancelText,
+    this.inkColor,
+    this.accentColor,
+    this.backgroundColor,
+    this.continuous = false,
   });
 
   /// Stills to collect. 1 for AI, 4 for a Classic strip.
@@ -390,6 +395,23 @@ class DirectPtpCaptureRequest {
   final String? shutterText;
   final String? cancelText;
 
+  /// Event chrome, as `#RRGGBB`. Null leaves the layout's own colours alone.
+  ///
+  /// Passed rather than themed natively because the colours belong to the
+  /// event, which only Dart knows about — `CaptureScreenStyle` is a build-time
+  /// switch between two layouts, not a per-event thing.
+  final String? inkColor;
+  final String? accentColor;
+  final String? backgroundColor;
+
+  /// Keeps the native screen up after each accepted shot instead of returning.
+  ///
+  /// A guest session is one pose and one set of photos, so it ends and this
+  /// call completes. An operator shoots all evening, so the screen stays and
+  /// each accepted frame arrives on [DirectPtpCameraService.acceptedShots] as
+  /// it lands. Default false — every guest flow is unchanged.
+  final bool continuous;
+
   Map<String, Object?> toArguments() => <String, Object?>{
         'shotCount': shotCount,
         'countdownSeconds': countdownSeconds,
@@ -407,6 +429,10 @@ class DirectPtpCaptureRequest {
         'subtitleText': subtitleText,
         'shutterText': shutterText,
         'cancelText': cancelText,
+        'inkColor': inkColor,
+        'accentColor': accentColor,
+        'backgroundColor': backgroundColor,
+        'continuous': continuous,
       };
 }
 
@@ -553,6 +579,43 @@ class DirectPtpCameraService {
         errorCode: 'capture_failed',
         errorMessage: '$e',
       );
+    }
+  }
+
+  /// Frames accepted on the native screen while a continuous session runs.
+  ///
+  /// Each one has already been reviewed and kept by the operator, so anything
+  /// arriving here is theirs to queue. A retake never appears — the native
+  /// review discards it and returns to live view.
+  Stream<DirectPtpShot> get acceptedShots => _accepted.stream;
+
+  final StreamController<DirectPtpShot> _accepted =
+      StreamController<DirectPtpShot>.broadcast();
+
+  bool _handlerAttached = false;
+
+  /// Starts listening for accepted shots. Idempotent.
+  void listenForAcceptedShots() {
+    if (_handlerAttached || !isSupported) return;
+    _handlerAttached = true;
+    _channel.setMethodCallHandler((call) async {
+      if (call.method != 'onShotAccepted') return null;
+      final raw = call.arguments;
+      if (raw is Map) {
+        _accepted.add(DirectPtpShot.fromMap(Map<Object?, Object?>.from(raw)));
+      }
+      return null;
+    });
+  }
+
+  /// Puts a line on the native screen's status — what happened to the frame it
+  /// just handed over.
+  Future<void> postCaptureMessage(String text) async {
+    if (!isSupported) return;
+    try {
+      await _channel.invokeMethod<void>('postCaptureMessage', {'text': text});
+    } catch (e) {
+      AppLogger.debug('Could not post a capture message: $e');
     }
   }
 

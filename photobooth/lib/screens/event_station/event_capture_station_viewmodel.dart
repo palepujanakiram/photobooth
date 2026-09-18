@@ -20,7 +20,7 @@ class EventCaptureStationViewModel extends ChangeNotifier {
     SessionManager? sessionManager,
     KioskManager? kioskManager,
     EventStationApi? stationApi,
-    Duration pollInterval = const Duration(seconds: 4),
+    Duration pollInterval = const Duration(seconds: 6),
     EventCaptureImportHooks? importHooks,
   })  : _api = apiService ?? ApiService(),
         _session = sessionManager ?? SessionManager(),
@@ -40,7 +40,7 @@ class EventCaptureStationViewModel extends ChangeNotifier {
   bool _busy = false;
   String? _error;
   EventStationBoard _board = const EventStationBoard();
-  String _statusFilter = 'PENDING';
+  String _statusFilter = 'ALL';
   List<EventBulkImportItem> _importItems = const [];
   EventBulkImportProgress? _importProgress;
 
@@ -77,7 +77,12 @@ class EventCaptureStationViewModel extends ChangeNotifier {
 
   Future<void> refreshBoard({bool clearErrorOnSuccess = true}) async {
     try {
-      _board = await _stationApi.fetchBoard();
+      final next = await _stationApi.fetchBoard();
+      if (identical(next, _board) && _error == null) {
+        if (clearErrorOnSuccess) _error = null;
+        return;
+      }
+      _board = next;
       if (clearErrorOnSuccess) _error = null;
     } on ApiException catch (e) {
       _error = e.message;

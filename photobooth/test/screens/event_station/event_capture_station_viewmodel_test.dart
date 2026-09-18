@@ -113,7 +113,7 @@ void main() {
     final first = vm.startNextGuest();
     await Future<void>.delayed(const Duration(milliseconds: 20));
     expect(vm.isBusy, isTrue);
-    expect(vm.statusFilter, 'PENDING');
+    expect(vm.statusFilter, 'ALL');
     expect(vm.captures, isEmpty);
     expect(vm.stats.captures, 0);
     gate.complete();

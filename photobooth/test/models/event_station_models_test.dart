@@ -17,6 +17,23 @@ void main() {
     expect(jobs, hasLength(1));
     expect(jobs.first.id, 'j1');
     expect(jobs.first.previewUrls, ['https://cdn/a.jpg']);
+    expect(
+      EventThemeStationJob.fromJson({
+        'id': 'j-fail',
+        'sessionId': 's1',
+        'status': 'FAILED',
+        'rawStatus': 'FAILED',
+      }).canRetry,
+      isTrue,
+    );
+    expect(
+      EventThemeStationJob.fromJson({
+        'id': 'j-pend',
+        'sessionId': 's1',
+        'status': 'PENDING',
+      }).canSkip,
+      isTrue,
+    );
   });
 
   test('parses nested claimed theme job', () {
@@ -104,6 +121,20 @@ void main() {
     expect(board.printJobs.first.status, 'CLAIMED');
     expect(board.printJobs.last.canReissue, isTrue);
     expect(captureCarouselUrls(board.captures), ['https://cdn/a.jpg']);
+    expect(
+      itemsForStationStatus(board.captures, 'ALL', (c) => c.status),
+      hasLength(1),
+    );
+    expect(board.themeJobs.single.times.isSkipped, isTrue);
+    expect(
+      EventCaptureStationItem.fromJson({
+        'sessionId': 's9',
+        'status': 'PENDING',
+        'previewUrls': ['https://cdn/z.jpg'],
+        'createdAt': '2026-09-07T10:00:00.000Z',
+      }).times.createdAt,
+      isNotNull,
+    );
     expect(
       stationStatusCount(board.printJobs, 'CLAIMED', (j) => j.status),
       1,

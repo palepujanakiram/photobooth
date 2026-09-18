@@ -3,13 +3,14 @@ import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import '../../models/staff_dashboard_models.dart';
 import '../../services/staff_api_service.dart';
 import '../../services/staff_session_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../../views/widgets/app_colors.dart';
-import 'staff_auth_helpers.dart';
+import 'staff_dashboard_helpers.dart';
 import 'staff_theme_shell.dart';
 
 class StaffLoginScreen extends StatefulWidget {
@@ -37,29 +38,15 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
     super.dispose();
   }
 
-  /// Only skip the login form when a stored token still validates with the API.
-  /// A stale token previously bounced users back to the dashboard ("Unauthorized").
+  /// Skip the form when a token is already stored. Dashboard bootstrap
+  /// validates it (and sends stale tokens back here) so login does not
+  /// wait on a duplicate `/api/staff/session` round trip.
   Future<void> _tryAutoContinue() async {
     final t = await _session.getToken();
     if (!mounted) return;
     if (t == null || t.isEmpty) return;
-
-    setState(() => _busy = true);
-    try {
-      await _api.fetchStaffOpsSession();
-      if (!mounted) return;
-      Navigator.of(context)
-          .pushReplacementNamed(AppConstants.kRouteStaffDashboard);
-    } on ApiException catch (e) {
-      if (StaffAuthHelpers.isAuthFailure(e)) {
-        await _session.clear();
-      }
-      // Stay on login so the user can sign in again.
-    } catch (_) {
-      // Network blip — leave the form visible.
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+    Navigator.of(context)
+        .pushReplacementNamed(AppConstants.kRouteStaffDashboard);
   }
 
   @override
@@ -84,10 +71,11 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
     });
 
     try {
-      await _api.staffLookupWithCode(
+      final data = await _api.staffLookupWithCode(
         staffCode: staffCode,
         accountName: accountName,
       );
+      StaffOpsSessionHold.store(StaffOpsSession.fromJson(data));
       if (!mounted) return;
       Navigator.of(context).pushReplacementNamed(AppConstants.kRouteStaffDashboard);
     } on ApiException catch (e) {

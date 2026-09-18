@@ -1,3 +1,6 @@
+import '../utils/classic_pose_countdown.dart';
+import '../utils/constants.dart';
+
 class KioskInfoModel {
   final String id;
   final String code;
@@ -12,8 +15,15 @@ class KioskInfoModel {
   /// Defaults to true when the API omits the field.
   final bool classicPhotosEnabled;
 
+  /// When false, kiosk hides FotoZen AI and stays on Classic.
+  /// Defaults to true when the API omits the field.
+  final bool aiPhotosEnabled;
+
   /// Classic shot counts offered on the experience screen (1, 3, and/or 4).
   final List<int> classicShotModes;
+
+  /// Seconds of Classic pose countdown (5–15). Default 10.
+  final int classicPoseCountdownSeconds;
 
   /// Per-kiosk guest price overrides (rupees). null = inherit account settings.
   final int? initialPrice;
@@ -38,7 +48,10 @@ class KioskInfoModel {
     this.accountId,
     this.paymentEnabled,
     this.classicPhotosEnabled = true,
+    this.aiPhotosEnabled = true,
     this.classicShotModes = const [1, 3, 4],
+    this.classicPoseCountdownSeconds =
+        AppConstants.kFlashbackCaptureCountdownSeconds,
     this.initialPrice,
     this.additionalPrintPrice,
     this.regenerationPrice,
@@ -65,9 +78,15 @@ class KioskInfoModel {
     final rawClassic =
         json['classicPhotosEnabled'] ?? json['classic_photos_enabled'];
     // Missing/null → enabled (legacy kiosks / older API builds).
-    final classicEnabled = _parseClassicPhotosEnabled(rawClassic);
+    final classicEnabled = _parseEnabledDefaultTrue(rawClassic);
+    final rawAi = json['aiPhotosEnabled'] ?? json['ai_photos_enabled'];
+    final aiEnabled = _parseEnabledDefaultTrue(rawAi);
     final modes = _parseClassicShotModes(
       json['classicShotModes'] ?? json['classic_shot_modes'],
+    );
+    final countdown = _parseClassicPoseCountdownSeconds(
+      json['classicPoseCountdownSeconds'] ??
+          json['classic_pose_countdown_seconds'],
     );
 
     return KioskInfoModel(
@@ -78,7 +97,9 @@ class KioskInfoModel {
       accountId: json['accountId']?.toString(),
       paymentEnabled: payment,
       classicPhotosEnabled: classicEnabled,
+      aiPhotosEnabled: aiEnabled,
       classicShotModes: modes,
+      classicPoseCountdownSeconds: countdown,
       initialPrice: parsePrice(json['initialPrice']),
       additionalPrintPrice: parsePrice(json['additionalPrintPrice']),
       regenerationPrice: parsePrice(json['regenerationPrice']),
@@ -99,7 +120,9 @@ class KioskInfoModel {
         if (accountId != null) 'accountId': accountId,
         if (paymentEnabled != null) 'paymentEnabled': paymentEnabled,
         'classicPhotosEnabled': classicPhotosEnabled,
+        'aiPhotosEnabled': aiPhotosEnabled,
         'classicShotModes': classicShotModes,
+        'classicPoseCountdownSeconds': classicPoseCountdownSeconds,
         if (initialPrice != null) 'initialPrice': initialPrice,
         if (additionalPrintPrice != null)
           'additionalPrintPrice': additionalPrintPrice,
@@ -109,7 +132,7 @@ class KioskInfoModel {
       };
 
   /// Accepts bool, 0/1, and common string flags from admin/API payloads.
-  static bool _parseClassicPhotosEnabled(dynamic raw) {
+  static bool _parseEnabledDefaultTrue(dynamic raw) {
     if (raw == null) return true;
     if (raw is bool) return raw;
     if (raw is num) return raw != 0;
@@ -136,6 +159,18 @@ class KioskInfoModel {
     }
     if (seen.isEmpty) return const [1, 3, 4];
     return [1, 3, 4].where(seen.contains).toList();
+  }
+
+  static int _parseClassicPoseCountdownSeconds(dynamic raw) {
+    int? n;
+    if (raw is int) {
+      n = raw;
+    } else if (raw is num) {
+      n = raw.round();
+    } else if (raw is String) {
+      n = int.tryParse(raw.trim());
+    }
+    return normalizeClassicPoseCountdownSeconds(n);
   }
 
   /// Missing/unknown → online (legacy kiosks / older API builds).

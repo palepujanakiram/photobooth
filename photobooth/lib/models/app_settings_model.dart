@@ -70,6 +70,14 @@ class AppSettingsModel {
   /// for the bound kiosk when settings were fetched with `?kiosk=` (kiosk
   /// override wins over account default). True = AF/OSD scrub; false/null = originals.
   final bool? enableOsdScrub;
+  /// Per-kiosk Classic pose countdown in seconds (5–15). Null = use default 10.
+  final int? classicPoseCountdownSeconds;
+  /// When true, offline cash checkout records the session paid and prints
+  /// without a staff booth PIN (`/api/settings` → `skipOfflineCashPin`).
+  final bool? skipOfflineCashPin;
+  /// When true, cash checkout records CASH and prints without waiting for
+  /// staff approval (`/api/settings` → `autoApproveCashPrint`).
+  final bool? autoApproveCashPrint;
   /// Test-only: burn AF brackets into Classic captures (`injectAfMarkers`).
   final bool? injectAfMarkers;
   /// Classic Surprise Me AI teaser (`settings.photoStripConfig.enableSurpriseMeAi`).
@@ -134,6 +142,9 @@ class AppSettingsModel {
     this.exifStampEnabled,
     this.c2paSigningEnabled,
     this.enableOsdScrub,
+    this.classicPoseCountdownSeconds,
+    this.skipOfflineCashPin,
+    this.autoApproveCashPrint,
     this.injectAfMarkers,
     this.enableSurpriseMeAi,
     this.offlineCashPins,
@@ -220,6 +231,16 @@ class AppSettingsModel {
             stripMap?['enableOsdScrub'],
           ) ??
           JsonParseHelpers.boolOrNull(json['enableOsdScrub']),
+      classicPoseCountdownSeconds: JsonParseHelpers.intOrNull(
+        json['classicPoseCountdownSeconds'] ??
+            json['classic_pose_countdown_seconds'],
+      ),
+      skipOfflineCashPin: JsonParseHelpers.boolOrNull(
+            json['skipOfflineCashPin'] ?? json['skip_offline_cash_pin'],
+          ),
+      autoApproveCashPrint: JsonParseHelpers.boolOrNull(
+            json['autoApproveCashPrint'] ?? json['auto_approve_cash_print'],
+          ),
       injectAfMarkers: JsonParseHelpers.boolOrNull(
             stripMap?['injectAfMarkers'],
           ) ??

@@ -79,7 +79,10 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen>
   @override
   void initState() {
     super.initState();
-    _vm = StaffDashboardViewModel(gateway: _StaffApiGateway());
+    _vm = StaffDashboardViewModel(
+      gateway: _StaffApiGateway(),
+      seededSession: StaffOpsSessionHold.take(),
+    );
     _tabs = TabController(length: 2, vsync: this);
     _bootstrap();
   }

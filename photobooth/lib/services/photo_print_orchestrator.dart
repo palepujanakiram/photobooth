@@ -2,6 +2,18 @@ import '../utils/app_strings.dart';
 import '../utils/exceptions.dart';
 import '../utils/logger.dart';
 
+/// Event / DNP kiosks must not talk to Selphy after DNP has the USB host.
+///
+/// `printImageSilent` used to always probe Canon Selphy (USB list, then Wi‑Fi)
+/// even when DNP already printed. On Amlogic Mini PCs that ANRs the process
+/// while the DNP interface is still claimed.
+bool shouldAttemptSelphyPrint({
+  required bool trySelphy,
+  required bool dnpSucceeded,
+}) {
+  return trySelphy && !dnpSucceeded;
+}
+
 /// After always initiating DNP + Selphy, succeed if either printed.
 void throwIfNoPhotoPrinterSucceeded({
   required bool dnpSucceeded,
