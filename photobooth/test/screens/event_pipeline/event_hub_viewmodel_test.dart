@@ -10,6 +10,7 @@ import 'package:photobooth/models/event_pipeline/printer_consumables.dart';
 import 'package:photobooth/screens/event_pipeline/event_hub_viewmodel.dart';
 import 'package:photobooth/services/direct_ptp_camera_service.dart';
 import 'package:photobooth/services/event_manager.dart';
+import 'package:photobooth/services/event_pipeline/capture/event_capture_coordinator.dart';
 import 'package:photobooth/services/event_pipeline/event_media_store.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_config.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_db.dart';
@@ -29,9 +30,33 @@ class FakePrinterStatusReader extends PrinterStatusReader {
   FakePrinterStatusReader({this.consumables = PrinterConsumables.unknown});
 
   PrinterConsumables consumables;
+  int permissionRequests = 0;
+  Completer<void>? permissionGate;
 
   @override
   Future<PrinterConsumables> read() async => consumables;
+
+  @override
+  Future<bool> requestPermission() async {
+    permissionRequests++;
+    final gate = permissionGate;
+    if (gate != null) await gate.future;
+    return true;
+  }
+}
+
+/// Capture that never opens the native viewfinder.
+class FakeCapture extends EventCaptureCoordinator {
+  FakeCapture({this.queued = 2});
+
+  int queued;
+  int calls = 0;
+
+  @override
+  Future<int> runSession() async {
+    calls++;
+    return queued;
+  }
 }
 
 class FakeStorageChannel extends EventStorageChannel {
@@ -149,7 +174,11 @@ void main() {
     if (await root.exists()) await root.delete(recursive: true);
   });
 
-  EventHubViewModel build({EventSyncStatus? initial, EventSyncStatus? after}) {
+  EventHubViewModel build({
+    EventSyncStatus? initial,
+    EventSyncStatus? after,
+    EventCaptureCoordinator? capture,
+  }) {
     return EventHubViewModel(
       config: config,
       events: events,
@@ -162,6 +191,7 @@ void main() {
       storage: storage,
       mediaStore: EventMediaStore(resolveDirectory: () async => mediaDir),
       camera: camera,
+      capture: capture,
       openDb: () async => db,
       runner: EventPipelineRunner(
         config: config,
@@ -698,6 +728,71 @@ void main() {
       await Future.wait([vm.resync(), vm.resync()]);
 
       expect(sync.syncCalls, afterStart + 1);
+    });
+  });
+
+  group('capture', () {
+    test('is a no-op until the camera is ready', () async {
+      camera.device = null;
+      final capture = FakeCapture();
+      final vm = build(initial: synced, capture: capture);
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(await vm.capture(), 0);
+      expect(capture.calls, 0);
+    });
+
+    test('runs the session and refreshes the counters', () async {
+      final capture = FakeCapture(queued: 3);
+      final vm = build(initial: synced, capture: capture);
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(await vm.capture(), 3);
+      expect(capture.calls, 1);
+    });
+  });
+
+  group('allow printer', () {
+    test('asks for the grant and looks at the printer again', () async {
+      printer.consumables = PrinterConsumables.needsPermission;
+      final vm = build(initial: synced);
+      await vm.start();
+      addTearDown(vm.dispose);
+      expect(
+        vm.readinessRows
+            .firstWhere((r) => r.kind == ReadinessKind.printer)
+            .tone,
+        ReadinessTone.blocked,
+      );
+
+      printer.consumables = const PrinterConsumables(
+        code: 0,
+        readiness: PrinterReadiness.ready,
+        name: 'DS-RX1',
+      );
+      await vm.allowPrinter();
+
+      expect(printer.permissionRequests, 1);
+      final row =
+          vm.readinessRows.firstWhere((r) => r.kind == ReadinessKind.printer);
+      expect(row.tone, ReadinessTone.ok);
+    });
+
+    test('a second tap while one is in flight is ignored', () async {
+      printer.permissionGate = Completer<void>();
+      final vm = build(initial: synced);
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      final first = vm.allowPrinter();
+      await _until(() => printer.permissionRequests == 1);
+      await vm.allowPrinter();
+      expect(printer.permissionRequests, 1);
+
+      printer.permissionGate!.complete();
+      await first;
     });
   });
 

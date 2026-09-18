@@ -5,6 +5,7 @@ import 'package:photobooth/models/event_pipeline/event_pipeline_flags.dart';
 import 'package:photobooth/models/event_pipeline/media_item.dart';
 import 'package:photobooth/models/event_info_model.dart';
 import 'package:photobooth/models/event_pipeline/media_rendition.dart';
+import 'package:photobooth/models/event_pipeline/pipeline_job.dart';
 import 'package:photobooth/screens/event_pipeline/event_queue_viewmodel.dart';
 import 'package:photobooth/services/event_manager.dart';
 import 'package:photobooth/services/event_pipeline/event_media_store.dart';
@@ -669,13 +670,15 @@ void main() {
       runner.stop();
 
       final queue = EventPipelineQueue(db: db);
-      await queue.enqueue(kind: 'print', mediaId: 'm1');
-
       await vm.setPaused(true);
+      // Pause first, then enqueue, so a live print worker cannot snatch the
+      // row before the hold is in place.
+      await queue.enqueue(kind: 'print', mediaId: 'm1');
       expect(await queue.claimReady('print'), isEmpty);
 
       await vm.setPaused(false);
       expect(vm.isPaused, isFalse);
+      expect(await queue.isPaused(), isFalse);
       expect(await queue.claimReady('print'), hasLength(1));
     });
 

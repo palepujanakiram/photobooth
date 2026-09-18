@@ -1,5 +1,5 @@
-# Build Android AAB and distribute via Fastlane (Google Play + Firebase).
-# Play JSON is written to fastlane/credentials/; set FIREBASE_TOKEN etc. in fastlane/Fastfile.
+# Build Android AAB + APK via Fastlane. AAB → Google Play Console (internal).
+# APK is built and logged; it is not uploaded.
 
 name: Mobile release
 
@@ -28,9 +28,6 @@ jobs:
         with:
           channel: stable
           cache: true
-
-      - name: Sync build version
-        run: dart run tool/sync_build_version.dart
 
       - name: Flutter dependencies
         run: flutter pub get
@@ -66,12 +63,14 @@ jobs:
         env:
           PLAY_STORE_JSON_KEY_DATA: ${{ secrets.PLAY_STORE_JSON_KEY_DATA }}
         run: |
-          if [ -z "$PLAY_STORE_JSON_KEY_DATA" ]; then
-            echo "::error::PLAY_STORE_JSON_KEY_DATA secret is required."
+          dest=fastlane/credentials/play-store-service-account.json
+          mkdir -p fastlane/credentials
+          if [ -n "$PLAY_STORE_JSON_KEY_DATA" ]; then
+            echo "$PLAY_STORE_JSON_KEY_DATA" > "$dest"
+          elif [ ! -f "$dest" ]; then
+            echo "::error::Play Store JSON missing. Set GitHub secret PLAY_STORE_JSON_KEY_DATA (do not commit the key)."
             exit 1
           fi
-          mkdir -p fastlane/credentials
-          echo "$PLAY_STORE_JSON_KEY_DATA" > fastlane/credentials/play-store-service-account.json
 
       - name: Fastlane android generatebuild
         env:

@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:photobooth/models/event_pipeline/media_item.dart';
 import 'package:photobooth/services/event_pipeline/ingest/card_detect_channel.dart';
 import 'package:photobooth/services/event_pipeline/ingest/event_storage_channel.dart';
 import 'package:photobooth/services/event_pipeline/ingest/media_store_ingest_source.dart';
@@ -188,6 +189,51 @@ void main() {
       );
       expect(await source.listAll(), isEmpty);
     });
+
+    test('coerces loosely typed size and timestamps from the cursor', () async {
+      mockChannel(EventStorageChannel.channelName, (call) async {
+        if (call.method != 'queryImages') return null;
+        return [
+          <Object?, Object?>{
+            'uri': 'content://media/1e6f-0961/images/media/2',
+            'displayName': 'IMG_1.JPG',
+            'relativePath': 'DCIM/100CANON/IMG_1.JPG',
+            'sizeBytes': 6921200.0,
+            'modifiedAtMs': '1691754732000',
+            'capturedAtMs': 1691754731900,
+          },
+        ];
+      });
+      final source = MediaStoreIngestSource(
+        volume: volume,
+        scanFolders: const ['DCIM'],
+      );
+      final c = (await source.listAll()).single;
+      expect(c.sizeBytes, 6921200);
+      expect(c.modifiedAtMs, 1691754732000);
+    });
+
+    test('id and label name the volume the operator would recognise', () {
+      final named = MediaStoreIngestSource(
+        volume: volume,
+        scanFolders: const ['DCIM'],
+      );
+      expect(named.id, '1E6F-0961');
+      expect(named.sourceKind, MediaSource.sdCard);
+      expect(named.label, 'SD card (1E6F-0961)');
+
+      final unnamed = MediaStoreIngestSource(
+        volume: const ExternalVolume(
+          uuid: 'ABCD-0001',
+          description: '  ',
+          isRemovable: true,
+          isIndexed: true,
+          mediaStoreVolumeName: 'abcd-0001',
+        ),
+        scanFolders: const ['DCIM'],
+      );
+      expect(unnamed.label, 'SD card (ABCD-0001)');
+    });
   });
 
   group('MediaStoreSettleWatcher', () {
@@ -303,6 +349,38 @@ void main() {
       });
       expect(event!.isMassStorage, isTrue);
       expect(event.vendorId, 1507);
+    });
+  });
+
+  group('CardDetectChannel', () {
+    test('emits parsed events and keeps listening after junk or a platform error',
+        () async {
+      const channel = EventChannel(CardDetectChannel.channelName);
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockStreamHandler(
+        channel,
+        MockStreamHandler.inline(
+          onListen: (args, sink) {
+            sink.success(<Object?, Object?>{'kind': 'mounted', 'path': '/sd'});
+            sink.success('not-a-map');
+            sink.success(<Object?, Object?>{'kind': 'wat'});
+            sink.error(code: 'card_error', message: 'receiver died');
+            sink.success(<Object?, Object?>{'kind': 'usbDetached'});
+            sink.endOfStream();
+          },
+        ),
+      );
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockStreamHandler(channel, null);
+      });
+
+      final events =
+          await CardDetectChannel(channel: channel).events().toList();
+      expect(events.map((e) => e.kind), [
+        CardEventKind.mounted,
+        CardEventKind.usbDetached,
+      ]);
     });
   });
 }
