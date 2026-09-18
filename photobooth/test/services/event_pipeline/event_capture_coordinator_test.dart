@@ -10,6 +10,7 @@ import 'package:photobooth/models/event_pipeline/media_rendition.dart';
 import 'package:photobooth/services/direct_ptp_camera_service.dart';
 import 'package:photobooth/services/event_manager.dart';
 import 'package:photobooth/services/event_pipeline/capture/event_capture_coordinator.dart';
+import 'package:photobooth/services/event_pipeline/capture/event_capture_source.dart';
 import 'package:photobooth/services/event_pipeline/event_media_store.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_config.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_db.dart';
@@ -367,5 +368,26 @@ void main() {
   test('it reports the attached camera by name', () async {
     expect(await build().cameraName(), isNull,
         reason: 'the fake probes nothing, so there is no camera to name');
+  });
+
+  test('storage is the runner ledger', () async {
+    expect(build().hasStorage, isTrue);
+  });
+
+  test('a phone still is recorded as a device camera photo', () async {
+    final coordinator = build();
+    final shot = await frameOnDisk();
+    final outcome = await coordinator.commitShot(
+      CapturedShot(
+        originalPath: shot.originalPath,
+        capturedAtMs: shot.capturedAtMs,
+        width: shot.widthPx,
+        height: shot.heightPx,
+        bytes: shot.bytes,
+      ),
+    );
+    expect(outcome.queued, isTrue);
+    final rows = await db.database.query('evp_media_items');
+    expect(rows.single['source'], MediaSource.camera);
   });
 }

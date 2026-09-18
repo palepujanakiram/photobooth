@@ -18,6 +18,7 @@ import '../../services/event_pipeline/event_pipeline_stats.dart';
 import '../../services/event_pipeline/event_pipeline_sync.dart';
 import '../../services/event_pipeline/ingest/event_storage_channel.dart';
 import '../../services/event_pipeline/printer_status_reader.dart';
+import '../../utils/event_device_cameras.dart';
 import '../../utils/event_pipeline_capabilities.dart';
 import '../../utils/logger.dart';
 
@@ -41,6 +42,8 @@ class EventHubViewModel extends ChangeNotifier {
     EventMediaStore? mediaStore,
     DirectPtpCameraService? camera,
     EventCaptureCoordinator? capture,
+    EventPipelineCapabilities? capabilities,
+    Future<List<String>> Function()? listDeviceCameras,
     Future<EventPipelineDb?> Function()? openDb,
     Duration refreshInterval = const Duration(seconds: 4),
     Duration hardwareWindow = const Duration(seconds: 15),
@@ -60,6 +63,8 @@ class EventHubViewModel extends ChangeNotifier {
               events: events,
               mediaStore: mediaStore,
             ),
+        _caps = capabilities ?? EventPipelineCapabilities.ofPlatform(),
+        _listDeviceCameras = listDeviceCameras ?? _defaultDeviceCameras,
         _openDb = openDb ?? EventPipelineDb.openDefault,
         _refreshInterval = refreshInterval,
         _hardwareWindow = hardwareWindow,
@@ -81,6 +86,8 @@ class EventHubViewModel extends ChangeNotifier {
   final EventMediaStore _media;
   final DirectPtpCameraService _camera;
   final EventCaptureCoordinator _capture;
+  final EventPipelineCapabilities _caps;
+  final Future<List<String>> Function() _listDeviceCameras;
   final Future<EventPipelineDb?> Function() _openDb;
   final Duration _refreshInterval;
 
@@ -100,10 +107,14 @@ class EventHubViewModel extends ChangeNotifier {
 
   static int _defaultNowMs() => DateTime.now().millisecondsSinceEpoch;
 
+  static Future<List<String>> _defaultDeviceCameras() =>
+      EventDeviceCameras.listNames();
+
   /// When the current discovery window opened. Null once it has closed.
   int? _windowOpenedAtMs;
   bool _rechecking = false;
   String? _cameraNameCache;
+  EventCaptureKind _captureKind = EventCaptureKind.none;
   PrinterConsumables? _printerCache;
   FrameCacheStatus? _frameCache;
   int? _freeBytesCache;
@@ -133,6 +144,10 @@ class EventHubViewModel extends ChangeNotifier {
   List<ReadinessRow> get readinessRows => _readiness?.rows ?? const [];
   bool get canImport => _readiness?.canImport ?? false;
   bool get canCapture => _readiness?.canCapture ?? false;
+
+  /// Capture will open the phone/webcam picker, not the Canon Activity.
+  bool get usesDeviceCapture => _captureKind == EventCaptureKind.device;
+
   String? get importBlockedReason =>
       _readiness?.importBlockedReason ?? EventReadiness.waitingForSettings;
   String? get captureBlockedReason =>
@@ -163,6 +178,7 @@ class EventHubViewModel extends ChangeNotifier {
   /// accepted, not at the end — this count is the tally, not the commit.
   Future<int> capture() async {
     if (!canCapture) return 0;
+    if (_captureKind == EventCaptureKind.device) return 0;
     final queued = await _capture.runSession();
     // Whatever landed is in the ledger now, so the counters are stale.
     await refresh();
@@ -206,7 +222,6 @@ class EventHubViewModel extends ChangeNotifier {
     );
     final counters = await _stats.read();
     await _refreshHardware(settings, force: probeHardware);
-    final caps = EventPipelineCapabilities.ofPlatform();
     final readiness = EventReadiness.evaluate(EventReadinessInput(
       settings: settings,
       hasSyncedOnce: _syncStatus.hasSyncedOnce,
@@ -219,8 +234,8 @@ class EventHubViewModel extends ChangeNotifier {
       freeBytes: _freeBytesCache,
       queuePaused: counters.queuePaused,
       inFlight: counters.inFlight,
-      importCapable: caps.canImport,
-      captureCapable: caps.canCapture,
+      importCapable: _caps.canImport,
+      captureCapable: _caps.canCapture,
       // The last sync reaching ZenAI is the honest signal for whether AI jobs
       // will run: a link that carried the config is a link that carries a
       // generation, and there is no separate reachability check to pay for.
@@ -247,7 +262,7 @@ class EventHubViewModel extends ChangeNotifier {
         return;
       }
     }
-    _cameraNameCache = await _cameraName();
+    await _probeCamera();
     _printerCache = await _printer.read();
     _frameCache = await _frameStatus(settings);
     _freeBytesCache = await _freeBytes();
@@ -297,19 +312,38 @@ class EventHubViewModel extends ChangeNotifier {
     _eventTagline = event?.description;
   }
 
-  /// Model of whatever is on the USB bus, without connecting to it.
+  /// Canon on USB first; otherwise this device's camera or webcam.
   ///
   /// Probing rather than connecting matters: opening a PTP session to answer a
   /// readiness row would take the camera out of the photographer's hands.
-  Future<String?> _cameraName() async {
+  Future<void> _probeCamera() async {
+    _captureKind = EventCaptureKind.none;
+    _cameraNameCache = null;
     try {
       final device = await _camera.probeDevice();
-      if (device == null) return null;
-      final product = device.product?.trim() ?? '';
-      return product.isEmpty ? device.deviceName : product;
+      if (device != null) {
+        final product = device.product?.trim() ?? '';
+        _cameraNameCache = product.isEmpty ? device.deviceName : product;
+        _captureKind = EventCaptureKind.ptp;
+        return;
+      }
     } catch (e) {
       AppLogger.debug('Camera probe failed: $e');
-      return null;
+    }
+    await _probeDeviceCamera();
+  }
+
+  Future<void> _probeDeviceCamera() async {
+    if (!_caps.canCaptureDevice) return;
+    try {
+      final names = await _listDeviceCameras();
+      if (names.isEmpty) return;
+      _cameraNameCache = EventDeviceCameras.labelFor(
+        isWeb: !_caps.hasLocalLedger,
+      );
+      _captureKind = EventCaptureKind.device;
+    } catch (e) {
+      AppLogger.debug('Device camera list failed: $e');
     }
   }
 

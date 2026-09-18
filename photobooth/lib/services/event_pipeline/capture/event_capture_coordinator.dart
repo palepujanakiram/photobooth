@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../../../models/event_pipeline/media_item.dart';
 import '../../../utils/logger.dart';
 import '../../direct_ptp_camera_service.dart';
 import '../../event_manager.dart';
@@ -128,16 +129,9 @@ class EventCaptureCoordinator {
   Future<CaptureCommitOutcome> _commitInner(
     DirectPtpShot shot,
     Future<String?> eventId,
-  ) async {
-    final ledger = _runner.ledger;
-    if (ledger == null) {
-      return const CaptureCommitOutcome(
-        queued: false,
-        message: 'Storage unavailable — not queued',
-      );
-    }
-    try {
-      final source = CapturedShotSource(CapturedShot(
+  ) {
+    return commitShot(
+      CapturedShot(
         originalPath: shot.originalPath,
         previewPath: shot.displayPath,
         capturedAtMs: shot.capturedAtMs == 0
@@ -146,7 +140,31 @@ class EventCaptureCoordinator {
         width: shot.widthPx,
         height: shot.heightPx,
         bytes: shot.bytes,
-      ));
+      ),
+      sourceKind: MediaSource.ptp,
+      eventId: eventId,
+    );
+  }
+
+  /// Whether accepted frames can land in the local event ledger.
+  bool get hasStorage => _runner.ledger != null;
+
+  /// Queues one already-captured file. Used by the native PTP session and by
+  /// the phone/webcam screen, so both origins share ingest.
+  Future<CaptureCommitOutcome> commitShot(
+    CapturedShot shot, {
+    String sourceKind = MediaSource.camera,
+    Future<String?>? eventId,
+  }) async {
+    final ledger = _runner.ledger;
+    if (ledger == null) {
+      return const CaptureCommitOutcome(
+        queued: false,
+        message: 'Storage unavailable — not queued',
+      );
+    }
+    try {
+      final source = CapturedShotSource(shot, sourceKind: sourceKind);
       final candidates = await source.listAll();
       if (candidates.isEmpty) {
         return const CaptureCommitOutcome(
@@ -162,7 +180,7 @@ class EventCaptureCoordinator {
         source,
         candidates,
         settings: _runner.settings,
-        eventId: await eventId,
+        eventId: await (eventId ?? _events.getEventId()),
       );
       if (report.mediaIds.isEmpty) {
         return CaptureCommitOutcome(

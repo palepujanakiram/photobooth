@@ -863,7 +863,13 @@ abstract final class AppStrings {
   static const eventHubTitle = 'Event';
   static const eventHubImport = 'Import from card';
   static const eventHubCapture = 'Capture';
+  static const eventHubPhoneCamera = 'Phone camera';
+  static const eventHubWebcam = 'Webcam';
   static const eventHubOpenQueue = 'Open queue';
+  static const eventDeviceCaptureAccept = 'Add to queue';
+  static const eventDeviceCaptureRetake = 'Retake';
+  static const eventDeviceCaptureDone = 'Done';
+  static const eventDeviceCaptureNothing = 'Nothing to add';
   static const eventHubSyncing = 'Syncing…';
   static const eventStationSdImport = 'SD import';
   static const eventStationSdImportHint =

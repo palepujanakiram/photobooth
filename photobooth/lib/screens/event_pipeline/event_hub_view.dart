@@ -127,13 +127,28 @@ class _HubBody extends StatelessWidget {
     );
   }
 
-  /// Opens the native viewfinder and reports what the session queued.
-  ///
-  /// The screen stays up until the operator closes it, queueing each frame they
-  /// accept as it lands, so this returns once — with the evening's count.
+  /// Opens capture: Canon Activity on the event box, phone/webcam otherwise.
   Future<void> _capture(BuildContext context, EventHubViewModel vm) async {
-    final queued = await vm.capture();
+    final int queued;
+    if (vm.usesDeviceCapture) {
+      queued = await _deviceCapture(context);
+    } else {
+      queued = await vm.capture();
+    }
     if (!context.mounted) return;
+    _showQueued(context, queued);
+  }
+
+  Future<int> _deviceCapture(BuildContext context) async {
+    final nav = Navigator.of(context);
+    final result = await nav.pushNamed(AppConstants.kRouteEventDeviceCapture);
+    if (context.mounted) {
+      await context.read<EventHubViewModel>().refresh();
+    }
+    return result is int ? result : 0;
+  }
+
+  void _showQueued(BuildContext context, int queued) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(

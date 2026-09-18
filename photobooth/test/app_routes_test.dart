@@ -7,7 +7,8 @@ void main() {
   test('buildAppRoutes registers core route names', () {
     final routes = buildAppRoutes();
     expect(routes.keys, contains(AppConstants.kRouteHome));
-    expect(routes.keys, contains(AppConstants.kRouteCapture));
+    expect(routes.keys, contains(AppConstants.kRouteEventHub));
+    expect(routes.keys, contains(AppConstants.kRouteEventDeviceCapture));
     expect(routes.keys, contains(AppConstants.kRouteTerms));
     expect(routes[AppConstants.kRouteSplash], isNotNull);
   });
