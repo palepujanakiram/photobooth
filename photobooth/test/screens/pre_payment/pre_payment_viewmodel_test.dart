@@ -950,7 +950,10 @@ class _AlwaysNullSessionApi extends FakeApiService {
         );
 
   @override
-  Future<Map<String, dynamic>?> fetchSession(String sessionId) async {
+  Future<Map<String, dynamic>?> fetchSession(
+    String sessionId, {
+    String? sessionToken,
+  }) async {
     fetchSessionCalls++;
     return null;
   }
@@ -967,7 +970,10 @@ class _AlwaysNullPaymentStatusApi extends FakeApiService {
   }
 
   @override
-  Future<Map<String, dynamic>?> fetchSession(String sessionId) async {
+  Future<Map<String, dynamic>?> fetchSession(
+    String sessionId, {
+    String? sessionToken,
+  }) async {
     fetchSessionCalls++;
     return null;
   }

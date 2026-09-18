@@ -280,6 +280,7 @@ class _ThemesFakeApi extends FakeApiService {
     String? selectedFrameId,
     int? personCount,
     Map<String, dynamic>? framingMetadata,
+    String? sessionToken,
   }) async {
     lastSelectedThemeId = selectedThemeId;
     if (patchThrowsNetwork) {

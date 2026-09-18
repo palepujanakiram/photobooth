@@ -25,6 +25,7 @@ class _PatchApi extends FakeApiService {
     String? selectedFrameId,
     int? personCount,
     Map<String, dynamic>? framingMetadata,
+    String? sessionToken,
   }) async {
     return {
       'id': sessionId,

@@ -249,7 +249,10 @@ class _FetchThenReadyApi extends FakeApiService {
   var _fetchCount = 0;
 
   @override
-  Future<Map<String, dynamic>?> fetchSession(String sessionId) async {
+  Future<Map<String, dynamic>?> fetchSession(
+    String sessionId, {
+    String? sessionToken,
+  }) async {
     _onFetch();
     _fetchCount++;
     if (_fetchCount == 1) return {};
@@ -265,6 +268,7 @@ class _FetchThenReadyApi extends FakeApiService {
     String? selectedFrameId,
     int? personCount,
     Map<String, dynamic>? framingMetadata,
+    String? sessionToken,
   }) async {
     return _sessionJson(sessionId);
   }

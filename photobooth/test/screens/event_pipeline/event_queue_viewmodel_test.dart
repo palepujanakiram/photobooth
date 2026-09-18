@@ -655,12 +655,21 @@ void main() {
     });
 
     test('resuming releases the work', () async {
-      final queue = EventPipelineQueue(db: db);
-      await queue.enqueue(kind: 'print', mediaId: 'm1');
-
       final vm = build();
       await vm.start();
       addTearDown(vm.dispose);
+
+      // Stop the workers, and only then enqueue. A real PrintJobWorker is live
+      // here — `setUp` starts one and `vm.start()` restarts it — and it claims
+      // any `print` job the moment it appears, then fails it, because there is
+      // nothing to print in a unit test. Racing it for the same row made this
+      // assert on whichever won. `stop()` leaves the queue wired, so the
+      // view model still works; pause and resume are queue behaviour, and the
+      // test needs to own the queue to observe them.
+      runner.stop();
+
+      final queue = EventPipelineQueue(db: db);
+      await queue.enqueue(kind: 'print', mediaId: 'm1');
 
       await vm.setPaused(true);
       expect(await queue.claimReady('print'), isEmpty);

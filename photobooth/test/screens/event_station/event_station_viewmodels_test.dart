@@ -570,6 +570,8 @@ class _FakeMediaApi extends ApiService {
   Future<XFile> downloadImageToTemp(
     String imageUrl, {
     void Function(String message)? onProgress,
+    String? sessionToken,
+    String? sessionId,
   }) async {
     return _tmpPrintFile();
   }

@@ -71,6 +71,7 @@ class _FailingGenerateApiService extends FakeApiService {
     required String themeId,
     void Function(String message)? onProgress,
     void Function(String eventType, Map<String, dynamic> json)? onSseEvent,
+    String? sessionToken,
   }) async {
     throw ApiException('fail gen');
   }
