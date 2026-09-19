@@ -24,9 +24,11 @@ import kotlin.math.roundToInt
  * AI needs WAN and stays a server call; framing is local, and that is what lets
  * an AI-off event finish its whole chain with no network at all.
  *
- * The photo is cover-fitted onto the print raster the same way
- * `DnpImageProcessor` does, so a framed print and an unframed one are composed
- * identically — otherwise the two would subtly disagree on crop.
+ * Occasion overlays with a caption bar (JustMarried) have a partial transparent
+ * window. The capture is cover-fitted into that hole — same as zenai
+ * `composeFrame` — so the subject fills the photo window instead of the whole
+ * sheet (which would hide them behind the footer). Full-bleed borders and
+ * frame-off jobs still cover the print raster like `DnpImageProcessor`.
  */
 object EventFrameCompositor {
     private const val TAG = "EventFrameCompositor"
@@ -114,16 +116,23 @@ object EventFrameCompositor {
         canvas.drawColor(Color.WHITE)
 
         val photo = decode(context, photoPath, width, height)
-        drawCoverFitted(canvas, photo, width, height)
-        photo.recycle()
-
-        if (!framePath.isNullOrBlank()) {
-            val frame = decode(context, framePath, width, height)
+        if (framePath.isNullOrBlank()) {
+            drawCoverFitted(canvas, photo, width, height)
+        } else {
+            val frame = decodeOverlay(context, framePath, width, height)
+            val dest = fittedRect(frame.width, frame.height, width, height)
+            val hole = photoDestOnCanvas(frame, dest)
+            if (hole != null) {
+                drawCoverFitted(canvas, photo, hole)
+            } else {
+                drawCoverFitted(canvas, photo, width, height)
+            }
             // Fitted, not stretched. A frame whose aspect ratio does not match
             // the print size letterboxes rather than distorting the artwork.
-            drawFitted(canvas, frame, width, height)
+            canvas.drawBitmap(frame, null, dest, null)
             frame.recycle()
         }
+        photo.recycle()
 
         val stream = ByteArrayOutputStream()
         canvasBitmap.compress(Bitmap.CompressFormat.JPEG, quality, stream)
@@ -216,42 +225,121 @@ object EventFrameCompositor {
     }
 
     /**
-     * Fills the canvas, cropping the overflow — matching `DnpImageProcessor`.
+     * Overlay PNG must keep its alpha. [ImageDecoder] can flatten that on some
+     * API levels, which would hide the photo window and fall back to the old
+     * cover-the-sheet crop.
      */
+    private fun decodeOverlay(
+        context: Context,
+        path: String,
+        maxWidth: Int,
+        maxHeight: Int,
+    ): Bitmap {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        decodeWithFactory(context, path, bounds)
+        val longest = max(bounds.outWidth, bounds.outHeight)
+        val limit = max(maxWidth, maxHeight) * 2
+        val options =
+            BitmapFactory.Options().apply {
+                inJustDecodeBounds = false
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+                inSampleSize = overlaySampleSize(longest, limit)
+            }
+        val decoded =
+            decodeWithFactory(context, path, options)
+                ?: error("Could not decode frame overlay $path")
+        return if (decoded.config == Bitmap.Config.ARGB_8888) {
+            decoded
+        } else {
+            decoded.copy(Bitmap.Config.ARGB_8888, false)?.also { decoded.recycle() }
+                ?: decoded
+        }
+    }
+
+    internal fun overlaySampleSize(longest: Int, limit: Int): Int {
+        if (longest <= 0 || limit <= 0 || longest <= limit) return 1
+        var sample = 1
+        while (longest / (sample * 2) >= limit) {
+            sample *= 2
+        }
+        return sample
+    }
+
+    private fun decodeWithFactory(
+        context: Context,
+        path: String,
+        options: BitmapFactory.Options,
+    ): Bitmap? {
+        return if (path.startsWith("content://")) {
+            context.contentResolver.openInputStream(android.net.Uri.parse(path))
+                ?.use { BitmapFactory.decodeStream(it, null, options) }
+        } else {
+            BitmapFactory.decodeFile(path, options)
+        }
+    }
+
+    /**
+     * Canvas rectangle for the overlay's transparent photo window, or null
+     * when the PNG is a full-bleed border (legacy cover-the-sheet path).
+     */
+    fun photoDestOnCanvas(frame: Bitmap, dest: Rect): Rect? {
+        val hole = readTransparentHole(frame) ?: return null
+        if (!EventFrameHole.isPartialPhotoHole(hole, frame.width, frame.height)) {
+            return null
+        }
+        val mapped =
+            EventFrameHole.mapToDest(
+                hole,
+                frame.width,
+                frame.height,
+                dest.left,
+                dest.top,
+                dest.width(),
+                dest.height(),
+            )
+        if (mapped.width < 8 || mapped.height < 8) return null
+        return Rect(mapped.left, mapped.top, mapped.right, mapped.bottom)
+    }
+
+    private fun readTransparentHole(frame: Bitmap): EventFrameHole.Box? {
+        val readable =
+            if (frame.config == Bitmap.Config.ARGB_8888) {
+                frame
+            } else {
+                frame.copy(Bitmap.Config.ARGB_8888, false) ?: return null
+            }
+        val width = readable.width
+        val height = readable.height
+        val pixels = IntArray(width * height)
+        readable.getPixels(pixels, 0, width, 0, 0, width, height)
+        if (readable !== frame) readable.recycle()
+        return EventFrameHole.findTransparentHole(width, height, pixels)
+    }
+
+    /** Fills [dest], cropping the overflow — matching `DnpImageProcessor`. */
     private fun drawCoverFitted(
         canvas: Canvas,
         bitmap: Bitmap,
         width: Int,
         height: Int,
     ) {
-        val srcRatio = bitmap.width.toDouble() / bitmap.height.toDouble()
-        val dstRatio = width.toDouble() / height.toDouble()
-        val src =
-            if (srcRatio > dstRatio) {
-                // Source is wider: crop its sides.
-                val cropWidth = (bitmap.height * dstRatio).roundToInt()
-                val inset = (bitmap.width - cropWidth) / 2
-                Rect(inset, 0, inset + cropWidth, bitmap.height)
-            } else {
-                // Source is taller: crop top and bottom.
-                val cropHeight = (bitmap.width / dstRatio).roundToInt()
-                val inset = (bitmap.height - cropHeight) / 2
-                Rect(0, inset, bitmap.width, inset + cropHeight)
-            }
-        canvas.drawBitmap(bitmap, src, Rect(0, 0, width, height), null)
+        drawCoverFitted(canvas, bitmap, Rect(0, 0, width, height))
     }
 
-    /**
-     * Fits the whole bitmap inside the canvas, centred, preserving aspect ratio.
-     */
-    private fun drawFitted(
+    private fun drawCoverFitted(
         canvas: Canvas,
         bitmap: Bitmap,
-        width: Int,
-        height: Int,
+        dest: Rect,
     ) {
-        val dst = fittedRect(bitmap.width, bitmap.height, width, height)
-        canvas.drawBitmap(bitmap, null, dst, null)
+        val crop =
+            EventFrameHole.coverCropSource(
+                bitmap.width,
+                bitmap.height,
+                dest.width(),
+                dest.height(),
+            )
+        val src = Rect(crop.left, crop.top, crop.right, crop.bottom)
+        canvas.drawBitmap(bitmap, src, dest, null)
     }
 
     /** Extracted so the letterbox maths can be reasoned about on its own. */

@@ -1300,6 +1300,7 @@ void main() {
     await three.loadFilters();
     expect(three.supportsSheetLayouts, isFalse);
     expect(three.frames.any((f) => f.id.startsWith('st:')), isFalse);
+    expect(three.frames.any((f) => f.id == 's3:tpl-1'), isTrue);
     expect(three.frames.any((f) => f.id.startsWith('fr:')), isFalse);
     expect(three.frames.any((f) => f.id.startsWith('ai:')), isFalse);
     expect(three.frames.any((f) => f.id == 'f3:frame-1'), isTrue);
@@ -1315,7 +1316,9 @@ void main() {
     );
     await four.loadFilters();
     expect(four.frames.any((f) => f.id == 'fr:frame-1'), isTrue);
+    expect(four.frames.any((f) => f.id == 'st:tpl-1'), isTrue);
     expect(four.frames.any((f) => f.id.startsWith('f3:')), isFalse);
+    expect(four.frames.any((f) => f.id.startsWith('s3:')), isFalse);
     expect(four.selectedFrameId, 'fr:frame-1');
     four.selectFrame('fr:frame-1');
     expect(four.selectedFrameId, 'fr:frame-1');
@@ -2462,6 +2465,14 @@ class _TemplateFramesFakeApi extends _StripFakeApi {
           'description': 'Scrapbook',
           'kind': 'template',
           'overlayUrl': 'https://example.com/st.png',
+        },
+        {
+          'id': 's3:tpl-1',
+          'name': 'HAMA FILM 3-shot',
+          'description': 'Scrapbook 3-shot',
+          'kind': 'template',
+          'overlayUrl': 'https://example.com/s3.png',
+          'shotCount': 3,
         },
         {
           'id': 'fr:frame-1',

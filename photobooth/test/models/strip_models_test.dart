@@ -389,6 +389,7 @@ void main() {
     expect(three.isTemplate, isTrue);
     expect(isStrip3TemplateFrame(three.id), isTrue);
     expect(isStripTemplateFrame(three.id), isTrue);
+    expect(isFrameStrip3VariantId(three.id), isTrue);
     expect(three.shotCount, 3);
     expect(classicFrameCatalogShotCount(three), 3);
     expect(classicFrameVisibleForShotCount(three, 3), isTrue);
@@ -415,14 +416,35 @@ void main() {
     expect(classicFrameVisibleForShotCount(one, 4), isFalse);
     expect(isOccasionFrameId('ai:'), isFalse);
     expect(isStrip3TemplateFrame('f3:'), isFalse);
+    expect(isFrameStrip3VariantId('f3:frame-uuid'), isTrue);
     expect(isFrameStripVariantId('fr:frame-uuid'), isTrue);
     expect(isFrameStripVariantId('fr:'), isFalse);
     expect(classicFrameDbId('ai:frame-uuid'), 'frame-uuid');
     expect(classicFrameDbId('f3:frame-uuid'), 'frame-uuid');
     expect(classicFrameDbId('fr:frame-uuid'), 'frame-uuid');
     expect(classicFrameDbId('st:tpl-1'), 'tpl-1');
+    expect(classicFrameDbId('s3:tpl-1'), 'tpl-1');
     expect(classicFrameDbId('classic'), isNull);
     expect(classicFrameDbId('ai:'), isNull);
+  });
+
+  test('StripFrame treats scrapbook s3: as 3-shot templates', () {
+    final three = StripFrame.fromJson({
+      'id': 's3:tpl-1',
+      'name': 'HAMA FILM 3-shot',
+      'description': 'Scrapbook',
+      'kind': 'template',
+      'overlayUrl': 'https://example.com/s3.png',
+      'shotCount': 3,
+    });
+    expect(isStripTemplate3Frame(three.id), isTrue);
+    expect(isStrip3TemplateFrame(three.id), isTrue);
+    expect(isFrameStrip3VariantId(three.id), isFalse);
+    expect(isStripTemplateFrame(three.id), isTrue);
+    expect(classicFrameCatalogShotCount(three), 3);
+    expect(classicFrameVisibleForShotCount(three, 3), isTrue);
+    expect(classicFrameVisibleForShotCount(three, 4), isFalse);
+    expect(isStripTemplate3Frame('s3:'), isFalse);
   });
 
   test('StripFrame parses 6x2 template slots', () {
@@ -479,6 +501,19 @@ void main() {
     );
     expect(defaultOccasionStripSlots(3), hasLength(3));
     expect(defaultOccasionStripSlots(4), hasLength(4));
+    final four = defaultOccasionStripSlots(4);
+    expect(four.first.left, kEvenStripInset);
+    expect(four.first.top, kEvenStripHeader);
+    expect(
+      four[1].top - (four[0].top + four[0].height),
+      closeTo(kEvenStripGutter, 1e-9),
+    );
+    final threeSlots = defaultOccasionStripSlots(3);
+    expect(threeSlots.first.width, 1 - 2 * kEvenStripInset);
+    expect(
+      threeSlots[1].top - (threeSlots[0].top + threeSlots[0].height),
+      closeTo(kEvenStripGutter, 1e-9),
+    );
     expect(
       occasionSinglePhotoHole(const <StripTemplateSlot>[]),
       defaultOccasionSinglePhotoHole,
@@ -739,5 +774,7 @@ void main() {
     expect(classicFrameIdVisibleForShotCount('classic', 1), isTrue);
     expect(classicFrameIdVisibleForShotCount('st:tpl', 4), isTrue);
     expect(classicFrameIdVisibleForShotCount('st:tpl', 3), isFalse);
+    expect(classicFrameIdVisibleForShotCount('s3:tpl', 3), isTrue);
+    expect(classicFrameIdVisibleForShotCount('s3:tpl', 4), isFalse);
   });
 }

@@ -26,7 +26,10 @@ String? classicFrameOverlayCacheKey(
   if (isOccasionFrameId(id)) {
     return catalogCacheKeyForFrame(landscape ? '$dbId-land' : dbId);
   }
-  if (isStrip3TemplateFrame(id)) {
+  if (isStripTemplate3Frame(id)) {
+    return catalogCacheKeyForFrame('$dbId-s3');
+  }
+  if (isFrameStrip3VariantId(id)) {
     return catalogCacheKeyForFrame('$dbId-strip3');
   }
   if (isFrameStripVariantId(id)) {

@@ -29,6 +29,7 @@ void main() {
       'frame-frame-1-strip3',
     );
     expect(classicFrameOverlayCacheKey('st:tpl-1'), 'frame-tpl-1');
+    expect(classicFrameOverlayCacheKey('s3:tpl-1'), 'frame-tpl-1-s3');
     expect(classicFrameOverlayCacheKey('classic'), 'frame-classic');
     expect(classicFrameOverlayCacheKey('ai:'), isNull);
     expect(classicFrameOverlayCacheKey(''), isNull);

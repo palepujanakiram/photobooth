@@ -11,6 +11,8 @@ import 'package:photobooth/screens/event_pipeline/event_hub_viewmodel.dart';
 import 'package:photobooth/services/direct_ptp_camera_service.dart';
 import 'package:photobooth/services/event_manager.dart';
 import 'package:photobooth/services/event_pipeline/capture/event_capture_coordinator.dart';
+import 'package:photobooth/utils/app_strings.dart';
+import 'package:photobooth/utils/event_pipeline_capabilities.dart';
 import 'package:photobooth/services/event_pipeline/event_media_store.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_config.dart';
 import 'package:photobooth/services/event_pipeline/event_pipeline_db.dart';
@@ -178,6 +180,8 @@ void main() {
     EventSyncStatus? initial,
     EventSyncStatus? after,
     EventCaptureCoordinator? capture,
+    EventPipelineCapabilities? capabilities,
+    Future<List<String>> Function()? listDeviceCameras,
   }) {
     return EventHubViewModel(
       config: config,
@@ -192,6 +196,8 @@ void main() {
       mediaStore: EventMediaStore(resolveDirectory: () async => mediaDir),
       camera: camera,
       capture: capture,
+      capabilities: capabilities,
+      listDeviceCameras: listDeviceCameras,
       openDb: () async => db,
       runner: EventPipelineRunner(
         config: config,
@@ -376,6 +382,19 @@ void main() {
 
       expect(vm.canCapture, isFalse);
       expect(vm.canImport, isTrue);
+    });
+
+    test('a USB probe failure still uses the phone camera', () async {
+      camera.shouldThrow = true;
+      final vm = build(
+        initial: synced,
+        listDeviceCameras: () async => ['0'],
+      );
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.usesDeviceCapture, isTrue);
+      expect(vm.canCapture, isTrue);
     });
 
     test('unreadable free space is a warning, not a blocked import', () async {
@@ -751,6 +770,97 @@ void main() {
 
       expect(await vm.capture(), 3);
       expect(capture.calls, 1);
+    });
+
+    test('a phone camera enables Capture when no Canon is on USB', () async {
+      camera.device = null;
+      final capture = FakeCapture();
+      final vm = build(
+        initial: synced,
+        capture: capture,
+        listDeviceCameras: () async => ['0'],
+      );
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.canCapture, isTrue);
+      expect(vm.usesDeviceCapture, isTrue);
+      expect(
+        vm.readinessRows.firstWhere((r) => r.kind == ReadinessKind.camera).detail,
+        AppStrings.eventHubPhoneCamera,
+      );
+      expect(await vm.capture(), 0);
+      expect(capture.calls, 0, reason: 'the Dart picker is the view, not PTP');
+    });
+
+    test('a webcam is named on runtimes without a local ledger', () async {
+      camera.device = null;
+      final vm = build(
+        initial: synced,
+        listDeviceCameras: () async => ['webcam'],
+        capabilities: const EventPipelineCapabilities(
+          hasLocalLedger: false,
+          canImportCard: false,
+          canCapturePtp: false,
+          canPrintUsb: false,
+          canCaptureDevice: true,
+        ),
+      );
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.usesDeviceCapture, isTrue);
+      expect(
+        vm.readinessRows.firstWhere((r) => r.kind == ReadinessKind.camera).detail,
+        AppStrings.eventHubWebcam,
+      );
+    });
+
+    test('Canon on USB still wins over the phone camera', () async {
+      final vm = build(
+        initial: synced,
+        listDeviceCameras: () async => ['0'],
+      );
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.usesDeviceCapture, isFalse);
+      expect(
+        vm.readinessRows.firstWhere((r) => r.kind == ReadinessKind.camera).detail,
+        'Canon EOS R',
+      );
+    });
+
+    test('operator consoles do not probe a device camera', () async {
+      camera.device = null;
+      var listed = 0;
+      final vm = build(
+        initial: synced,
+        capabilities: const EventPipelineCapabilities.operatorOnly(),
+        listDeviceCameras: () async {
+          listed++;
+          return ['0'];
+        },
+      );
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(listed, 0);
+      expect(vm.canCapture, isFalse);
+      expect(vm.usesDeviceCapture, isFalse);
+    });
+
+    test('a device-camera probe that throws leaves Capture off', () async {
+      camera.device = null;
+      final vm = build(
+        initial: synced,
+        listDeviceCameras: () async => throw StateError('plugin missing'),
+      );
+      await vm.start();
+      addTearDown(vm.dispose);
+
+      expect(vm.canCapture, isFalse);
+      expect(vm.usesDeviceCapture, isFalse);
     });
   });
 

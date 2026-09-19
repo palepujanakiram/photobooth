@@ -16,6 +16,12 @@ const int kStripShotCount = 4;
 /// Shorter 2×6 strip: three poses instead of four (same fixed print size).
 const int kStripShotCountThree = 3;
 
+/// Even 2×6 gutters (HAMA FILM–style); matches zenai `evenStripSlots`.
+const double kEvenStripInset = 0.045;
+const double kEvenStripHeader = 0.09;
+const double kEvenStripFooter = 0.07;
+const double kEvenStripGutter = 0.018;
+
 /// Strip lengths a Classic multi-shot session may run.
 const List<int> kClassicStripShotCounts = <int>[
   kStripShotCountThree,
@@ -66,9 +72,10 @@ const List<String> kStripSheetLayoutIds = [
 bool isStripSheetLayout(String frameId) =>
     kStripSheetLayoutIds.contains(frameId);
 
-/// Admin scrapbook templates (`st:`), occasion 4-shot 6×2 (`fr:`), 3-shot (`f3:`).
+/// Scrapbook `st:`/`s3:` and occasion 6×2 `fr:`/`f3:`.
 bool isStripTemplateFrame(String frameId) =>
     frameId.startsWith('st:') ||
+    frameId.startsWith('s3:') ||
     frameId.startsWith('fr:') ||
     frameId.startsWith('f3:');
 
@@ -76,15 +83,23 @@ bool isStripTemplateFrame(String frameId) =>
 bool isOccasionFrameId(String frameId) =>
     frameId.startsWith('ai:') && frameId.length > 3;
 
-/// Classic 3-shot 6×2 occasion variant (`f3:`).
+/// Scrapbook 3-shot 6×2 (`s3:`). Not `st3:` — that would match `st:`.
+bool isStripTemplate3Frame(String frameId) =>
+    frameId.startsWith('s3:') && frameId.length > 3;
+
+/// Classic 3-shot 6×2: occasion `f3:` or scrapbook `s3:`.
 bool isStrip3TemplateFrame(String frameId) =>
+    isFrameStrip3VariantId(frameId) || isStripTemplate3Frame(frameId);
+
+/// Occasion-frame Classic 3-shot 6×2 variant (`f3:`).
+bool isFrameStrip3VariantId(String frameId) =>
     frameId.startsWith('f3:') && frameId.length > 3;
 
 /// Occasion-frame Classic 4-shot 6×2 variant (`fr:`).
 bool isFrameStripVariantId(String frameId) =>
     frameId.startsWith('fr:') && frameId.length > 3;
 
-/// Database uuid from `ai:` / `f3:` / `fr:` / `st:` catalog ids.
+/// Database uuid from `ai:` / `f3:` / `fr:` / `st:` / `s3:` catalog ids.
 String? classicFrameDbId(String frameId) {
   if (frameId.length <= 3) return null;
   if (isOccasionFrameId(frameId) ||
@@ -156,22 +171,24 @@ List<StripTemplateSlot> parseStripTemplateSlots(dynamic raw) {
   return out;
 }
 
-/// Header/footer room for branded 6×2 occasion overlays (matches zenai).
+/// Untilted stacked photo windows on a 600×1800 strip.
 List<StripTemplateSlot> defaultOccasionStripSlots(int shotCount) {
-  const left = 0.08;
-  const width = 0.84;
-  if (shotCount == kStripShotCountThree) {
-    return const [
-      StripTemplateSlot(left: left, top: 0.16, width: width, height: 0.21),
-      StripTemplateSlot(left: left, top: 0.385, width: width, height: 0.21),
-      StripTemplateSlot(left: left, top: 0.61, width: width, height: 0.21),
-    ];
-  }
-  return const [
-    StripTemplateSlot(left: left, top: 0.16, width: width, height: 0.155),
-    StripTemplateSlot(left: left, top: 0.325, width: width, height: 0.155),
-    StripTemplateSlot(left: left, top: 0.49, width: width, height: 0.155),
-    StripTemplateSlot(left: left, top: 0.655, width: width, height: 0.155),
+  final n = shotCount == kStripShotCountThree ? 3 : 4;
+  const left = kEvenStripInset;
+  const width = 1 - 2 * kEvenStripInset;
+  final available = 1 -
+      kEvenStripHeader -
+      kEvenStripFooter -
+      kEvenStripGutter * (n - 1);
+  final height = available / n;
+  return [
+    for (var i = 0; i < n; i++)
+      StripTemplateSlot(
+        left: left,
+        top: kEvenStripHeader + i * (height + kEvenStripGutter),
+        width: width,
+        height: height,
+      ),
   ];
 }
 
@@ -524,7 +541,8 @@ String? preferredOccasionFrameId(Iterable<StripFrame> frames, int shotCount) {
   for (final frame in frames) {
     if (!classicFrameVisibleForShotCount(frame, shotCount)) continue;
     if (shotCount == 1 && isOccasionFrameId(frame.id)) return frame.id;
-    if (shotCount == kStripShotCountThree && isStrip3TemplateFrame(frame.id)) {
+    if (shotCount == kStripShotCountThree &&
+        isFrameStrip3VariantId(frame.id)) {
       return frame.id;
     }
     if (shotCount == kStripShotCount && isFrameStripVariantId(frame.id)) {

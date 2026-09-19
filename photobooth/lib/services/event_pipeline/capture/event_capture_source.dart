@@ -14,11 +14,15 @@ class CapturedShot {
     this.width = 0,
     this.height = 0,
     this.bytes = 0,
+    this.inlineBytes,
   });
 
   /// Untouched camera JPEG. Never decoded in Dart — a 6000×4000 frame is ~96 MB
   /// once decoded, which is the cost the whole pipeline exists to avoid.
   final String originalPath;
+
+  /// In-memory JPEG when the picker did not give a filesystem path (web).
+  final Uint8List? inlineBytes;
 
   /// Small copy for the review pane. Falls back to the original when the camera
   /// stack could not make one.
@@ -66,8 +70,11 @@ abstract class EventCaptureSource {
 /// ledger row all come from the identical code path, so a captured frame cannot
 /// drift from an imported one.
 class CapturedShotSource implements IngestSource {
-  CapturedShotSource(this.shot, {String? sourceId})
-      : id = sourceId ?? 'camera';
+  CapturedShotSource(
+    this.shot, {
+    String? sourceId,
+    this.sourceKind = MediaSource.ptp,
+  }) : id = sourceId ?? 'camera';
 
   final CapturedShot shot;
 
@@ -78,7 +85,7 @@ class CapturedShotSource implements IngestSource {
   String get label => 'Camera';
 
   @override
-  String get sourceKind => MediaSource.ptp;
+  final String sourceKind;
 
   @override
   Future<List<IngestCandidate>> listAll() async {

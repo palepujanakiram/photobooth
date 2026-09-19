@@ -291,9 +291,9 @@ abstract final class EventReadiness {
         label: 'Camera',
         tone: ReadinessTone.blocked,
         detail: 'Not connected',
-        explanation: 'No camera on the USB bus, so Capture is off. Card import '
-            'still works. Check the cable, and that the camera is on and not '
-            'asleep.',
+        explanation: 'No Canon on USB and no phone or web camera, so Capture '
+            'is off. Card import still works. Check the cable, or allow camera '
+            'access on this device.',
       );
     }
     return ReadinessRow(
