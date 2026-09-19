@@ -254,8 +254,8 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
 
   List<StripFilter> get filters => _catalog?.filters ?? const [];
 
-  /// Sheet layouts need four cells. Occasion 6×2 templates are filtered to
-  /// the matching shot count (`fr:` / `st:` = 4, `f3:` = 3, `ai:` = 1).
+  /// Sheet layouts need four cells. 6×2 templates are filtered to the matching
+  /// shot count (`fr:` / `st:` = 4, `f3:` / `s3:` = 3, `ai:` = 1).
   List<StripFrame> get frames {
     final all = _catalog?.frames ?? const <StripFrame>[];
     return all

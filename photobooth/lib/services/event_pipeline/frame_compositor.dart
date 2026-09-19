@@ -27,7 +27,9 @@ class CompositeResult {
 
 /// Draws a photo and an optional frame onto the print raster.
 abstract class FrameCompositor {
-  /// Cover-fits [photoPath] onto a [size] canvas, then overlays [framePath].
+  /// Cover-fits [photoPath] into the overlay photo window, then stamps
+  /// [framePath] on top. A caption-bar frame (JustMarried) uses the
+  /// transparent hole so the subject fills that window, not the whole sheet.
   ///
   /// A null [framePath] still renders — that is how a frame-disabled item is
   /// normalised to the print raster without a second code path.
